@@ -1,7 +1,12 @@
 {
   "permissions": {
     "allow": [
-      "Bash(go mod init:*)"
+      "Bash(go mod init:*)",
+      "Bash(docker logs:*)",
+      "Bash(docker restart:*)",
+      "Bash(docker exec:*)",
+      "Bash(curl:*)",
+      "Bash(docker-compose up:*)"
     ]
   }
 }
