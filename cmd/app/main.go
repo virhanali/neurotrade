@@ -12,12 +12,16 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/google/uuid"
 	"github.com/joho/godotenv"
+	"github.com/robfig/cron/v3"
 
 	"neurotrade/configs"
 	"neurotrade/internal/adapter"
+	"neurotrade/internal/domain"
 	"neurotrade/internal/infra"
 	"neurotrade/internal/repository"
+	"neurotrade/internal/service"
 	"neurotrade/internal/usecase"
 )
 
@@ -42,6 +46,11 @@ func main() {
 
 	// Initialize repositories
 	signalRepo := repository.NewSignalRepository(db)
+	userRepo := repository.NewUserRepository(db)
+	positionRepo := repository.NewPaperPositionRepository(db)
+
+	// Create default user for Phase 3 (later will be per-user authentication)
+	defaultUserID := ensureDefaultUser(ctx, userRepo)
 
 	// Initialize AI service (Python Bridge)
 	aiService := adapter.NewPythonBridge(cfg.Python.URL)
@@ -57,19 +66,60 @@ func main() {
 		}
 	}
 
+	// Initialize services
+	priceService := service.NewMarketPriceService()
+	virtualBroker := service.NewVirtualBrokerService(positionRepo, userRepo, priceService)
+	reviewService := service.NewReviewService(signalRepo, priceService)
+
 	// Initialize trading service
 	tradingService := usecase.NewTradingService(
 		aiService,
 		signalRepo,
+		positionRepo,
+		userRepo,
 		cfg.Trading.MinConfidence,
+		defaultUserID,
 	)
 
-	// Initialize scheduler
-	scheduler := infra.NewScheduler(tradingService, cfg.Trading.DefaultBalance)
-	if err := scheduler.Start(); err != nil {
-		log.Fatalf("Failed to start scheduler: %v", err)
+	// Initialize market scan scheduler
+	marketScanScheduler := infra.NewScheduler(tradingService, cfg.Trading.DefaultBalance)
+	if err := marketScanScheduler.Start(); err != nil {
+		log.Fatalf("Failed to start market scan scheduler: %v", err)
 	}
-	defer scheduler.Stop()
+	defer marketScanScheduler.Stop()
+
+	// Initialize Phase 3 cron jobs
+	cronScheduler := cron.New()
+
+	// Virtual Broker: Check positions every 1 minute
+	_, err = cronScheduler.AddFunc("*/1 * * * *", func() {
+		ctx := context.Background()
+		if err := virtualBroker.CheckPositions(ctx); err != nil {
+			log.Printf("ERROR: Virtual broker check failed: %v", err)
+		}
+	})
+	if err != nil {
+		log.Fatalf("Failed to add virtual broker cron job: %v", err)
+	}
+
+	// Review Service: Review signals at minute 5 of every hour
+	_, err = cronScheduler.AddFunc("5 * * * *", func() {
+		ctx := context.Background()
+		if err := reviewService.ReviewPastSignals(ctx, 60); err != nil {
+			log.Printf("ERROR: Review service failed: %v", err)
+		}
+	})
+	if err != nil {
+		log.Fatalf("Failed to add review service cron job: %v", err)
+	}
+
+	// Start Phase 3 cron scheduler
+	cronScheduler.Start()
+	defer cronScheduler.Stop()
+
+	log.Println("✓ Phase 3 services initialized:")
+	log.Println("  - Virtual Broker: Every 1 minute (*/1 * * * *)")
+	log.Println("  - Review Service: Minute 5 of every hour (5 * * * *)")
 
 	// Initialize HTTP router
 	r := chi.NewRouter()
@@ -84,7 +134,7 @@ func main() {
 	// Routes
 	r.Get("/", handleRoot)
 	r.Get("/health", handleHealth(db))
-	r.Post("/scan/trigger", handleTriggerScan(scheduler))
+	r.Post("/scan/trigger", handleTriggerScan(marketScanScheduler))
 	r.Get("/signals/recent", handleGetRecentSignals(tradingService))
 
 	// Start HTTP server
@@ -165,6 +215,38 @@ func handleHealth(db interface{ Ping(context.Context) error }) http.HandlerFunc 
 			"timestamp": "%s"
 		}`, dbStatus, time.Now().Format(time.RFC3339))))
 	}
+}
+
+func ensureDefaultUser(ctx context.Context, userRepo domain.UserRepository) uuid.UUID {
+	// Try to get existing default user
+	defaultUser, err := userRepo.GetByUsername(ctx, "default")
+	if err == nil {
+		log.Printf("✓ Using existing default user: %s", defaultUser.ID)
+		return defaultUser.ID
+	}
+
+	// Create new default user
+	log.Println("Creating default user for paper trading...")
+	userID := uuid.New()
+	user := &domain.User{
+		ID:           userID,
+		Username:     "default",
+		PasswordHash: "none", // No auth in Phase 3
+		Role:         domain.RoleUser,
+		PaperBalance: 1000.0, // Start with $1000 paper balance
+		Mode:         domain.ModePaper,
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
+	}
+
+	if err := userRepo.Create(ctx, user); err != nil {
+		log.Printf("WARNING: Failed to create default user: %v", err)
+		log.Println("Paper trading will not work without a default user")
+		return uuid.Nil
+	}
+
+	log.Printf("✓ Created default user with $%.2f paper balance", user.PaperBalance)
+	return userID
 }
 
 func handleTriggerScan(scheduler *infra.Scheduler) http.HandlerFunc {

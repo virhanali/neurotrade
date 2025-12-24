@@ -188,3 +188,65 @@ func (r *SignalRepositoryImpl) UpdateStatus(ctx context.Context, id uuid.UUID, s
 
 	return nil
 }
+
+// UpdateReviewStatus updates the review result and PnL of a signal
+func (r *SignalRepositoryImpl) UpdateReviewStatus(ctx context.Context, id uuid.UUID, result string, pnl *float64) error {
+	query := `
+		UPDATE signals
+		SET review_result = $1, review_pnl = $2
+		WHERE id = $3
+	`
+
+	_, err := r.db.Exec(ctx, query, result, pnl, id)
+	if err != nil {
+		return fmt.Errorf("failed to update signal review status: %w", err)
+	}
+
+	return nil
+}
+
+// GetPendingSignals retrieves signals that are pending review (older than specified minutes)
+func (r *SignalRepositoryImpl) GetPendingSignals(ctx context.Context, olderThanMinutes int) ([]*domain.Signal, error) {
+	query := `
+		SELECT id, symbol, type, entry_price, sl_price, tp_price,
+		       confidence, reasoning, status, review_result, created_at
+		FROM signals
+		WHERE status = 'PENDING'
+		  AND created_at < NOW() - INTERVAL '1 minute' * $1
+		ORDER BY created_at ASC
+	`
+
+	rows, err := r.db.Query(ctx, query, olderThanMinutes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query pending signals: %w", err)
+	}
+	defer rows.Close()
+
+	var signals []*domain.Signal
+	for rows.Next() {
+		signal := &domain.Signal{}
+		err := rows.Scan(
+			&signal.ID,
+			&signal.Symbol,
+			&signal.Type,
+			&signal.EntryPrice,
+			&signal.SLPrice,
+			&signal.TPPrice,
+			&signal.Confidence,
+			&signal.Reasoning,
+			&signal.Status,
+			&signal.ReviewResult,
+			&signal.CreatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan signal: %w", err)
+		}
+		signals = append(signals, signal)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating signals: %w", err)
+	}
+
+	return signals, nil
+}

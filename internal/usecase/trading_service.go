@@ -13,21 +13,30 @@ import (
 
 // TradingService handles core trading logic
 type TradingService struct {
-	aiService    domain.AIService
-	signalRepo   domain.SignalRepository
+	aiService     domain.AIService
+	signalRepo    domain.SignalRepository
+	positionRepo  domain.PaperPositionRepository
+	userRepo      domain.UserRepository
 	minConfidence int
+	defaultUserID uuid.UUID // For Phase 3, we'll use a default user (later will be per-user)
 }
 
 // NewTradingService creates a new TradingService
 func NewTradingService(
 	aiService domain.AIService,
 	signalRepo domain.SignalRepository,
+	positionRepo domain.PaperPositionRepository,
+	userRepo domain.UserRepository,
 	minConfidence int,
+	defaultUserID uuid.UUID,
 ) *TradingService {
 	return &TradingService{
-		aiService:    aiService,
-		signalRepo:   signalRepo,
+		aiService:     aiService,
+		signalRepo:    signalRepo,
+		positionRepo:  positionRepo,
+		userRepo:      userRepo,
 		minConfidence: minConfidence,
+		defaultUserID: defaultUserID,
 	}
 }
 
@@ -64,7 +73,7 @@ func (ts *TradingService) ProcessMarketScan(ctx context.Context, balance float64
 		// Create domain signal
 		signal := ts.convertAISignalToDomain(aiSignal)
 
-		// Save to database
+		// Save signal to database
 		if err := ts.signalRepo.Save(ctx, signal); err != nil {
 			log.Printf("ERROR: Failed to save signal for %s: %v", aiSignal.Symbol, err)
 			continue
@@ -79,6 +88,12 @@ func (ts *TradingService) ProcessMarketScan(ctx context.Context, balance float64
 			signal.SLPrice,
 			signal.TPPrice,
 		)
+
+		// Auto-create paper position for this signal
+		if err := ts.createPaperPosition(ctx, signal, aiSignal.TradeParams, balance); err != nil {
+			log.Printf("WARNING: Failed to create paper position for %s: %v", signal.Symbol, err)
+			// Don't stop - signal is already saved
+		}
 
 		savedCount++
 	}
@@ -130,4 +145,62 @@ func (ts *TradingService) GetRecentSignals(ctx context.Context, limit int) ([]*d
 // GetSignalsBySymbol retrieves signals for a specific symbol
 func (ts *TradingService) GetSignalsBySymbol(ctx context.Context, symbol string, limit int) ([]*domain.Signal, error) {
 	return ts.signalRepo.GetBySymbol(ctx, symbol, limit)
+}
+
+// createPaperPosition automatically creates a paper trading position for a high-confidence signal
+func (ts *TradingService) createPaperPosition(ctx context.Context, signal *domain.Signal, tradeParams *domain.TradeParams, balance float64) error {
+	if tradeParams == nil {
+		return fmt.Errorf("trade params not available")
+	}
+
+	// Get user to check if they're in PAPER mode
+	user, err := ts.userRepo.GetByID(ctx, ts.defaultUserID)
+	if err != nil {
+		return fmt.Errorf("failed to get user: %w", err)
+	}
+
+	// Only create position if user is in PAPER mode
+	if user.Mode != domain.ModePaper {
+		log.Printf("Skipping paper position creation: user is in %s mode", user.Mode)
+		return nil
+	}
+
+	// Determine position side based on signal type
+	var side string
+	if signal.Type == "LONG" {
+		side = domain.SideLong
+	} else if signal.Type == "SHORT" {
+		side = domain.SideShort
+	} else {
+		return fmt.Errorf("invalid signal type: %s", signal.Type)
+	}
+
+	// Calculate position size in base asset (BTC, ETH, etc.)
+	// Size = PositionSizeUSDT / EntryPrice
+	positionSize := tradeParams.PositionSizeUSDT / signal.EntryPrice
+
+	// Create paper position
+	position := &domain.PaperPosition{
+		ID:         uuid.New(),
+		UserID:     user.ID,
+		SignalID:   &signal.ID,
+		Symbol:     signal.Symbol,
+		Side:       side,
+		EntryPrice: signal.EntryPrice,
+		SLPrice:    signal.SLPrice,
+		TPPrice:    signal.TPPrice,
+		Size:       positionSize,
+		Status:     domain.StatusOpen,
+		CreatedAt:  time.Now(),
+	}
+
+	// Save position to database
+	if err := ts.positionRepo.Save(ctx, position); err != nil {
+		return fmt.Errorf("failed to save paper position: %w", err)
+	}
+
+	log.Printf("🎯 Auto-created Paper Position: %s %s | Size: %.6f | Entry: %.4f",
+		position.Symbol, position.Side, position.Size, position.EntryPrice)
+
+	return nil
 }

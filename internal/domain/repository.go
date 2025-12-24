@@ -22,6 +22,12 @@ type SignalRepository interface {
 
 	// UpdateStatus updates the status of a signal
 	UpdateStatus(ctx context.Context, id uuid.UUID, status string) error
+
+	// UpdateReviewStatus updates the review result and PnL of a signal
+	UpdateReviewStatus(ctx context.Context, id uuid.UUID, result string, pnl *float64) error
+
+	// GetPendingSignals retrieves signals that are pending review (older than specified minutes)
+	GetPendingSignals(ctx context.Context, olderThanMinutes int) ([]*Signal, error)
 }
 
 // UserRepository defines the interface for user data operations
@@ -41,15 +47,18 @@ type UserRepository interface {
 
 // PaperPositionRepository defines the interface for paper position operations
 type PaperPositionRepository interface {
-	// Create creates a new paper position
-	Create(ctx context.Context, position *PaperPosition) error
+	// Save creates a new paper position
+	Save(ctx context.Context, position *PaperPosition) error
 
 	// GetByUserID retrieves all positions for a user
 	GetByUserID(ctx context.Context, userID uuid.UUID) ([]*PaperPosition, error)
 
-	// GetOpenPositions retrieves all open positions for a user
-	GetOpenPositions(ctx context.Context, userID uuid.UUID) ([]*PaperPosition, error)
+	// GetOpenPositions retrieves all open positions (across all users or specific user)
+	GetOpenPositions(ctx context.Context) ([]*PaperPosition, error)
 
-	// Close closes a position and updates PnL
-	Close(ctx context.Context, id uuid.UUID, pnl float64) error
+	// Update updates position status, exit price, and PnL
+	Update(ctx context.Context, position *PaperPosition) error
+
+	// GetByID retrieves a position by ID
+	GetByID(ctx context.Context, id uuid.UUID) (*PaperPosition, error)
 }

@@ -1,0 +1,138 @@
+package service
+
+import (
+	"context"
+	"fmt"
+	"log"
+
+	"neurotrade/internal/domain"
+)
+
+const (
+	// Review thresholds
+	ReviewWinThresholdPercent  = 0.5  // 0.5% profit = WIN
+	ReviewLossThresholdPercent = -0.5 // -0.5% loss = LOSS
+)
+
+// ReviewService audits past signals and marks them as WIN/LOSS/FLOATING
+type ReviewService struct {
+	signalRepo   domain.SignalRepository
+	priceService *MarketPriceService
+}
+
+// NewReviewService creates a new ReviewService
+func NewReviewService(
+	signalRepo domain.SignalRepository,
+	priceService *MarketPriceService,
+) *ReviewService {
+	return &ReviewService{
+		signalRepo:   signalRepo,
+		priceService: priceService,
+	}
+}
+
+// ReviewPastSignals reviews signals created more than specified minutes ago
+func (s *ReviewService) ReviewPastSignals(ctx context.Context, olderThanMinutes int) error {
+	log.Printf("📊 Review Service: Reviewing signals older than %d minutes...", olderThanMinutes)
+
+	// Get pending signals older than threshold
+	signals, err := s.signalRepo.GetPendingSignals(ctx, olderThanMinutes)
+	if err != nil {
+		return fmt.Errorf("failed to get pending signals: %w", err)
+	}
+
+	if len(signals) == 0 {
+		log.Println("✓ No pending signals to review")
+		return nil
+	}
+
+	log.Printf("Found %d signal(s) to review", len(signals))
+
+	// Extract unique symbols
+	symbolMap := make(map[string]bool)
+	for _, signal := range signals {
+		symbolMap[signal.Symbol] = true
+	}
+
+	symbols := make([]string, 0, len(symbolMap))
+	for symbol := range symbolMap {
+		symbols = append(symbols, symbol)
+	}
+
+	// Fetch current prices
+	prices, err := s.priceService.FetchRealTimePrices(ctx, symbols)
+	if err != nil {
+		return fmt.Errorf("failed to fetch real-time prices: %w", err)
+	}
+
+	// Review each signal
+	for _, signal := range signals {
+		currentPrice, ok := prices[signal.Symbol]
+		if !ok {
+			log.Printf("WARNING: Price not found for %s, skipping", signal.Symbol)
+			continue
+		}
+
+		// Calculate floating PnL percentage
+		floatingPnLPercent := s.calculateFloatingPnL(signal, currentPrice)
+
+		// Determine review result
+		result, pnl := s.determineReviewResult(signal, currentPrice, floatingPnLPercent)
+
+		// Update signal review status
+		if err := s.signalRepo.UpdateReviewStatus(ctx, signal.ID, result, &pnl); err != nil {
+			log.Printf("ERROR: Failed to update review status for signal %s: %v", signal.ID, err)
+			continue
+		}
+
+		log.Printf("✅ Signal Reviewed: %s %s | Entry=%.2f Current=%.2f | PnL=%.2f%% | Result=%s",
+			signal.Symbol, signal.Type, signal.EntryPrice, currentPrice, floatingPnLPercent, result)
+	}
+
+	return nil
+}
+
+// calculateFloatingPnL calculates the floating PnL percentage
+func (s *ReviewService) calculateFloatingPnL(signal *domain.Signal, currentPrice float64) float64 {
+	var pnlPercent float64
+
+	if signal.Type == "LONG" {
+		// Long: profit when price goes up
+		pnlPercent = ((currentPrice - signal.EntryPrice) / signal.EntryPrice) * 100
+	} else if signal.Type == "SHORT" {
+		// Short: profit when price goes down
+		pnlPercent = ((signal.EntryPrice - currentPrice) / signal.EntryPrice) * 100
+	}
+
+	return pnlPercent
+}
+
+// determineReviewResult determines if signal is WIN/LOSS/FLOATING
+func (s *ReviewService) determineReviewResult(signal *domain.Signal, currentPrice, pnlPercent float64) (string, float64) {
+	// Check if TP or SL was hit first
+	if signal.Type == "LONG" {
+		if currentPrice >= signal.TPPrice {
+			return "WIN", pnlPercent
+		}
+		if currentPrice <= signal.SLPrice {
+			return "LOSS", pnlPercent
+		}
+	} else if signal.Type == "SHORT" {
+		if currentPrice <= signal.TPPrice {
+			return "WIN", pnlPercent
+		}
+		if currentPrice >= signal.SLPrice {
+			return "LOSS", pnlPercent
+		}
+	}
+
+	// If TP/SL not hit, check floating PnL thresholds
+	if pnlPercent >= ReviewWinThresholdPercent {
+		return "FLOATING_WIN", pnlPercent
+	}
+	if pnlPercent <= ReviewLossThresholdPercent {
+		return "FLOATING_LOSS", pnlPercent
+	}
+
+	return "FLOATING", pnlPercent
+}
