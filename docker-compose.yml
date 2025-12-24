@@ -77,6 +77,10 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: ${REDIS_URL}
       PYTHON_ENGINE_URL: http://python-engine:8000
+      GO_ENV: ${GO_ENV}
+      DEFAULT_BALANCE: ${DEFAULT_BALANCE}
+      MIN_CONFIDENCE: ${MIN_CONFIDENCE}
+      PORT: "8080"
     depends_on:
       postgres:
         condition: service_healthy
