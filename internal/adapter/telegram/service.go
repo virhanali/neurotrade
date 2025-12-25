@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"time"
 
 	"neurotrade/internal/domain"
@@ -15,6 +16,7 @@ type NotificationService struct {
 	botToken string
 	chatID   string
 	enabled  bool
+	location *time.Location
 }
 
 type telegramMessage struct {
@@ -25,10 +27,24 @@ type telegramMessage struct {
 
 func NewNotificationService(botToken, chatID string) *NotificationService {
 	enabled := botToken != "" && chatID != ""
+
+	// Load timezone from environment or default to Asia/Jakarta
+	tz := os.Getenv("TZ")
+	if tz == "" {
+		tz = "Asia/Jakarta"
+	}
+
+	location, err := time.LoadLocation(tz)
+	if err != nil {
+		// Fallback to UTC if timezone loading fails
+		location = time.UTC
+	}
+
 	return &NotificationService{
 		botToken: botToken,
 		chatID:   chatID,
 		enabled:  enabled,
+		location: location,
 	}
 }
 
@@ -62,7 +78,7 @@ func (s *NotificationService) SendSignal(signal domain.Signal) error {
 		signal.SLPrice,
 		signal.TPPrice,
 		signal.Confidence,
-		signal.CreatedAt.Format("2006-01-02 15:04:05"),
+		signal.CreatedAt.In(s.location).Format("2006-01-02 15:04:05"),
 		signal.Reasoning,
 	)
 
@@ -122,8 +138,8 @@ func (s *NotificationService) SendReview(signal domain.Signal) error {
 		signal.SLPrice,
 		signal.TPPrice,
 		signal.Confidence,
-		signal.CreatedAt.Format("2006-01-02 15:04"),
-		time.Now().Format("2006-01-02 15:04"),
+		signal.CreatedAt.In(s.location).Format("2006-01-02 15:04"),
+		time.Now().In(s.location).Format("2006-01-02 15:04"),
 	)
 
 	return s.sendMessage(message)

@@ -8,15 +8,22 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// MarketScanScheduler defines the interface for market scan scheduler
+type MarketScanScheduler interface {
+	RunNow() error
+}
+
 // AdminHandler handles admin-related requests
 type AdminHandler struct {
-	db *pgxpool.Pool
+	db        *pgxpool.Pool
+	scheduler MarketScanScheduler
 }
 
 // NewAdminHandler creates a new AdminHandler
-func NewAdminHandler(db *pgxpool.Pool) *AdminHandler {
+func NewAdminHandler(db *pgxpool.Pool, scheduler MarketScanScheduler) *AdminHandler {
 	return &AdminHandler{
-		db: db,
+		db:        db,
+		scheduler: scheduler,
 	}
 }
 
@@ -215,4 +222,24 @@ func (h *AdminHandler) GetStatistics(c echo.Context) error {
 	stats["total_pnl"] = totalPnL
 
 	return SuccessResponse(c, stats)
+}
+
+// TriggerMarketScan triggers an immediate market scan manually
+// POST /api/admin/market-scan/trigger
+func (h *AdminHandler) TriggerMarketScan(c echo.Context) error {
+	if h.scheduler == nil {
+		return InternalServerErrorResponse(c, "Scheduler not available", nil)
+	}
+
+	// Trigger market scan in background
+	go func() {
+		if err := h.scheduler.RunNow(); err != nil {
+			// Log error but don't block response
+			c.Logger().Errorf("Market scan failed: %v", err)
+		}
+	}()
+
+	return SuccessMessageResponse(c, "Market scan triggered successfully", map[string]interface{}{
+		"message": "Market scan is running in background. Check logs for results.",
+	})
 }

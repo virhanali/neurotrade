@@ -159,7 +159,7 @@ func main() {
 	// Initialize HTTP handlers
 	authHandler := httpdelivery.NewAuthHandler(userRepo)
 	userHandler := httpdelivery.NewUserHandler(userRepo, positionRepo, tradingService)
-	adminHandler := httpdelivery.NewAdminHandler(db)
+	adminHandler := httpdelivery.NewAdminHandler(db, marketScanScheduler)
 
 	// Initialize web handler (Phase 5 - HTML pages)
 	webHandler := httpdelivery.NewWebHandler(templates, userRepo, positionRepo, nil, priceService)
@@ -220,6 +220,7 @@ func main() {
 	log.Println("  - PUT  /api/admin/strategies/active (admin)")
 	log.Println("  - GET  /api/admin/system/health (admin)")
 	log.Println("  - GET  /api/admin/statistics (admin)")
+	log.Println("  - POST /api/admin/market-scan/trigger (admin)")
 	log.Println("========================================")
 
 	// Run server in goroutine

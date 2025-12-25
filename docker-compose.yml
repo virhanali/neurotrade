@@ -86,6 +86,8 @@ services:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID}
       PORT: "8080"
+      # Timezone
+      TZ: ${TZ}
     depends_on:
       postgres:
         condition: service_healthy
