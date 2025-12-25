@@ -204,3 +204,78 @@ func (ts *TradingService) createPaperPosition(ctx context.Context, signal *domai
 
 	return nil
 }
+
+// CloseAllPositions closes all open positions for a user (PANIC BUTTON)
+func (ts *TradingService) CloseAllPositions(ctx context.Context, userIDStr string) error {
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		return fmt.Errorf("invalid user ID: %w", err)
+	}
+
+	log.Printf("🚨 PANIC BUTTON TRIGGERED for user %s - Closing all positions", userID)
+
+	// Get all open positions for this user
+	// Note: We need to add a method to get open positions by user ID
+	// For now, we'll get all user positions and filter
+	positions, err := ts.positionRepo.GetByUserID(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("failed to get user positions: %w", err)
+	}
+
+	closedCount := 0
+	for _, position := range positions {
+		if position.Status != domain.StatusOpen {
+			continue // Skip already closed positions
+		}
+
+		// Close position at current market price (simulate immediate close)
+		now := time.Now()
+		// In real implementation, we would fetch current market price
+		// For panic button, we use entry price as exit (worst case scenario)
+		exitPrice := position.EntryPrice
+
+		// Calculate PnL (will be ~0 if using entry price)
+		var pnl float64
+		if position.Side == domain.SideLong {
+			pnl = (exitPrice - position.EntryPrice) * position.Size
+		} else {
+			pnl = (position.EntryPrice - exitPrice) * position.Size
+		}
+
+		// Apply fees
+		feeRate := 0.0005 // 0.05%
+		entryFee := position.Size * position.EntryPrice * feeRate
+		exitFee := position.Size * exitPrice * feeRate
+		pnl = pnl - entryFee - exitFee
+
+		// Update position
+		position.ExitPrice = &exitPrice
+		position.PnL = &pnl
+		position.Status = domain.StatusClosedLoss // Panic close is usually a loss
+		position.ClosedAt = &now
+
+		if err := ts.positionRepo.Update(ctx, position); err != nil {
+			log.Printf("ERROR: Failed to close position %s: %v", position.ID, err)
+			continue
+		}
+
+		// Update user balance
+		user, err := ts.userRepo.GetByID(ctx, userID)
+		if err != nil {
+			log.Printf("ERROR: Failed to get user for balance update: %v", err)
+			continue
+		}
+
+		newBalance := user.PaperBalance + pnl
+		if err := ts.userRepo.UpdateBalance(ctx, userID, newBalance, domain.ModePaper); err != nil {
+			log.Printf("ERROR: Failed to update user balance: %v", err)
+			continue
+		}
+
+		log.Printf("✓ Closed position %s %s | PnL: %.2f USDT", position.Symbol, position.Side, pnl)
+		closedCount++
+	}
+
+	log.Printf("🚨 PANIC BUTTON COMPLETE: Closed %d positions", closedCount)
+	return nil
+}

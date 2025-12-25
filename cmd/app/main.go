@@ -4,20 +4,20 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
 	"github.com/google/uuid"
 	"github.com/joho/godotenv"
+	"github.com/labstack/echo/v4"
 	"github.com/robfig/cron/v3"
+	"golang.org/x/crypto/bcrypt"
 
 	"neurotrade/configs"
 	"neurotrade/internal/adapter"
+	httpdelivery "neurotrade/internal/delivery/http"
 	"neurotrade/internal/domain"
 	"neurotrade/internal/infra"
 	"neurotrade/internal/repository"
@@ -49,8 +49,8 @@ func main() {
 	userRepo := repository.NewUserRepository(db)
 	positionRepo := repository.NewPaperPositionRepository(db)
 
-	// Create default user for Phase 3 (later will be per-user authentication)
-	defaultUserID := ensureDefaultUser(ctx, userRepo)
+	// Create default user for Phase 3-4 (later will be per-user authentication)
+	defaultUserID := ensureDefaultUserWithPassword(ctx, userRepo)
 
 	// Initialize AI service (Python Bridge)
 	aiService := adapter.NewPythonBridge(cfg.Python.URL)
@@ -121,43 +121,48 @@ func main() {
 	log.Println("  - Virtual Broker: Every 1 minute (*/1 * * * *)")
 	log.Println("  - Review Service: Minute 5 of every hour (5 * * * *)")
 
-	// Initialize HTTP router
-	r := chi.NewRouter()
+	// Initialize Echo HTTP server
+	e := echo.New()
+	e.HideBanner = true
 
-	// Middleware
-	r.Use(middleware.Logger)
-	r.Use(middleware.Recoverer)
-	r.Use(middleware.RequestID)
-	r.Use(middleware.RealIP)
-	r.Use(middleware.Timeout(60 * time.Second))
+	// Initialize HTTP handlers
+	authHandler := httpdelivery.NewAuthHandler(userRepo)
+	userHandler := httpdelivery.NewUserHandler(userRepo, positionRepo, tradingService)
+	adminHandler := httpdelivery.NewAdminHandler(db)
 
-	// Routes
-	r.Get("/", handleRoot)
-	r.Get("/health", handleHealth(db))
-	r.Post("/scan/trigger", handleTriggerScan(marketScanScheduler))
-	r.Get("/signals/recent", handleGetRecentSignals(tradingService))
+	// Setup routes
+	httpdelivery.SetupRoutes(e, &httpdelivery.RouterConfig{
+		AuthHandler:  authHandler,
+		UserHandler:  userHandler,
+		AdminHandler: adminHandler,
+	})
 
 	// Start HTTP server
 	addr := fmt.Sprintf(":%s", cfg.Server.Port)
+	log.Println("========================================")
 	log.Printf("🚀 NeuroTrade Go App starting on %s", addr)
 	log.Printf("📊 Environment: %s", cfg.Server.Env)
 	log.Printf("💰 Default Balance: $%.2f USDT", cfg.Trading.DefaultBalance)
 	log.Printf("📈 Min Confidence: %d%%", cfg.Trading.MinConfidence)
 	log.Println("========================================")
-
-	// Create HTTP server
-	srv := &http.Server{
-		Addr:         addr,
-		Handler:      r,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
-		IdleTimeout:  60 * time.Second,
-	}
+	log.Println("✅ Phase 4 API Endpoints:")
+	log.Println("  - POST /api/auth/login")
+	log.Println("  - POST /api/auth/logout")
+	log.Println("  - POST /api/auth/register")
+	log.Println("  - GET  /api/user/me (protected)")
+	log.Println("  - POST /api/user/mode/toggle (protected)")
+	log.Println("  - GET  /api/user/positions (protected)")
+	log.Println("  - POST /api/user/panic-button (protected)")
+	log.Println("  - GET  /api/admin/strategies (admin)")
+	log.Println("  - PUT  /api/admin/strategies/active (admin)")
+	log.Println("  - GET  /api/admin/system/health (admin)")
+	log.Println("  - GET  /api/admin/statistics (admin)")
+	log.Println("========================================")
 
 	// Run server in goroutine
 	go func() {
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Failed to start server: %v", err)
+		if err := e.Start(addr); err != nil {
+			log.Printf("Server stopped: %v", err)
 		}
 	}()
 
@@ -172,52 +177,14 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	if err := srv.Shutdown(ctx); err != nil {
+	if err := e.Shutdown(ctx); err != nil {
 		log.Fatalf("Server forced to shutdown: %v", err)
 	}
 
 	log.Println("✓ Server exited gracefully")
 }
 
-// HTTP Handlers
-
-func handleRoot(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`{
-		"message": "Welcome to NeuroTrade AI - Golang Service",
-		"version": "0.1.0",
-		"endpoints": {
-			"health": "GET /health",
-			"trigger_scan": "POST /scan/trigger",
-			"recent_signals": "GET /signals/recent"
-		}
-	}`))
-}
-
-func handleHealth(db interface{ Ping(context.Context) error }) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		// Check database
-		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
-		defer cancel()
-
-		dbStatus := "healthy"
-		if err := db.Ping(ctx); err != nil {
-			dbStatus = "unhealthy"
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(fmt.Sprintf(`{
-			"status": "healthy",
-			"service": "neurotrade-go-app",
-			"database": "%s",
-			"timestamp": "%s"
-		}`, dbStatus, time.Now().Format(time.RFC3339))))
-	}
-}
-
-func ensureDefaultUser(ctx context.Context, userRepo domain.UserRepository) uuid.UUID {
+func ensureDefaultUserWithPassword(ctx context.Context, userRepo domain.UserRepository) uuid.UUID {
 	// Try to get existing default user
 	defaultUser, err := userRepo.GetByUsername(ctx, "default")
 	if err == nil {
@@ -225,13 +192,20 @@ func ensureDefaultUser(ctx context.Context, userRepo domain.UserRepository) uuid
 		return defaultUser.ID
 	}
 
-	// Create new default user
+	// Create new default user with hashed password
 	log.Println("Creating default user for paper trading...")
 	userID := uuid.New()
+
+	// Hash default password "password123"
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.DefaultCost)
+	if err != nil {
+		log.Fatalf("Failed to hash password: %v", err)
+	}
+
 	user := &domain.User{
 		ID:           userID,
 		Username:     "default",
-		PasswordHash: "none", // No auth in Phase 3
+		PasswordHash: string(hashedPassword),
 		Role:         domain.RoleUser,
 		PaperBalance: 1000.0, // Start with $1000 paper balance
 		Mode:         domain.ModePaper,
@@ -246,78 +220,7 @@ func ensureDefaultUser(ctx context.Context, userRepo domain.UserRepository) uuid
 	}
 
 	log.Printf("✓ Created default user with $%.2f paper balance", user.PaperBalance)
+	log.Println("  Username: default")
+	log.Println("  Password: password123")
 	return userID
-}
-
-func handleTriggerScan(scheduler *infra.Scheduler) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		log.Println("Manual scan triggered via API")
-
-		go func() {
-			if err := scheduler.RunNow(); err != nil {
-				log.Printf("ERROR: Manual scan failed: %v", err)
-			}
-		}()
-
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusAccepted)
-		w.Write([]byte(`{
-			"message": "Market scan triggered successfully",
-			"status": "processing"
-		}`))
-	}
-}
-
-func handleGetRecentSignals(tradingService *usecase.TradingService) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		ctx := r.Context()
-		signals, err := tradingService.GetRecentSignals(ctx, 20)
-		if err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(fmt.Sprintf(`{"error": "%s"}`, err.Error())))
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-
-		// Simple JSON response
-		if len(signals) == 0 {
-			w.Write([]byte(`{"signals": []}`))
-			return
-		}
-
-		// Build JSON manually for simplicity
-		response := `{"signals": [`
-		for i, signal := range signals {
-			if i > 0 {
-				response += ","
-			}
-			response += fmt.Sprintf(`{
-				"id": "%s",
-				"symbol": "%s",
-				"type": "%s",
-				"entry_price": %.8f,
-				"sl_price": %.8f,
-				"tp_price": %.8f,
-				"confidence": %d,
-				"status": "%s",
-				"created_at": "%s"
-			}`,
-				signal.ID,
-				signal.Symbol,
-				signal.Type,
-				signal.EntryPrice,
-				signal.SLPrice,
-				signal.TPPrice,
-				signal.Confidence,
-				signal.Status,
-				signal.CreatedAt.Format(time.RFC3339),
-			)
-		}
-		response += `]}`
-
-		w.Write([]byte(response))
-	}
 }

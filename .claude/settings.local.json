@@ -11,7 +11,17 @@
       "Bash(docker-compose build:*)",
       "Bash(docker-compose ps:*)",
       "Bash(python3:*)",
-      "Bash(docker-compose restart:*)"
+      "Bash(docker-compose restart:*)",
+      "Bash(go mod tidy:*)",
+      "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjI1OTJiZDEtMTA2Ni00NDVhLWEyNTgtZjcxZjk3OTU3MzhhIiwicm9sZSI6IlVTRVIiLCJleHAiOjE3NjY3NzgyNDcsImlhdCI6MTc2NjY5MTg0N30.y7Lj7FwnAxXvPNNO9EmSr9tNnoB4SoG1nfozJ46nbMc\":*)",
+      "Bash(__NEW_LINE__ echo \"===== TEST 3: Get Positions =====\")",
+      "Bash(__NEW_LINE__ echo -e \"\\\\n\\\\n===== TEST 4: Admin Access \\(Should FAIL - 403\\) =====\")",
+      "Bash(__NEW_LINE__ echo -e \"\\\\n\\\\n===== TEST 5: Logout =====\")",
+      "Bash(ADMIN_TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjI1OTJiZDEtMTA2Ni00NDVhLWEyNTgtZjcxZjk3OTU3MzhhIiwicm9sZSI6IkFETUlOIiwiZXhwIjoxNzY2Nzc4NDQ3LCJpYXQiOjE3NjY2OTIwNDd9.mxob3QQmYl_JoCM03YC6STChtNtYxyyJPVqq4zU3MZY\")",
+      "Bash(__NEW_LINE__ echo \"===== Admin Statistics =====\")",
+      "Bash(__NEW_LINE__ echo -e \"\\\\n\\\\n===== System Health =====\")",
+      "Bash(__NEW_LINE__ echo \"===== Set Active Strategy to Aggressive Scalping \\(ID=1\\) =====\")",
+      "Bash(__NEW_LINE__ echo -e \"\\\\n\\\\n===== Verify Active Strategy Changed =====\")"
     ]
   }
 }
