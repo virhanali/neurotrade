@@ -134,8 +134,8 @@ services:
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
-      - ./nginx/.htpasswd:/etc/nginx/.htpasswd:ro  # Basic auth file
       - ./nginx/ssl:/etc/nginx/ssl:ro  # SSL certificates
+      - ./nginx/.htpasswd:/etc/nginx/.htpasswd:ro  # Basic auth file
       - nginx_logs:/var/log/nginx
     logging:
       driver: "json-file"
