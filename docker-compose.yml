@@ -80,6 +80,11 @@ services:
       GO_ENV: ${GO_ENV}
       DEFAULT_BALANCE: ${DEFAULT_BALANCE}
       MIN_CONFIDENCE: ${MIN_CONFIDENCE}
+      # Phase 4 - Authentication
+      JWT_SECRET: ${JWT_SECRET}
+      # Phase 5 - Telegram Notifications
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID}
       PORT: "8080"
     depends_on:
       postgres:

@@ -120,3 +120,8 @@ func (s *MarketPriceService) FetchSinglePrice(ctx context.Context, symbol string
 
 	return price, nil
 }
+
+// GetPrice fetches the current price for a single symbol (alias for FetchSinglePrice)
+func (s *MarketPriceService) GetPrice(ctx context.Context, symbol string) (float64, error) {
+	return s.FetchSinglePrice(ctx, symbol)
+}

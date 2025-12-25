@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Title}} - NeuroTrade</title>
+
+    <!-- TailwindCSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- HTMX -->
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.10/dist/ext/json-enc.js"></script>
+
+    <!-- Custom Tailwind Config -->
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        terminal: {
+                            bg: '#0f172a',      // slate-900
+                            surface: '#1e293b', // slate-800
+                            border: '#334155',  // slate-700
+                            text: '#cbd5e1',    // slate-300
+                            profit: '#34d399',  // emerald-400
+                            loss: '#fb7185',    // rose-400
+                            warning: '#fbbf24', // amber-400
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body {
+            font-family: 'Courier New', monospace;
+            background-color: #0f172a;
+            color: #cbd5e1;
+        }
+
+        .terminal-glow {
+            text-shadow: 0 0 10px rgba(52, 211, 153, 0.3);
+        }
+
+        .profit {
+            color: #34d399;
+        }
+
+        .loss {
+            color: #fb7185;
+        }
+
+        .pulse-slow {
+            animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+    </style>
+</head>
+<body class="bg-terminal-bg min-h-screen">
+    {{template "content" .}}
+</body>
+</html>

@@ -14,20 +14,29 @@ const (
 	ReviewLossThresholdPercent = -0.5 // -0.5% loss = LOSS
 )
 
+// NotificationService defines the interface for sending notifications
+type NotificationService interface {
+	SendSignal(signal domain.Signal) error
+	SendReview(signal domain.Signal) error
+}
+
 // ReviewService audits past signals and marks them as WIN/LOSS/FLOATING
 type ReviewService struct {
-	signalRepo   domain.SignalRepository
-	priceService *MarketPriceService
+	signalRepo          domain.SignalRepository
+	priceService        *MarketPriceService
+	notificationService NotificationService
 }
 
 // NewReviewService creates a new ReviewService
 func NewReviewService(
 	signalRepo domain.SignalRepository,
 	priceService *MarketPriceService,
+	notificationService NotificationService,
 ) *ReviewService {
 	return &ReviewService{
-		signalRepo:   signalRepo,
-		priceService: priceService,
+		signalRepo:          signalRepo,
+		priceService:        priceService,
+		notificationService: notificationService,
 	}
 }
 
@@ -87,6 +96,14 @@ func (s *ReviewService) ReviewPastSignals(ctx context.Context, olderThanMinutes 
 
 		log.Printf("✅ Signal Reviewed: %s %s | Entry=%.2f Current=%.2f | PnL=%.2f%% | Result=%s",
 			signal.Symbol, signal.Type, signal.EntryPrice, currentPrice, floatingPnLPercent, result)
+
+		// Send Telegram notification for WIN/LOSS (not for FLOATING)
+		if s.notificationService != nil && (result == "WIN" || result == "LOSS") {
+			signal.ReviewResult = &result
+			if err := s.notificationService.SendReview(*signal); err != nil {
+				log.Printf("WARNING: Failed to send Telegram review notification: %v", err)
+			}
+		}
 	}
 
 	return nil

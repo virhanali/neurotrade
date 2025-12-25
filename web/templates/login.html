@@ -1,0 +1,115 @@
+{{define "login"}}
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - NeuroTrade</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        terminal: {
+                            bg: '#0f172a',
+                            surface: '#1e293b',
+                            border: '#334155',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'Courier New', monospace;
+            background-color: #0f172a;
+            color: #cbd5e1;
+        }
+        .terminal-glow {
+            text-shadow: 0 0 10px rgba(52, 211, 153, 0.3);
+        }
+    </style>
+</head>
+<body class="bg-terminal-bg min-h-screen">
+<div class="min-h-screen flex items-center justify-center px-4">
+    <div class="max-w-md w-full space-y-8">
+        <!-- Logo/Header -->
+        <div class="text-center">
+            <h1 class="text-5xl font-bold terminal-glow text-emerald-400 mb-2">
+                ⚡ NeuroTrade
+            </h1>
+            <p class="text-slate-400 text-sm">AI-Powered Trading Terminal</p>
+        </div>
+
+        <!-- Login Form -->
+        <div class="bg-terminal-surface rounded-lg border border-terminal-border p-8 shadow-2xl">
+            <h2 class="text-2xl font-semibold text-center mb-6 text-slate-200">
+                Access Terminal
+            </h2>
+
+            <!-- Error Message -->
+            {{if .Error}}
+            <div class="mb-4 p-3 bg-rose-500/10 border border-rose-500/50 rounded text-rose-400 text-sm">
+                ⚠️ {{.Error}}
+            </div>
+            {{end}}
+
+            <!-- Login Form -->
+            <form method="POST" action="/login" id="login-form">
+                <!-- Username -->
+                <div class="mb-4">
+                    <label for="username" class="block text-sm font-medium text-slate-300 mb-2">
+                        Username
+                    </label>
+                    <input
+                        type="text"
+                        id="username"
+                        name="username"
+                        required
+                        class="w-full px-4 py-3 bg-terminal-bg border border-terminal-border rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-200 placeholder-slate-500"
+                        placeholder="Enter your username"
+                    />
+                </div>
+
+                <!-- Password -->
+                <div class="mb-6">
+                    <label for="password" class="block text-sm font-medium text-slate-300 mb-2">
+                        Password
+                    </label>
+                    <input
+                        type="password"
+                        id="password"
+                        name="password"
+                        required
+                        class="w-full px-4 py-3 bg-terminal-bg border border-terminal-border rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-200 placeholder-slate-500"
+                        placeholder="Enter your password"
+                    />
+                </div>
+
+                <!-- Submit Button -->
+                <button
+                    type="submit"
+                    class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 px-4 rounded-md transition duration-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:ring-offset-terminal-surface"
+                >
+                    🔐 Login
+                </button>
+            </form>
+
+            <!-- Footer Note -->
+            <div class="mt-6 text-center text-sm text-slate-500">
+                <p>Default: <span class="text-emerald-400">default</span> / <span class="text-emerald-400">password123</span></p>
+            </div>
+        </div>
+
+        <!-- Version Info -->
+        <div class="text-center text-xs text-slate-600">
+            <p>Phase 5 - Web Dashboard v1.0</p>
+        </div>
+    </div>
+</div>
+</body>
+</html>
+{{end}}

@@ -11,14 +11,21 @@ import (
 	"neurotrade/internal/domain"
 )
 
+// NotificationService defines the interface for sending notifications
+type NotificationService interface {
+	SendSignal(signal domain.Signal) error
+	SendReview(signal domain.Signal) error
+}
+
 // TradingService handles core trading logic
 type TradingService struct {
-	aiService     domain.AIService
-	signalRepo    domain.SignalRepository
-	positionRepo  domain.PaperPositionRepository
-	userRepo      domain.UserRepository
-	minConfidence int
-	defaultUserID uuid.UUID // For Phase 3, we'll use a default user (later will be per-user)
+	aiService           domain.AIService
+	signalRepo          domain.SignalRepository
+	positionRepo        domain.PaperPositionRepository
+	userRepo            domain.UserRepository
+	notificationService NotificationService
+	minConfidence       int
+	defaultUserID       uuid.UUID // For Phase 3, we'll use a default user (later will be per-user)
 }
 
 // NewTradingService creates a new TradingService
@@ -27,16 +34,18 @@ func NewTradingService(
 	signalRepo domain.SignalRepository,
 	positionRepo domain.PaperPositionRepository,
 	userRepo domain.UserRepository,
+	notificationService NotificationService,
 	minConfidence int,
 	defaultUserID uuid.UUID,
 ) *TradingService {
 	return &TradingService{
-		aiService:     aiService,
-		signalRepo:    signalRepo,
-		positionRepo:  positionRepo,
-		userRepo:      userRepo,
-		minConfidence: minConfidence,
-		defaultUserID: defaultUserID,
+		aiService:           aiService,
+		signalRepo:          signalRepo,
+		positionRepo:        positionRepo,
+		userRepo:            userRepo,
+		notificationService: notificationService,
+		minConfidence:       minConfidence,
+		defaultUserID:       defaultUserID,
 	}
 }
 
@@ -88,6 +97,13 @@ func (ts *TradingService) ProcessMarketScan(ctx context.Context, balance float64
 			signal.SLPrice,
 			signal.TPPrice,
 		)
+
+		// Send Telegram notification
+		if ts.notificationService != nil {
+			if err := ts.notificationService.SendSignal(*signal); err != nil {
+				log.Printf("WARNING: Failed to send Telegram notification: %v", err)
+			}
+		}
 
 		// Auto-create paper position for this signal
 		if err := ts.createPaperPosition(ctx, signal, aiSignal.TradeParams, balance); err != nil {

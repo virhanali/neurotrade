@@ -58,3 +58,6 @@ venv/
 tmp/
 temp/
 *.tmp
+
+# Claude Code state
+.claude/

@@ -1,0 +1,248 @@
+{{define "dashboard"}}
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - NeuroTrade</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        terminal: {
+                            bg: '#0f172a',
+                            surface: '#1e293b',
+                            border: '#334155',
+                            text: '#cbd5e1',
+                            profit: '#34d399',
+                            loss: '#fb7185',
+                            warning: '#fbbf24',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'Courier New', monospace;
+            background-color: #0f172a;
+            color: #cbd5e1;
+        }
+        .terminal-glow {
+            text-shadow: 0 0 10px rgba(52, 211, 153, 0.3);
+        }
+        .profit {
+            color: #34d399;
+        }
+        .loss {
+            color: #fb7185;
+        }
+        .pulse-slow {
+            animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+    </style>
+</head>
+<body class="bg-terminal-bg min-h-screen">
+<div class="min-h-screen p-6">
+    <!-- Header -->
+    <div class="max-w-7xl mx-auto mb-8">
+        <div class="flex items-center justify-between bg-terminal-surface border border-terminal-border rounded-lg p-6 shadow-lg">
+            <!-- Left: Logo & User -->
+            <div class="flex items-center space-x-6">
+                <h1 class="text-3xl font-bold terminal-glow text-emerald-400">
+                    ⚡ NeuroTrade
+                </h1>
+                <div class="border-l border-terminal-border pl-6">
+                    <p class="text-sm text-slate-400">Welcome back,</p>
+                    <p class="text-lg font-semibold text-slate-200">{{.User.Username}}</p>
+                </div>
+            </div>
+
+            <!-- Right: Mode Toggle & Balance -->
+            <div class="flex items-center space-x-6">
+                <!-- Balance -->
+                <div class="text-right">
+                    <p class="text-sm text-slate-400">Balance</p>
+                    <p class="text-2xl font-bold text-emerald-400">${{printf "%.2f" .User.PaperBalance}}</p>
+                </div>
+
+                <!-- Mode Toggle -->
+                <div class="flex items-center space-x-3">
+                    <span class="text-sm text-slate-400">Mode:</span>
+                    <button
+                        hx-post="/api/user/mode/toggle"
+                        hx-swap="none"
+                        class="relative inline-flex items-center px-4 py-2 rounded-full font-semibold transition-all duration-200
+                        {{if eq .User.Mode "PAPER"}}
+                            bg-amber-500/20 text-amber-400 border border-amber-500/50 hover:bg-amber-500/30
+                        {{else}}
+                            bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 hover:bg-emerald-500/30
+                        {{end}}"
+                    >
+                        {{if eq .User.Mode "PAPER"}}📄 PAPER{{else}}💰 REAL{{end}}
+                    </button>
+                </div>
+
+                <!-- Logout -->
+                <form method="POST" action="/api/auth/logout">
+                    <button
+                        type="submit"
+                        class="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-md transition duration-200"
+                    >
+                        🚪 Logout
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="max-w-7xl mx-auto space-y-6">
+        <!-- Panic Button & Admin Controls -->
+        <div class="grid grid-cols-1 {{if .IsAdmin}}md:grid-cols-2{{end}} gap-6">
+            <!-- Panic Button -->
+            <div class="bg-terminal-surface border border-terminal-border rounded-lg p-6 shadow-lg">
+                <h2 class="text-xl font-semibold text-slate-200 mb-4">⚠️ Emergency Controls</h2>
+                <button
+                    hx-post="/api/user/panic-button"
+                    hx-confirm="Are you sure you want to CLOSE ALL positions immediately?"
+                    hx-target="#panic-response"
+                    class="w-full bg-rose-600 hover:bg-rose-700 text-white font-bold py-4 px-6 rounded-lg transition duration-200 text-lg pulse-slow"
+                >
+                    🚨 PANIC BUTTON - CLOSE ALL
+                </button>
+                <div id="panic-response" class="mt-4"></div>
+            </div>
+
+            <!-- Admin Strategy Config -->
+            {{if .IsAdmin}}
+            <div class="bg-terminal-surface border border-terminal-border rounded-lg p-6 shadow-lg">
+                <h2 class="text-xl font-semibold text-slate-200 mb-4">🎯 Strategy Configuration</h2>
+                <form hx-put="/api/admin/strategies/active" hx-target="#strategy-response">
+                    <label for="strategy" class="block text-sm font-medium text-slate-300 mb-2">
+                        Active Strategy Prompt:
+                    </label>
+                    <select
+                        id="strategy"
+                        name="strategy_id"
+                        class="w-full px-4 py-3 bg-terminal-bg border border-terminal-border rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-200 mb-4"
+                    >
+                        {{range .Strategies}}
+                        <option value="{{.ID}}" {{if .IsActive}}selected{{end}}>
+                            {{.Name}}
+                        </option>
+                        {{end}}
+                    </select>
+                    <button
+                        type="submit"
+                        class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 px-4 rounded-md transition duration-200"
+                    >
+                        💾 Update Strategy
+                    </button>
+                </form>
+                <div id="strategy-response" class="mt-4"></div>
+            </div>
+            {{end}}
+        </div>
+
+        <!-- Active Positions -->
+        <div class="bg-terminal-surface border border-terminal-border rounded-lg p-6 shadow-lg">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-xl font-semibold text-slate-200">📊 Active Positions</h2>
+                <div class="flex items-center space-x-2">
+                    <div class="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
+                    <span class="text-sm text-slate-400">Live Updates (5s)</span>
+                </div>
+            </div>
+
+            <!-- Positions Table -->
+            <div class="overflow-x-auto">
+                <table class="w-full text-left">
+                    <thead>
+                        <tr class="border-b border-terminal-border">
+                            <th class="py-3 px-4 text-sm font-semibold text-slate-300">Symbol</th>
+                            <th class="py-3 px-4 text-sm font-semibold text-slate-300">Side</th>
+                            <th class="py-3 px-4 text-sm font-semibold text-slate-300">Entry</th>
+                            <th class="py-3 px-4 text-sm font-semibold text-slate-300">Current</th>
+                            <th class="py-3 px-4 text-sm font-semibold text-slate-300">Stop Loss</th>
+                            <th class="py-3 px-4 text-sm font-semibold text-slate-300">Take Profit</th>
+                            <th class="py-3 px-4 text-sm font-semibold text-slate-300">PnL</th>
+                            <th class="py-3 px-4 text-sm font-semibold text-slate-300">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody
+                        hx-get="/api/user/positions/html"
+                        hx-trigger="load, every 5s"
+                        hx-swap="innerHTML"
+                    >
+                        <!-- HTMX will load positions here -->
+                        <tr>
+                            <td colspan="8" class="py-8 text-center text-slate-500">
+                                <div class="animate-pulse">Loading positions...</div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Admin Statistics (Admin Only) -->
+        {{if .IsAdmin}}
+        <div class="bg-terminal-surface border border-terminal-border rounded-lg p-6 shadow-lg">
+            <h2 class="text-xl font-semibold text-slate-200 mb-4">📈 System Statistics</h2>
+            <div class="grid grid-cols-4 gap-4">
+                <div class="bg-terminal-bg rounded-lg p-4">
+                    <p class="text-sm text-slate-400">Total Users</p>
+                    <p class="text-2xl font-bold text-emerald-400">{{.Stats.TotalUsers}}</p>
+                </div>
+                <div class="bg-terminal-bg rounded-lg p-4">
+                    <p class="text-sm text-slate-400">Total Signals</p>
+                    <p class="text-2xl font-bold text-emerald-400">{{.Stats.TotalSignals}}</p>
+                </div>
+                <div class="bg-terminal-bg rounded-lg p-4">
+                    <p class="text-sm text-slate-400">Active Positions</p>
+                    <p class="text-2xl font-bold text-amber-400">{{.Stats.ActivePositions}}</p>
+                </div>
+                <div class="bg-terminal-bg rounded-lg p-4">
+                    <p class="text-sm text-slate-400">Win Rate</p>
+                    <p class="text-2xl font-bold text-emerald-400">{{printf "%.1f" .Stats.WinRate}}%</p>
+                </div>
+            </div>
+        </div>
+        {{end}}
+    </div>
+</div>
+
+<script>
+    // Handle successful mode toggle
+    document.body.addEventListener('htmx:afterRequest', function(event) {
+        if (event.detail.pathInfo.requestPath === '/api/user/mode/toggle' && event.detail.successful) {
+            // Reload page to update UI
+            window.location.reload();
+        }
+    });
+
+    // Handle successful panic button
+    document.body.addEventListener('htmx:afterRequest', function(event) {
+        if (event.detail.pathInfo.requestPath === '/api/user/panic-button' && event.detail.successful) {
+            document.getElementById('panic-response').innerHTML =
+                '<div class="p-3 bg-emerald-500/10 border border-emerald-500/50 rounded text-emerald-400 text-sm">✅ All positions closed successfully</div>';
+        }
+    });
+
+    // Handle successful strategy update
+    document.body.addEventListener('htmx:afterRequest', function(event) {
+        if (event.detail.pathInfo.requestPath === '/api/admin/strategies/active' && event.detail.successful) {
+            document.getElementById('strategy-response').innerHTML =
+                '<div class="p-3 bg-emerald-500/10 border border-emerald-500/50 rounded text-emerald-400 text-sm">✅ Strategy updated successfully</div>';
+        }
+    });
+</script>
+</body>
+</html>
+{{end}}
