@@ -90,10 +90,8 @@ services:
     container_name: neurotrade_go_app_prod
     restart: always
     depends_on:
-      postgres:
-        condition: service_healthy
-      python-engine:
-        condition: service_healthy
+      - postgres
+      - python-engine
     environment:
       - ENV=production
       - DATABASE_URL=postgres://${POSTGRES_USER:-neurotrade}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-neurotrade_db}?sslmode=disable

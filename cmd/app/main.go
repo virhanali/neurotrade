@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -42,10 +43,25 @@ func main() {
 	// Initialize context
 	ctx := context.Background()
 
-	// Initialize database
-	db, err := infra.NewDatabase(ctx, cfg.Database.URL)
-	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
+	// Initialize database with retry
+	var db *pgxpool.Pool
+	var err error
+	maxRetries := 10
+	retryDelay := 5 * time.Second
+
+	for i := 0; i < maxRetries; i++ {
+		db, err = infra.NewDatabase(ctx, cfg.Database.URL)
+		if err == nil {
+			log.Println("✓ Database connected successfully")
+			break
+		}
+
+		if i < maxRetries-1 {
+			log.Printf("Failed to connect to database (attempt %d/%d): %v. Retrying in %v...", i+1, maxRetries, err, retryDelay)
+			time.Sleep(retryDelay)
+		} else {
+			log.Fatalf("Failed to connect to database after %d attempts: %v", maxRetries, err)
+		}
 	}
 	defer db.Close()
 

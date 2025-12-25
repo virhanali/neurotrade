@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.25-alpine AS builder
+FROM golang:1.23-alpine AS builder
 
 WORKDIR /app
 
@@ -8,7 +8,7 @@ RUN apk add --no-cache git ca-certificates tzdata
 
 # Copy go mod files first (layer caching)
 COPY go.mod go.sum* ./
-RUN go mod download
+RUN go mod download && go mod verify
 
 # Copy source code
 COPY . .
@@ -16,7 +16,7 @@ COPY . .
 # Build the application with optimizations
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
     -a -installsuffix cgo \
-    -ldflags="-w -s" \
+    -ldflags="-w -s -X main.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     -o main ./cmd/app
 
 # Production stage
@@ -43,10 +43,6 @@ USER appuser
 
 # Expose port
 EXPOSE 8080
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:8080/api/admin/system/health || exit 1
 
 # Run the application
 CMD ["./main"]
