@@ -51,7 +51,7 @@ services:
 
   python-engine:
     build:
-      context: ./python
+      context: ./python-engine
       dockerfile: Dockerfile
     container_name: neurotrade_python_engine_prod
     restart: always
@@ -64,7 +64,7 @@ services:
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - MIN_CONFIDENCE=${MIN_CONFIDENCE:-75.0}
     volumes:
-      - ./python:/app
+      - ./python-engine:/app
       - python_charts:/app/charts
     ports:
       - "127.0.0.1:8000:8000"  # Only bind to localhost
