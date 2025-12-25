@@ -61,7 +61,7 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
       - MIN_CONFIDENCE=${MIN_CONFIDENCE:-75.0}
     volumes:
       - ./python-engine:/app

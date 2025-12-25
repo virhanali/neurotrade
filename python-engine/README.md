@@ -152,7 +152,7 @@ BINANCE_API_SECRET=your_secret
 DEEPSEEK_API_KEY=your_key
 
 # Gemini API (vision)
-GEMINI_API_KEY=your_key
+OPENROUTER_API_KEY=your_key
 ```
 
 ## Local Development
