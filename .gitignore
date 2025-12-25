@@ -61,3 +61,16 @@ temp/
 
 # Claude Code state
 .claude/
+
+# Production files (sensitive)
+.env.production
+nginx/.htpasswd
+nginx/ssl/*.pem
+nginx/ssl/*.key
+backups/*.sql
+backups/*.sql.gz
+cookies.txt
+
+# Logs
+logs/
+*.log

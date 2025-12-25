@@ -162,7 +162,7 @@ func main() {
 	adminHandler := httpdelivery.NewAdminHandler(db, marketScanScheduler)
 
 	// Initialize web handler (Phase 5 - HTML pages)
-	webHandler := httpdelivery.NewWebHandler(templates, userRepo, positionRepo, nil, priceService)
+	webHandler := httpdelivery.NewWebHandler(templates, userRepo, positionRepo, db, priceService)
 
 	// Create auth middleware wrapper for web routes
 	webAuthMiddleware := func(next echo.HandlerFunc) echo.HandlerFunc {

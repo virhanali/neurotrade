@@ -10,6 +10,7 @@ import (
 	"neurotrade/internal/middleware"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v4"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -24,13 +25,14 @@ type WebHandler struct {
 	userRepo       domain.UserRepository
 	positionRepo   domain.PaperPositionRepository
 	marketPriceSvc MarketPriceService
+	db             *pgxpool.Pool
 }
 
 func NewWebHandler(
 	templates *template.Template,
 	userRepo domain.UserRepository,
 	positionRepo domain.PaperPositionRepository,
-	strategyRepo interface{}, // Placeholder for now (not implemented yet)
+	db *pgxpool.Pool,
 	marketPriceSvc MarketPriceService,
 ) *WebHandler {
 	return &WebHandler{
@@ -38,6 +40,7 @@ func NewWebHandler(
 		userRepo:       userRepo,
 		positionRepo:   positionRepo,
 		marketPriceSvc: marketPriceSvc,
+		db:             db,
 	}
 }
 
@@ -133,9 +136,13 @@ func (h *WebHandler) HandleDashboard(c echo.Context) error {
 
 	// If admin, load system statistics
 	if user.Role == domain.RoleAdmin {
-		// TODO: Load strategies when StrategyRepository is implemented
-		// For now, pass empty slice
-		data["Strategies"] = []interface{}{}
+		// Load strategies from database
+		strategies, err := h.loadStrategies(ctx)
+		if err == nil {
+			data["Strategies"] = strategies
+		} else {
+			data["Strategies"] = []interface{}{}
+		}
 
 		// Load system statistics
 		stats, err := h.getSystemStats(c)
@@ -259,6 +266,36 @@ func (h *WebHandler) HandlePositionsHTML(c echo.Context) error {
 	}
 
 	return c.HTML(http.StatusOK, html)
+}
+
+// Helper: Load strategy presets from database
+func (h *WebHandler) loadStrategies(ctx context.Context) ([]StrategyPreset, error) {
+	query := `
+		SELECT id, name, system_prompt, is_active
+		FROM strategy_presets
+		ORDER BY id ASC
+	`
+
+	rows, err := h.db.Query(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query strategies: %w", err)
+	}
+	defer rows.Close()
+
+	var strategies []StrategyPreset
+	for rows.Next() {
+		var s StrategyPreset
+		if err := rows.Scan(&s.ID, &s.Name, &s.SystemPrompt, &s.IsActive); err != nil {
+			return nil, fmt.Errorf("failed to scan strategy: %w", err)
+		}
+		strategies = append(strategies, s)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating strategies: %w", err)
+	}
+
+	return strategies, nil
 }
 
 // Helper: Get system statistics for admin dashboard
