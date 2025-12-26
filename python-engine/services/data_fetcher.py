@@ -21,6 +21,43 @@ class DataFetcher:
             'enableRateLimit': True,
             'options': {'defaultType': 'future'}
         })
+    
+    def validate_symbol(self, symbol: str) -> bool:
+        """
+        Validate if symbol is tradeable (status = TRADING)
+        
+        Args:
+            symbol: Trading pair (e.g., 'BTC/USDT')
+            
+        Returns:
+            True if symbol is TRADING, False otherwise
+        """
+        try:
+            # Load markets if not already loaded
+            if not self.exchange.markets:
+                self.exchange.load_markets()
+            
+            # Check if symbol exists
+            if symbol not in self.exchange.markets:
+                print(f"⚠️  Symbol {symbol} not found in markets")
+                return False
+            
+            # Get market info
+            market = self.exchange.markets[symbol]
+            
+            # Check status explicitly (TRADING, SETTLING, DELISTED, etc.)
+            status = market.get('info', {}).get('status', 'UNKNOWN')
+            
+            if status != 'TRADING':
+                print(f"⚠️  Symbol {symbol} status is {status} (not TRADING)")
+                return False
+            
+            return True
+            
+        except Exception as e:
+            print(f"❌ Error validating symbol {symbol}: {str(e)}")
+            return False
+
 
     def _fetch_ohlcv(self, symbol: str, timeframe: str, limit: int = 100) -> pd.DataFrame:
         """

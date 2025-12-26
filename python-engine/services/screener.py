@@ -53,10 +53,23 @@ class MarketScreener:
                 if quote_volume is None or percentage_change is None:
                     continue
 
+                # ✅ NEW: Check if symbol is TRADING (not SETTLING/DELISTED)
+                clean_symbol = symbol.replace(':USDT', '')  # Convert 'BTC/USDT:USDT' to 'BTC/USDT'
+                
+                # Check market status
+                if symbol in self.exchange.markets:
+                    market = self.exchange.markets[symbol]
+                    # Get status string
+                    status = market.get('info', {}).get('status', 'UNKNOWN')
+                    # Skip if not TRADING
+                    if status != 'TRADING':
+                        print(f"⚠️  Skipping {clean_symbol} - Status: {status}")
+                        continue
+
                 # Filter by volume and volatility
                 if quote_volume >= settings.MIN_VOLUME_USDT and abs(percentage_change) >= settings.MIN_VOLATILITY_1H:
                     opportunities.append({
-                        'symbol': symbol.replace(':USDT', ''),  # Convert 'BTC/USDT:USDT' to 'BTC/USDT'
+                        'symbol': clean_symbol,
                         'volume': quote_volume,
                         'volatility': abs(percentage_change),
                         'change': percentage_change,
