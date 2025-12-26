@@ -84,7 +84,7 @@ services:
         max-file: "5"
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
-      interval: 60s
+      interval: 10s
       timeout: 10s
       retries: 3
       start_period: 40s
@@ -99,8 +99,10 @@ services:
     container_name: neurotrade_go_app_prod
     restart: always
     depends_on:
-      - postgres
-      - python-engine
+      postgres:
+        condition: service_healthy
+      python-engine:
+        condition: service_healthy
     environment:
       - ENV=production
       - DATABASE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
