@@ -56,8 +56,12 @@ services:
     container_name: neurotrade_python_engine_prod
     restart: always
     depends_on:
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
+      - DATABASE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
