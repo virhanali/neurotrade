@@ -72,5 +72,6 @@ func SetupRoutes(e *echo.Echo, config *RouterConfig) {
 		admin.GET("/system/health", config.AdminHandler.GetSystemHealth)
 		admin.GET("/statistics", config.AdminHandler.GetStatistics)
 		admin.POST("/market-scan/trigger", config.AdminHandler.TriggerMarketScan)
+		admin.GET("/market-scan/results", config.AdminHandler.GetLatestScanResults)
 	}
 }

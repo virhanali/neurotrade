@@ -1,115 +1,122 @@
 {{define "login"}}
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login - NeuroTrade</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap"
+        rel="stylesheet">
     <script>
         tailwind.config = {
-            darkMode: 'class',
             theme: {
                 extend: {
-                    colors: {
-                        terminal: {
-                            bg: '#0f172a',
-                            surface: '#1e293b',
-                            border: '#334155',
-                        }
+                    fontFamily: {
+                        'grotesk': ['Space Grotesk', 'sans-serif'],
                     }
                 }
             }
         }
     </script>
     <style>
-        body {
-            font-family: 'Courier New', monospace;
-            background-color: #0f172a;
-            color: #cbd5e1;
+        * {
+            font-family: 'Space Grotesk', sans-serif;
         }
-        .terminal-glow {
-            text-shadow: 0 0 10px rgba(52, 211, 153, 0.3);
+
+        .neo-btn {
+            transition: all 0.1s ease;
+        }
+
+        .neo-btn:hover {
+            transform: translate(2px, 2px);
+            box-shadow: none;
+        }
+
+        .neo-btn:active {
+            transform: translate(4px, 4px);
+            box-shadow: none;
         }
     </style>
 </head>
-<body class="bg-terminal-bg min-h-screen">
-<div class="min-h-screen flex items-center justify-center px-4">
-    <div class="max-w-md w-full space-y-8">
-        <!-- Logo/Header -->
-        <div class="text-center">
-            <h1 class="text-5xl font-bold terminal-glow text-emerald-400 mb-2">
-                ⚡ NeuroTrade
-            </h1>
-            <p class="text-slate-400 text-sm">AI-Powered Trading Terminal</p>
-        </div>
 
-        <!-- Login Form -->
-        <div class="bg-terminal-surface rounded-lg border border-terminal-border p-8 shadow-2xl">
-            <h2 class="text-2xl font-semibold text-center mb-6 text-slate-200">
-                Access Terminal
-            </h2>
-
-            <!-- Error Message -->
-            {{if .Error}}
-            <div class="mb-4 p-3 bg-rose-500/10 border border-rose-500/50 rounded text-rose-400 text-sm">
-                ⚠️ {{.Error}}
+<body class="bg-[#f4f4f0] min-h-screen">
+    <div class="min-h-screen flex items-center justify-center px-4">
+        <div class="max-w-md w-full space-y-6">
+            <!-- Logo/Header -->
+            <div class="text-center">
+                <div class="inline-block bg-black border-2 border-black px-8 py-4 shadow-[8px_8px_0px_0px_#000] mb-4">
+                    <h1 class="text-4xl font-bold text-white">
+                        ⚡ NeuroTrade
+                    </h1>
+                </div>
+                <p class="text-black font-semibold text-lg">AI-Powered Trading Terminal</p>
             </div>
-            {{end}}
 
             <!-- Login Form -->
-            <form method="POST" action="/login" id="login-form">
-                <!-- Username -->
-                <div class="mb-4">
-                    <label for="username" class="block text-sm font-medium text-slate-300 mb-2">
-                        Username
-                    </label>
-                    <input
-                        type="text"
-                        id="username"
-                        name="username"
-                        required
-                        class="w-full px-4 py-3 bg-terminal-bg border border-terminal-border rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-200 placeholder-slate-500"
-                        placeholder="Enter your username"
-                    />
+            <div class="bg-white border-2 border-black p-8 shadow-[8px_8px_0px_0px_#000]">
+                <h2 class="text-2xl font-bold text-center mb-6 text-black uppercase tracking-wide">
+                    Access Terminal
+                </h2>
+
+                <!-- Error Message -->
+                {{if .Error}}
+                <div
+                    class="mb-6 p-4 bg-[#ff6b6b] border-2 border-black text-white font-bold shadow-[4px_4px_0px_0px_#000]">
+                    ⚠️ {{.Error}}
                 </div>
+                {{end}}
 
-                <!-- Password -->
-                <div class="mb-6">
-                    <label for="password" class="block text-sm font-medium text-slate-300 mb-2">
-                        Password
-                    </label>
-                    <input
-                        type="password"
-                        id="password"
-                        name="password"
-                        required
-                        class="w-full px-4 py-3 bg-terminal-bg border border-terminal-border rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-200 placeholder-slate-500"
-                        placeholder="Enter your password"
-                    />
+                <!-- Login Form -->
+                <form method="POST" action="/login" id="login-form" class="space-y-5">
+                    <!-- Username -->
+                    <div>
+                        <label for="username" class="block text-sm font-bold text-black uppercase tracking-wide mb-2">
+                            Username
+                        </label>
+                        <input type="text" id="username" name="username" required
+                            class="w-full px-4 py-3 bg-white border-2 border-black text-black font-medium shadow-[4px_4px_0px_0px_#000] focus:outline-none focus:translate-x-[2px] focus:translate-y-[2px] focus:shadow-none transition-all"
+                            placeholder="Enter username" />
+                    </div>
+
+                    <!-- Password -->
+                    <div>
+                        <label for="password" class="block text-sm font-bold text-black uppercase tracking-wide mb-2">
+                            Password
+                        </label>
+                        <input type="password" id="password" name="password" required
+                            class="w-full px-4 py-3 bg-white border-2 border-black text-black font-medium shadow-[4px_4px_0px_0px_#000] focus:outline-none focus:translate-x-[2px] focus:translate-y-[2px] focus:shadow-none transition-all"
+                            placeholder="Enter password" />
+                    </div>
+
+                    <!-- Submit Button -->
+                    <button type="submit"
+                        class="neo-btn w-full bg-[#51cf66] border-2 border-black text-black font-bold py-4 px-4 shadow-[4px_4px_0px_0px_#000] uppercase tracking-wide text-lg mt-6">
+                        🔐 Login
+                    </button>
+                </form>
+
+                <!-- Footer Note -->
+                <div class="mt-6 p-3 bg-[#ffd43b] border-2 border-black text-center shadow-[2px_2px_0px_0px_#000]">
+                    <p class="text-xs font-bold text-black uppercase tracking-wide mb-1">Default Credentials</p>
+                    <p class="text-sm font-semibold text-black">
+                        <span class="font-mono">default</span> / <span class="font-mono">password123</span>
+                    </p>
                 </div>
+            </div>
 
-                <!-- Submit Button -->
-                <button
-                    type="submit"
-                    class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 px-4 rounded-md transition duration-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:ring-offset-terminal-surface"
-                >
-                    🔐 Login
-                </button>
-            </form>
-
-            <!-- Footer Note -->
-            <div class="mt-6 text-center text-sm text-slate-500">
-                <p>Default: <span class="text-emerald-400">default</span> / <span class="text-emerald-400">password123</span></p>
+            <!-- Version Info -->
+            <div class="text-center">
+                <div class="inline-block bg-white border-2 border-black px-4 py-2 shadow-[4px_4px_0px_0px_#000]">
+                    <p class="text-xs font-bold text-black">NeuroTrade v1.0</p>
+                </div>
             </div>
         </div>
-
-        <!-- Version Info -->
-        <div class="text-center text-xs text-slate-600">
-            <p>Neurotrade v1.0</p>
-        </div>
     </div>
-</div>
 </body>
+
 </html>
 {{end}}

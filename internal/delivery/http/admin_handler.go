@@ -2,10 +2,15 @@ package http
 
 import (
 	"context"
+	"fmt"
+	"net/http"
+	"strconv"
 	"time"
 
-	"github.com/labstack/echo/v4"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/labstack/echo/v4"
+
+	"neurotrade/internal/domain"
 )
 
 // MarketScanScheduler defines the interface for market scan scheduler
@@ -15,15 +20,17 @@ type MarketScanScheduler interface {
 
 // AdminHandler handles admin-related requests
 type AdminHandler struct {
-	db        *pgxpool.Pool
-	scheduler MarketScanScheduler
+	db         *pgxpool.Pool
+	scheduler  MarketScanScheduler
+	signalRepo domain.SignalRepository
 }
 
 // NewAdminHandler creates a new AdminHandler
-func NewAdminHandler(db *pgxpool.Pool, scheduler MarketScanScheduler) *AdminHandler {
+func NewAdminHandler(db *pgxpool.Pool, scheduler MarketScanScheduler, signalRepo domain.SignalRepository) *AdminHandler {
 	return &AdminHandler{
-		db:        db,
-		scheduler: scheduler,
+		db:         db,
+		scheduler:  scheduler,
+		signalRepo: signalRepo,
 	}
 }
 
@@ -80,13 +87,38 @@ type SetActiveStrategyRequest struct {
 // SetActiveStrategy sets a strategy as active and deactivates others
 // PUT /api/admin/strategies/active
 func (h *AdminHandler) SetActiveStrategy(c echo.Context) error {
-	var req SetActiveStrategyRequest
-	if err := c.Bind(&req); err != nil {
-		return BadRequestResponse(c, "Invalid request payload")
+	var presetID int
+
+	// Try to get from form data first (HTMX sends form-urlencoded)
+	if formValue := c.FormValue("preset_id"); formValue != "" {
+		var err error
+		presetID, err = strconv.Atoi(formValue)
+		if err != nil {
+			return c.HTML(http.StatusBadRequest, `
+				<div class="p-4 bg-[#ff6b6b] border-2 border-black text-white font-bold shadow-[4px_4px_0px_0px_#000]">
+					❌ Invalid preset_id format
+				</div>
+			`)
+		}
+	} else {
+		// Fallback to JSON binding
+		var req SetActiveStrategyRequest
+		if err := c.Bind(&req); err != nil {
+			return c.HTML(http.StatusBadRequest, `
+				<div class="p-4 bg-[#ff6b6b] border-2 border-black text-white font-bold shadow-[4px_4px_0px_0px_#000]">
+					❌ Invalid request payload
+				</div>
+			`)
+		}
+		presetID = req.PresetID
 	}
 
-	if req.PresetID <= 0 {
-		return BadRequestResponse(c, "Invalid preset_id")
+	if presetID <= 0 {
+		return c.HTML(http.StatusBadRequest, `
+			<div class="p-4 bg-[#ff6b6b] border-2 border-black text-white font-bold shadow-[4px_4px_0px_0px_#000]">
+				❌ Invalid preset_id
+			</div>
+		`)
 	}
 
 	ctx, cancel := context.WithTimeout(c.Request().Context(), 5*time.Second)
@@ -106,7 +138,7 @@ func (h *AdminHandler) SetActiveStrategy(c echo.Context) error {
 	}
 
 	// Activate selected strategy
-	result, err := tx.Exec(ctx, "UPDATE strategy_presets SET is_active = true WHERE id = $1", req.PresetID)
+	result, err := tx.Exec(ctx, "UPDATE strategy_presets SET is_active = true WHERE id = $1", presetID)
 	if err != nil {
 		return InternalServerErrorResponse(c, "Failed to activate strategy", err)
 	}
@@ -121,9 +153,12 @@ func (h *AdminHandler) SetActiveStrategy(c echo.Context) error {
 		return InternalServerErrorResponse(c, "Failed to commit transaction", err)
 	}
 
-	return SuccessMessageResponse(c, "Active strategy updated successfully", map[string]interface{}{
-		"preset_id": req.PresetID,
-	})
+	html := `
+		<div class="p-4 bg-[#51cf66] border-2 border-black text-black font-bold shadow-[4px_4px_0px_0px_#000]">
+			✅ Strategy updated successfully
+		</div>
+	`
+	return c.HTML(http.StatusOK, html)
 }
 
 // SystemHealthResponse represents system health status
@@ -139,39 +174,30 @@ func (h *AdminHandler) GetSystemHealth(c echo.Context) error {
 	ctx, cancel := context.WithTimeout(c.Request().Context(), 5*time.Second)
 	defer cancel()
 
-	services := make(map[string]interface{})
-
 	// Check PostgreSQL
-	pgStatus := "healthy"
+	status := "✅ Healthy"
+	statusBg := "bg-[#51cf66]"
 	if err := h.db.Ping(ctx); err != nil {
-		pgStatus = "unhealthy"
-		services["postgres"] = map[string]interface{}{
-			"status": pgStatus,
-			"error":  err.Error(),
-		}
-	} else {
-		services["postgres"] = map[string]interface{}{
-			"status": pgStatus,
-		}
+		status = "❌ Unhealthy"
+		statusBg = "bg-[#ff6b6b]"
 	}
 
-	// Check Redis (if available in context)
-	// For now, we'll skip Redis as it's not critical
-	services["redis"] = map[string]interface{}{
-		"status": "not_checked",
-	}
+	// Get current time in WIB
+	loc, _ := time.LoadLocation("Asia/Jakarta")
+	timestamp := time.Now().In(loc).Format("15:04:05 WIB")
 
-	// Overall status
-	overallStatus := "healthy"
-	if pgStatus != "healthy" {
-		overallStatus = "degraded"
-	}
+	html := fmt.Sprintf(`
+		<div class="space-y-3">
+			<div class="p-4 %s border-2 border-black text-black font-bold shadow-[4px_4px_0px_0px_#000]">
+				%s
+			</div>
+			<div class="p-3 bg-white border-2 border-black text-black font-medium shadow-[2px_2px_0px_0px_#000] text-sm">
+				Last checked: %s
+			</div>
+		</div>
+	`, statusBg, status, timestamp)
 
-	return SuccessResponse(c, SystemHealthResponse{
-		Status:    overallStatus,
-		Timestamp: time.Now().Format(time.RFC3339),
-		Services:  services,
-	})
+	return c.HTML(http.StatusOK, html)
 }
 
 // GetStatistics returns admin dashboard statistics
@@ -228,7 +254,11 @@ func (h *AdminHandler) GetStatistics(c echo.Context) error {
 // POST /api/admin/market-scan/trigger
 func (h *AdminHandler) TriggerMarketScan(c echo.Context) error {
 	if h.scheduler == nil {
-		return InternalServerErrorResponse(c, "Scheduler not available", nil)
+		return c.HTML(http.StatusInternalServerError, `
+			<div class="p-4 bg-[#ff6b6b] border-2 border-black text-white font-bold shadow-[4px_4px_0px_0px_#000]">
+				❌ Scheduler not available
+			</div>
+		`)
 	}
 
 	// Trigger market scan in background
@@ -239,7 +269,93 @@ func (h *AdminHandler) TriggerMarketScan(c echo.Context) error {
 		}
 	}()
 
-	return SuccessMessageResponse(c, "Market scan triggered successfully", map[string]interface{}{
-		"message": "Market scan is running in background. Check logs for results.",
-	})
+	// Get current time in WIB
+	loc, _ := time.LoadLocation("Asia/Jakarta")
+	timestamp := time.Now().In(loc).Format("15:04:05 WIB")
+
+	html := fmt.Sprintf(`
+		<div class="space-y-3">
+			<div class="p-4 bg-[#51cf66] border-2 border-black text-black font-bold shadow-[4px_4px_0px_0px_#000]">
+				✅ Triggered
+			</div>
+			<div class="p-3 bg-white border-2 border-black text-black font-medium shadow-[2px_2px_0px_0px_#000] text-sm">
+				Triggered at: %s
+			</div>
+		</div>
+	`, timestamp)
+
+	return c.HTML(http.StatusOK, html)
+}
+
+// GetLatestScanResults returns the latest market scan results
+// GET /api/admin/market-scan/results
+func (h *AdminHandler) GetLatestScanResults(c echo.Context) error {
+	ctx, cancel := context.WithTimeout(c.Request().Context(), 5*time.Second)
+	defer cancel()
+
+	// Get latest 10 signals
+	signals, err := h.signalRepo.GetRecent(ctx, 10)
+	if err != nil {
+		return c.HTML(http.StatusInternalServerError, `
+			<div class="p-4 bg-[#ff6b6b] border-2 border-black text-white font-bold shadow-[4px_4px_0px_0px_#000]">
+				❌ Failed to fetch results
+			</div>
+		`)
+	}
+
+	if len(signals) == 0 {
+		return c.HTML(http.StatusOK, `
+			<div class="p-3 bg-white border-2 border-black text-black text-sm text-center shadow-[2px_2px_0px_0px_#000]">
+				📭 No signals yet. Trigger a scan to see results.
+			</div>
+		`)
+	}
+
+	// Get timezone
+	loc, _ := time.LoadLocation("Asia/Jakarta")
+
+	// Build HTML
+	html := `<div class="space-y-2">`
+
+	for _, signal := range signals {
+		// Determine colors based on type and confidence
+		sideBg := "bg-[#51cf66]"
+		sideText := "text-black"
+		sideEmoji := "🟢"
+		if signal.Type == "SHORT" {
+			sideBg = "bg-[#ff6b6b]"
+			sideText = "text-white"
+			sideEmoji = "🔴"
+		}
+
+		confidenceBg := "bg-gray-100"
+		if signal.Confidence >= 80 {
+			confidenceBg = "bg-[#51cf66]"
+		} else if signal.Confidence >= 60 {
+			confidenceBg = "bg-[#ffd43b]"
+		}
+
+		timestamp := signal.CreatedAt.In(loc).Format("15:04 WIB")
+
+		html += fmt.Sprintf(`
+			<div class="bg-white border-2 border-black p-2 shadow-[2px_2px_0px_0px_#000] mb-2">
+				<div class="flex items-center justify-between">
+					<div class="flex items-center space-x-2">
+						<span class="font-bold text-black text-sm">%s</span>
+						<span class="inline-block %s %s border-2 border-black px-2 py-0.5 text-xs font-bold shadow-[1px_1px_0px_0px_#000]">
+							%s %s
+						</span>
+						<span class="inline-block %s border-2 border-black px-2 py-0.5 text-xs font-bold text-black shadow-[1px_1px_0px_0px_#000]">
+							%d%%
+						</span>
+					</div>
+					<span class="text-xs text-gray-600">%s</span>
+				</div>
+			</div>
+		`, signal.Symbol, sideBg, sideText, sideEmoji, signal.Type, confidenceBg, signal.Confidence, timestamp)
+	}
+
+	html += `</div>`
+
+	return c.HTML(http.StatusOK, html)
 }

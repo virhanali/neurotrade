@@ -1,6 +1,6 @@
 {{define "dashboard"}}
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
 
 <head>
     <meta charset="UTF-8">
@@ -8,124 +8,118 @@
     <title>Dashboard - NeuroTrade</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap"
+        rel="stylesheet">
     <script>
         tailwind.config = {
-            darkMode: 'class',
             theme: {
                 extend: {
-                    colors: {
-                        terminal: {
-                            bg: '#0f172a',
-                            surface: '#1e293b',
-                            border: '#334155',
-                            text: '#cbd5e1',
-                            profit: '#34d399',
-                            loss: '#fb7185',
-                            warning: '#fbbf24',
-                        }
+                    fontFamily: {
+                        'grotesk': ['Space Grotesk', 'sans-serif'],
                     }
                 }
             }
         }
     </script>
     <style>
-        body {
-            font-family: 'Courier New', monospace;
-            background-color: #0f172a;
-            color: #cbd5e1;
+        * {
+            font-family: 'Space Grotesk', sans-serif;
         }
 
-        .terminal-glow {
-            text-shadow: 0 0 10px rgba(52, 211, 153, 0.3);
+        .neo-btn {
+            transition: all 0.1s ease;
         }
 
-        .profit {
-            color: #34d399;
+        .neo-btn:hover {
+            transform: translate(2px, 2px);
+            box-shadow: none;
         }
 
-        .loss {
-            color: #fb7185;
+        .neo-btn:active {
+            transform: translate(4px, 4px);
+            box-shadow: none;
         }
 
-        .pulse-slow {
-            animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        .neo-card {
+            transition: all 0.1s ease;
         }
     </style>
 </head>
 
-<body class="bg-terminal-bg min-h-screen">
-    <div class="min-h-screen p-6">
-        <!-- Header -->
-        <div class="max-w-7xl mx-auto mb-8">
-            <div
-                class="flex items-center justify-between bg-terminal-surface border border-terminal-border rounded-lg p-6 shadow-lg">
-                <!-- Left: Logo & User -->
-                <div class="flex items-center space-x-6">
-                    <h1 class="text-3xl font-bold terminal-glow text-emerald-400">
-                        ⚡ NeuroTrade
-                    </h1>
-                    <div class="border-l border-terminal-border pl-6">
-                        <p class="text-sm text-slate-400">Welcome back,</p>
-                        <p class="text-lg font-semibold text-slate-200">{{.User.Username}}</p>
+<body class="bg-[#f4f4f0] min-h-screen">
+    <!-- Top Navbar (Sticky) -->
+    <nav class="sticky top-0 z-50 bg-white border-b-2 border-black shadow-[0px_4px_0px_0px_#000]">
+        <div class="max-w-7xl mx-auto px-6 py-4">
+            <div class="flex items-center justify-between">
+                <!-- Left: Logo -->
+                <div class="flex items-center space-x-4">
+                    <div class="bg-black border-2 border-black px-6 py-2 shadow-[4px_4px_0px_0px_#000]">
+                        <h1 class="text-2xl font-bold text-white">⚡ NeuroTrade</h1>
+                    </div>
+                    <div class="hidden md:block">
+                        <p class="text-sm font-medium text-gray-600">Welcome back,</p>
+                        <p class="text-lg font-bold text-black">{{.User.Username}}</p>
                     </div>
                 </div>
 
-                <!-- Right: Mode Toggle & Balance -->
-                <div class="flex items-center space-x-6">
-                    <!-- Balance -->
-                    <div class="text-right">
-                        <p class="text-sm text-slate-400">Balance</p>
-                        <p class="text-2xl font-bold text-emerald-400">${{printf "%.2f" .User.PaperBalance}}</p>
+                <!-- Right: Balance, Mode, Logout -->
+                <div class="flex items-center space-x-4">
+                    <!-- Balance Badge -->
+                    <div class="bg-[#d4ff00] border-2 border-black px-6 py-3 shadow-[4px_4px_0px_0px_#000]">
+                        <p class="text-xs font-semibold text-black uppercase tracking-wide">Balance</p>
+                        <p class="text-2xl font-bold text-black">${{printf "%.2f" .User.PaperBalance}}</p>
                     </div>
 
                     <!-- Mode Toggle -->
-                    <div class="flex items-center space-x-3">
-                        <span class="text-sm text-slate-400">Mode:</span>
-                        <button hx-post="/api/user/mode/toggle" hx-swap="none" class="relative inline-flex items-center px-4 py-2 rounded-full font-semibold transition-all duration-200
-                        {{if eq .User.Mode " PAPER"}} bg-amber-500/20 text-amber-400 border border-amber-500/50
-                            hover:bg-amber-500/30 {{else}} bg-emerald-500/20 text-emerald-400 border
-                            border-emerald-500/50 hover:bg-emerald-500/30 {{end}}">
-                            {{if eq .User.Mode "PAPER"}}📄 PAPER{{else}}💰 REAL{{end}}
-                        </button>
-                    </div>
+                    <button hx-post="/api/user/mode/toggle" hx-swap="none" class="neo-btn px-6 py-3 border-2 border-black font-bold uppercase tracking-wide shadow-[4px_4px_0px_0px_#000]
+                        {{if eq .User.Mode " PAPER"}} bg-[#ffd43b] text-black {{else}} bg-[#51cf66] text-black
+                        {{end}}">
+                        {{if eq .User.Mode "PAPER"}}📄 PAPER{{else}}💰 REAL{{end}}
+                    </button>
 
                     <!-- Logout -->
                     <form method="POST" action="/api/auth/logout">
                         <button type="submit"
-                            class="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-md transition duration-200">
+                            class="neo-btn px-4 py-3 bg-white border-2 border-black text-black font-semibold shadow-[4px_4px_0px_0px_#000] hover:bg-gray-100">
                             🚪 Logout
                         </button>
                     </form>
                 </div>
             </div>
         </div>
+    </nav>
 
-        <!-- Main Content -->
-        <div class="max-w-7xl mx-auto space-y-6">
-            <!-- Panic Button & Admin Controls -->
-            <div class="grid grid-cols-1 {{if .IsAdmin}}md:grid-cols-2{{end}} gap-6">
-                <!-- Panic Button -->
-                <div class="bg-terminal-surface border border-terminal-border rounded-lg p-6 shadow-lg">
-                    <h2 class="text-xl font-semibold text-slate-200 mb-4">⚠️ Emergency Controls</h2>
+    <!-- Main Content -->
+    <div class="max-w-7xl mx-auto px-6 py-8">
+        <!-- Row 1: Critical Controls -->
+        <div class="grid grid-cols-12 gap-6 mb-6">
+            <!-- Panic Button (Span 4) -->
+            <div class="col-span-12 md:col-span-4">
+                <div class="neo-card bg-[#ff6b6b] border-2 border-black p-6 shadow-[8px_8px_0px_0px_#000] h-full">
+                    <h2 class="text-2xl font-bold text-white mb-4">⚠️ EMERGENCY</h2>
                     <button hx-post="/api/user/panic-button"
                         hx-confirm="Are you sure you want to CLOSE ALL positions immediately?"
                         hx-target="#panic-response"
-                        class="w-full bg-rose-600 hover:bg-rose-700 text-white font-bold py-4 px-6 rounded-lg transition duration-200 text-lg pulse-slow">
-                        🚨 PANIC BUTTON - CLOSE ALL
+                        class="neo-btn w-full bg-black border-2 border-black text-white font-bold py-4 px-6 text-lg shadow-[4px_4px_0px_0px_#fff] hover:shadow-none uppercase tracking-wide">
+                        🚨 STOP ALL
                     </button>
                     <div id="panic-response" class="mt-4"></div>
                 </div>
+            </div>
 
-                <!-- Admin Strategy Config -->
-                {{if .IsAdmin}}
-                <div class="bg-terminal-surface border border-terminal-border rounded-lg p-6 shadow-lg">
-                    <h2 class="text-xl font-semibold text-slate-200 mb-4">🎯 Strategy Configuration</h2>
+            <!-- Strategy Config (Span 8) -->
+            {{if .IsAdmin}}
+            <div class="col-span-12 md:col-span-8">
+                <div class="neo-card bg-white border-2 border-black p-6 shadow-[8px_8px_0px_0px_#000] h-full">
+                    <h2 class="text-2xl font-bold text-black mb-4">🎯 Strategy Configuration</h2>
                     <form hx-put="/api/admin/strategies/active" hx-target="#strategy-response">
-                        <label for="strategy" class="block text-sm font-medium text-slate-300 mb-2">
+                        <label for="strategy" class="block text-sm font-bold text-black uppercase tracking-wide mb-2">
                             Active Strategy Prompt:
                         </label>
                         <select id="strategy" name="preset_id"
-                            class="w-full px-4 py-3 bg-terminal-bg border border-terminal-border rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-200 mb-4">
+                            class="w-full px-4 py-3 bg-white border-2 border-black text-black font-medium shadow-[4px_4px_0px_0px_#000] focus:outline-none focus:ring-0 mb-4">
                             {{range .Strategies}}
                             <option value="{{.ID}}" {{if .IsActive}}selected{{end}}>
                                 {{.Name}}
@@ -133,101 +127,164 @@
                             {{end}}
                         </select>
                         <button type="submit"
-                            class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 px-4 rounded-md transition duration-200">
+                            class="neo-btn w-full bg-[#4dabf7] border-2 border-black text-black font-bold py-3 px-4 shadow-[4px_4px_0px_0px_#000] uppercase tracking-wide">
                             💾 Update Strategy
                         </button>
                     </form>
                     <div id="strategy-response" class="mt-4"></div>
                 </div>
-                {{end}}
             </div>
+            {{else}}
+            <!-- Non-admin: Full width panic button -->
+            <div class="col-span-12 md:col-span-8">
+                <div
+                    class="neo-card bg-[#4dabf7] border-2 border-black p-6 shadow-[8px_8px_0px_0px_#000] h-full flex items-center justify-center">
+                    <div class="text-center">
+                        <h2 class="text-3xl font-bold text-black mb-2">📊 Trading Dashboard</h2>
+                        <p class="text-lg font-medium text-black">Monitor your positions below</p>
+                    </div>
+                </div>
+            </div>
+            {{end}}
+        </div>
 
-            <!-- Active Positions -->
-            <div class="bg-terminal-surface border border-terminal-border rounded-lg p-6 shadow-lg">
-                <div class="flex items-center justify-between mb-4">
-                    <h2 class="text-xl font-semibold text-slate-200">📊 Active Positions</h2>
+        <!-- Row 2: Active Positions -->
+        <div class="mb-6">
+            <div class="neo-card bg-white border-2 border-black shadow-[8px_8px_0px_0px_#000]">
+                <!-- Header -->
+                <div class="bg-black border-b-2 border-black px-6 py-4 flex items-center justify-between">
+                    <h2 class="text-2xl font-bold text-white">📊 Active Positions</h2>
                     <div class="flex items-center space-x-2">
-                        <div class="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
-                        <span class="text-sm text-slate-400">Live Updates (5s)</span>
+                        <div class="w-3 h-3 bg-[#51cf66] rounded-full animate-pulse border-2 border-white"></div>
+                        <span class="text-sm font-semibold text-white uppercase tracking-wide">Live (5s)</span>
                     </div>
                 </div>
 
-                <!-- Positions Table -->
+                <!-- Table -->
                 <div class="overflow-x-auto">
-                    <table class="w-full text-left">
+                    <table class="w-full">
                         <thead>
-                            <tr class="border-b border-terminal-border">
-                                <th class="py-3 px-4 text-sm font-semibold text-slate-300">Symbol</th>
-                                <th class="py-3 px-4 text-sm font-semibold text-slate-300">Side</th>
-                                <th class="py-3 px-4 text-sm font-semibold text-slate-300">Entry</th>
-                                <th class="py-3 px-4 text-sm font-semibold text-slate-300">Current</th>
-                                <th class="py-3 px-4 text-sm font-semibold text-slate-300">Stop Loss</th>
-                                <th class="py-3 px-4 text-sm font-semibold text-slate-300">Take Profit</th>
-                                <th class="py-3 px-4 text-sm font-semibold text-slate-300">PnL</th>
-                                <th class="py-3 px-4 text-sm font-semibold text-slate-300">Action</th>
+                            <tr class="bg-black text-white border-b-2 border-black">
+                                <th class="py-4 px-6 text-left text-sm font-bold uppercase tracking-wide">Symbol</th>
+                                <th class="py-4 px-6 text-left text-sm font-bold uppercase tracking-wide">Side</th>
+                                <th class="py-4 px-6 text-left text-sm font-bold uppercase tracking-wide">Entry</th>
+                                <th class="py-4 px-6 text-left text-sm font-bold uppercase tracking-wide">Current</th>
+                                <th class="py-4 px-6 text-left text-sm font-bold uppercase tracking-wide">Stop Loss</th>
+                                <th class="py-4 px-6 text-left text-sm font-bold uppercase tracking-wide">Take Profit
+                                </th>
+                                <th class="py-4 px-6 text-left text-sm font-bold uppercase tracking-wide">PnL</th>
+                                <th class="py-4 px-6 text-left text-sm font-bold uppercase tracking-wide">Action</th>
                             </tr>
                         </thead>
-                        <tbody hx-get="/api/user/positions/html" hx-trigger="load, every 5s" hx-swap="innerHTML">
+                        <tbody hx-get="/api/user/positions/html" hx-trigger="load, every 5s" hx-swap="innerHTML"
+                            class="divide-y-2 divide-black">
                             <!-- HTMX will load positions here -->
                             <tr>
-                                <td colspan="8" class="py-8 text-center text-slate-500">
-                                    <div class="animate-pulse">Loading positions...</div>
+                                <td colspan="8" class="py-12 text-center">
+                                    <div
+                                        class="inline-block animate-pulse bg-black text-white px-6 py-3 border-2 border-black font-bold">
+                                        Loading positions...
+                                    </div>
                                 </td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
             </div>
+        </div>
 
-            <!-- Admin Statistics (Admin Only) -->
-            {{if .IsAdmin}}
-            <div class="bg-terminal-surface border border-terminal-border rounded-lg p-6 shadow-lg">
-                <h2 class="text-xl font-semibold text-slate-200 mb-4">📈 System Statistics</h2>
-                <div class="grid grid-cols-4 gap-4">
-                    <div class="bg-terminal-bg rounded-lg p-4">
-                        <p class="text-sm text-slate-400">Total Users</p>
-                        <p class="text-2xl font-bold text-emerald-400">{{.Stats.TotalUsers}}</p>
+        <!-- Row 3: KPI Stats (Admin Only) -->
+        {{if .IsAdmin}}
+        <div class="grid grid-cols-12 gap-6">
+            <!-- Total Users -->
+            <div class="col-span-12 sm:col-span-6 lg:col-span-3">
+                <div class="neo-card bg-white border-2 border-black p-6 shadow-[6px_6px_0px_0px_#000]">
+                    <p class="text-sm font-bold text-gray-600 uppercase tracking-wide mb-2">Total Users</p>
+                    <p class="text-4xl font-bold text-black">{{.Stats.TotalUsers}}</p>
+                </div>
+            </div>
+
+            <!-- Total Signals -->
+            <div class="col-span-12 sm:col-span-6 lg:col-span-3">
+                <div class="neo-card bg-white border-2 border-black p-6 shadow-[6px_6px_0px_0px_#000]">
+                    <p class="text-sm font-bold text-gray-600 uppercase tracking-wide mb-2">Total Signals</p>
+                    <p class="text-4xl font-bold text-black">{{.Stats.TotalSignals}}</p>
+                </div>
+            </div>
+
+            <!-- Active Positions -->
+            <div class="col-span-12 sm:col-span-6 lg:col-span-3">
+                <div class="neo-card bg-[#ffd43b] border-2 border-black p-6 shadow-[6px_6px_0px_0px_#000]">
+                    <p class="text-sm font-bold text-black uppercase tracking-wide mb-2">Active Positions</p>
+                    <p class="text-4xl font-bold text-black">{{.Stats.ActivePositions}}</p>
+                </div>
+            </div>
+
+            <!-- Win Rate -->
+            <div class="col-span-12 sm:col-span-6 lg:col-span-3">
+                <div class="neo-card bg-[#51cf66] border-2 border-black p-6 shadow-[6px_6px_0px_0px_#000]">
+                    <p class="text-sm font-bold text-black uppercase tracking-wide mb-2">Win Rate</p>
+                    <p class="text-4xl font-bold text-black">{{printf "%.1f" .Stats.WinRate}}%</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Admin Controls Row -->
+        <div class="grid grid-cols-12 gap-6 mt-6">
+            <!-- Market Scan -->
+            <div class="col-span-12">
+                <div class="neo-card bg-white border-2 border-black p-6 shadow-[6px_6px_0px_0px_#000]">
+                    <!-- Header with Trigger Button -->
+                    <div class="flex items-center justify-between mb-4 pb-4 border-b-2 border-black">
+                        <h3 class="text-xl font-bold text-black">🔄 Market Scan</h3>
+                        <button hx-post="/api/admin/market-scan/trigger" hx-target="#scan-response"
+                            class="neo-btn bg-[#ff6b6b] border-2 border-black text-white font-bold py-2 px-6 shadow-[4px_4px_0px_0px_#000] uppercase tracking-wide text-sm">
+                            🚀 Trigger Now
+                        </button>
                     </div>
-                    <div class="bg-terminal-bg rounded-lg p-4">
-                        <p class="text-sm text-slate-400">Total Signals</p>
-                        <p class="text-2xl font-bold text-emerald-400">{{.Stats.TotalSignals}}</p>
-                    </div>
-                    <div class="bg-terminal-bg rounded-lg p-4">
-                        <p class="text-sm text-slate-400">Active Positions</p>
-                        <p class="text-2xl font-bold text-amber-400">{{.Stats.ActivePositions}}</p>
-                    </div>
-                    <div class="bg-terminal-bg rounded-lg p-4">
-                        <p class="text-sm text-slate-400">Win Rate</p>
-                        <p class="text-2xl font-bold text-emerald-400">{{printf "%.1f" .Stats.WinRate}}%</p>
+
+                    <!-- Trigger Response -->
+                    <div id="scan-response" class="mb-4"></div>
+
+                    <!-- Latest Signals -->
+                    <div>
+                        <div class="flex items-center justify-between mb-3">
+                            <h4 class="text-sm font-bold text-black uppercase tracking-wide">Latest Signals</h4>
+                            <span class="text-xs text-gray-600">Auto-refresh 10s</span>
+                        </div>
+                        <div id="scan-results" hx-get="/api/admin/market-scan/results" hx-trigger="load, every 10s"
+                            hx-swap="innerHTML" class="max-h-[300px] overflow-y-auto">
+                            <div
+                                class="p-3 bg-gray-100 border-2 border-black text-black text-sm font-medium shadow-[2px_2px_0px_0px_#000] animate-pulse">
+                                Loading signals...
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
-            {{end}}
         </div>
+
+        <!-- System Health (Bottom Section) -->
+        <div class="grid grid-cols-12 gap-6 mt-6">
+            <div class="col-span-12 md:col-span-6">
+                <div class="neo-card bg-white border-2 border-black p-6 shadow-[6px_6px_0px_0px_#000]">
+                    <h3 class="text-xl font-bold text-black mb-4">🏥 System Health</h3>
+                    <button hx-get="/api/admin/system/health" hx-target="#health-status" hx-trigger="click, load"
+                        class="neo-btn w-full bg-[#4dabf7] border-2 border-black text-black font-bold py-3 px-4 shadow-[4px_4px_0px_0px_#000] uppercase tracking-wide mb-4">
+                        🔍 Check Status
+                    </button>
+                    <div id="health-status"></div>
+                </div>
+            </div>
+        </div>
+        {{end}}
     </div>
 
     <script>
         // Handle successful mode toggle
         document.body.addEventListener('htmx:afterRequest', function (event) {
             if (event.detail.pathInfo.requestPath === '/api/user/mode/toggle' && event.detail.successful) {
-                // Reload page to update UI
                 window.location.reload();
-            }
-        });
-
-        // Handle successful panic button
-        document.body.addEventListener('htmx:afterRequest', function (event) {
-            if (event.detail.pathInfo.requestPath === '/api/user/panic-button' && event.detail.successful) {
-                document.getElementById('panic-response').innerHTML =
-                    '<div class="p-3 bg-emerald-500/10 border border-emerald-500/50 rounded text-emerald-400 text-sm">✅ All positions closed successfully</div>';
-            }
-        });
-
-        // Handle successful strategy update
-        document.body.addEventListener('htmx:afterRequest', function (event) {
-            if (event.detail.pathInfo.requestPath === '/api/admin/strategies/active' && event.detail.successful) {
-                document.getElementById('strategy-response').innerHTML =
-                    '<div class="p-3 bg-emerald-500/10 border border-emerald-500/50 rounded text-emerald-400 text-sm">✅ Strategy updated successfully</div>';
             }
         });
     </script>

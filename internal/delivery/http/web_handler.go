@@ -161,8 +161,10 @@ func (h *WebHandler) HandlePositionsHTML(c echo.Context) error {
 	if !ok {
 		return c.HTML(http.StatusUnauthorized, `
 			<tr>
-				<td colspan="8" class="py-4 text-center text-rose-400">
-					❌ Authentication required
+				<td colspan="8" class="py-8 text-center">
+					<div class="inline-block bg-[#ff6b6b] border-2 border-black text-white font-bold px-6 py-3 shadow-[4px_4px_0px_0px_#000]">
+						❌ Authentication required
+					</div>
 				</td>
 			</tr>
 		`)
@@ -173,8 +175,10 @@ func (h *WebHandler) HandlePositionsHTML(c echo.Context) error {
 	if err != nil {
 		return c.HTML(http.StatusInternalServerError, `
 			<tr>
-				<td colspan="8" class="py-4 text-center text-rose-400">
-					❌ Error loading positions
+				<td colspan="8" class="py-8 text-center">
+					<div class="inline-block bg-[#ff6b6b] border-2 border-black text-white font-bold px-6 py-3 shadow-[4px_4px_0px_0px_#000]">
+						❌ Error loading positions
+					</div>
 				</td>
 			</tr>
 		`)
@@ -191,8 +195,10 @@ func (h *WebHandler) HandlePositionsHTML(c echo.Context) error {
 	if len(positions) == 0 {
 		return c.HTML(http.StatusOK, `
 			<tr>
-				<td colspan="8" class="py-8 text-center text-slate-500">
-					No active positions
+				<td colspan="8" class="py-12 text-center">
+					<div class="inline-block bg-white border-2 border-black text-black font-bold px-6 py-3 shadow-[4px_4px_0px_0px_#000]">
+						No active positions
+					</div>
 				</td>
 			</tr>
 		`)
@@ -209,7 +215,8 @@ func (h *WebHandler) HandlePositionsHTML(c echo.Context) error {
 
 		// Calculate PnL
 		pnl := 0.0
-		pnlClass := "text-slate-400"
+		pnlBgClass := "bg-gray-100"
+		pnlTextClass := "text-black"
 		pnlSign := ""
 
 		if pos.Side == "BUY" {
@@ -219,35 +226,49 @@ func (h *WebHandler) HandlePositionsHTML(c echo.Context) error {
 		}
 
 		if pnl > 0 {
-			pnlClass = "profit"
+			pnlBgClass = "bg-[#51cf66]"
+			pnlTextClass = "text-black"
 			pnlSign = "+"
 		} else if pnl < 0 {
-			pnlClass = "loss"
+			pnlBgClass = "bg-[#ff6b6b]"
+			pnlTextClass = "text-white"
 		}
 
-		sideClass := "text-emerald-400"
+		sideBgClass := "bg-[#51cf66]"
+		sideTextClass := "text-black"
 		sideEmoji := "🟢"
 		if pos.Side == "SELL" {
-			sideClass = "text-rose-400"
+			sideBgClass = "bg-[#ff6b6b]"
+			sideTextClass = "text-white"
 			sideEmoji = "🔴"
 		}
 
 		html += fmt.Sprintf(`
-			<tr class="border-b border-terminal-border hover:bg-terminal-bg transition-colors">
-				<td class="py-3 px-4 font-semibold text-slate-200">%s</td>
-				<td class="py-3 px-4 %s font-semibold">%s %s</td>
-				<td class="py-3 px-4 text-slate-300">$%.4f</td>
-				<td class="py-3 px-4 text-slate-300">$%.4f</td>
-				<td class="py-3 px-4 text-slate-300">$%.4f</td>
-				<td class="py-3 px-4 text-slate-300">$%.4f</td>
-				<td class="py-3 px-4 font-bold %s">%s%.2f%%</td>
-				<td class="py-3 px-4">
+			<tr class="hover:bg-gray-50 transition-colors">
+				<td class="py-4 px-6">
+					<span class="font-bold text-black text-lg">%s</span>
+				</td>
+				<td class="py-4 px-6">
+					<span class="inline-block %s %s border-2 border-black px-3 py-1 font-bold text-sm shadow-[2px_2px_0px_0px_#000]">
+						%s %s
+					</span>
+				</td>
+				<td class="py-4 px-6 font-medium text-black">$%.4f</td>
+				<td class="py-4 px-6 font-medium text-black">$%.4f</td>
+				<td class="py-4 px-6 font-medium text-black">$%.4f</td>
+				<td class="py-4 px-6 font-medium text-black">$%.4f</td>
+				<td class="py-4 px-6">
+					<span class="inline-block %s %s border-2 border-black px-3 py-2 font-bold shadow-[2px_2px_0px_0px_#000]">
+						%s%.2f%%
+					</span>
+				</td>
+				<td class="py-4 px-6">
 					<button
 						hx-post="/api/user/positions/%s/close"
 						hx-confirm="Close this position?"
 						hx-target="closest tr"
 						hx-swap="outerHTML"
-						class="px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white text-sm rounded transition duration-200"
+						class="bg-[#ff6b6b] border-2 border-black text-white font-bold px-4 py-2 shadow-[4px_4px_0px_0px_#000] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-none transition-all text-sm uppercase tracking-wide"
 					>
 						❌ Close
 					</button>
@@ -255,12 +276,12 @@ func (h *WebHandler) HandlePositionsHTML(c echo.Context) error {
 			</tr>
 		`,
 			pos.Symbol,
-			sideClass, sideEmoji, pos.Side,
+			sideBgClass, sideTextClass, sideEmoji, pos.Side,
 			pos.EntryPrice,
 			currentPrice,
 			pos.SLPrice,
 			pos.TPPrice,
-			pnlClass, pnlSign, pnl,
+			pnlBgClass, pnlTextClass, pnlSign, pnl,
 			pos.ID,
 		)
 	}

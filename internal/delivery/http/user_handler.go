@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"net/http"
 	"time"
 
 	"github.com/labstack/echo/v4"
@@ -12,16 +13,20 @@ import (
 
 // UserHandler handles user-related requests
 type UserHandler struct {
-	userRepo        domain.UserRepository
-	positionRepo    domain.PaperPositionRepository
-	tradingService  interface{ CloseAllPositions(ctx context.Context, userID string) error }
+	userRepo       domain.UserRepository
+	positionRepo   domain.PaperPositionRepository
+	tradingService interface {
+		CloseAllPositions(ctx context.Context, userID string) error
+	}
 }
 
 // NewUserHandler creates a new UserHandler
 func NewUserHandler(
 	userRepo domain.UserRepository,
 	positionRepo domain.PaperPositionRepository,
-	tradingService interface{ CloseAllPositions(ctx context.Context, userID string) error },
+	tradingService interface {
+		CloseAllPositions(ctx context.Context, userID string) error
+	},
 ) *UserHandler {
 	return &UserHandler{
 		userRepo:       userRepo,
@@ -195,7 +200,10 @@ func (h *UserHandler) PanicButton(c echo.Context) error {
 		return InternalServerErrorResponse(c, "Failed to close all positions", err)
 	}
 
-	return SuccessMessageResponse(c, "All positions closed successfully", map[string]interface{}{
-		"timestamp": time.Now().Format(time.RFC3339),
-	})
+	html := `
+		<div class="p-4 bg-white border-2 border-black text-black font-bold shadow-[4px_4px_0px_0px_#000] mt-4">
+			✅ All positions closed successfully
+		</div>
+	`
+	return c.HTML(http.StatusOK, html)
 }

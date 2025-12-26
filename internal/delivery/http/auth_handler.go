@@ -116,7 +116,8 @@ func (h *AuthHandler) Logout(c echo.Context) error {
 	}
 	c.SetCookie(cookie)
 
-	return SuccessMessageResponse(c, "Logged out successfully", nil)
+	// Redirect to login page
+	return c.Redirect(http.StatusFound, "/login")
 }
 
 // Register handles user registration (for future use)
