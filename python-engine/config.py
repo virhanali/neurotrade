@@ -33,7 +33,7 @@ class Settings(BaseSettings):
 
     MIN_VOLUME_USDT: float = float(os.getenv("MIN_VOLUME_USDT", "50000000"))  # $50M minimum volume
     MIN_VOLATILITY_1H: float = float(os.getenv("MIN_VOLATILITY_1H", "1.5"))  # 1.5% minimum volatility
-    TOP_COINS_LIMIT: int = int(os.getenv("TOP_COINS_LIMIT", "5"))  # Top N coins to analyze
+    TOP_COINS_LIMIT: int = int(os.getenv("TOP_COINS_LIMIT", "10"))  # Top N coins to analyze
     MAX_RISK_PERCENT: float = float(os.getenv("MAX_RISK_PERCENT", "2.0"))  # Max 2% risk per trade
     MIN_CONFIDENCE: int = int(os.getenv("MIN_CONFIDENCE", "75"))  # Minimum 75% confidence to execute
 
