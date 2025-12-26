@@ -224,7 +224,6 @@ func main() {
 	log.Printf("💰 Default Balance: $%.2f USDT", cfg.Trading.DefaultBalance)
 	log.Printf("📈 Min Confidence: %d%%", cfg.Trading.MinConfidence)
 	log.Println("========================================")
-	log.Println("✅ Phase 4 API Endpoints:")
 	log.Println("  - POST /api/auth/login")
 	log.Println("  - POST /api/auth/logout")
 	log.Println("  - POST /api/auth/register")

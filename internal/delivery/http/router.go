@@ -26,8 +26,7 @@ func SetupRoutes(e *echo.Echo, config *RouterConfig) {
 	// Root route
 	e.GET("/", func(c echo.Context) error {
 		return SuccessResponse(c, map[string]interface{}{
-			"message": "Welcome to NeuroTrade AI - Phase 4 API",
-			"version": "0.4.0",
+			"message": "Welcome to NeuroTrade AI",
 			"endpoints": map[string]string{
 				"auth":  "/api/auth/*",
 				"user":  "/api/user/*",
