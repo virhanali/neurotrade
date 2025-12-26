@@ -237,7 +237,7 @@ func (h *WebHandler) HandlePositionsHTML(c echo.Context) error {
 		sideBgClass := "bg-[#51cf66]"
 		sideTextClass := "text-black"
 		sideEmoji := "🟢"
-		if pos.Side == "SELL" {
+		if pos.Side == "SHORT" {
 			sideBgClass = "bg-[#ff6b6b]"
 			sideTextClass = "text-white"
 			sideEmoji = "🔴"

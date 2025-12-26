@@ -29,8 +29,8 @@ func NewScheduler(tradingService *usecase.TradingService, balance float64) *Sche
 func (s *Scheduler) Start() error {
 	log.Println("Starting scheduler...")
 
-	// Schedule market scan at minute 59 of every hour (59 * * * *)
-	_, err := s.cron.AddFunc("59 * * * *", func() {
+	// Schedule market scan every 30 minutes (*/30 * * * *)
+	_, err := s.cron.AddFunc("*/30 * * * *", func() {
 		ctx := context.Background()
 		log.Println("⏰ Cron Triggered: Starting scheduled market scan...")
 
@@ -46,7 +46,7 @@ func (s *Scheduler) Start() error {
 	// Start the cron scheduler
 	s.cron.Start()
 	log.Println("✓ Scheduler started successfully")
-	log.Println("✓ Market scan scheduled at minute 59 of every hour (59 * * * *)")
+	log.Println("✓ Market scan scheduled every 30 minutes (*/30 * * * *)")
 
 	return nil
 }
