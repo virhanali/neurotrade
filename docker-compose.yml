@@ -80,7 +80,11 @@ services:
       - TZ=${TZ}
       - DEFAULT_BALANCE=${DEFAULT_BALANCE}
     ports:
-      - "8080:8080"
+      - "8080"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.go-app.rule=Host(`${DOMAIN:-localhost}`)"
+      - "traefik.http.services.go-app.loadbalancer.server.port=8080"
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:8080/health" ]
       interval: 60s
