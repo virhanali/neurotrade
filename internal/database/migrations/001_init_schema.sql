@@ -7,7 +7,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- ===========================================
 -- USERS TABLE
 -- ===========================================
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     username VARCHAR(50) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
@@ -20,12 +20,12 @@ CREATE TABLE users (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_users_username ON users(username);
+CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 
 -- ===========================================
 -- STRATEGY PRESETS TABLE (Admin Configuration)
 -- ===========================================
-CREATE TABLE strategy_presets (
+CREATE TABLE IF NOT EXISTS strategy_presets (
     id SERIAL PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
     system_prompt TEXT NOT NULL,
@@ -34,12 +34,12 @@ CREATE TABLE strategy_presets (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_strategy_presets_active ON strategy_presets(is_active);
+CREATE INDEX IF NOT EXISTS idx_strategy_presets_active ON strategy_presets(is_active);
 
 -- ===========================================
 -- SIGNALS TABLE (History & Review)
 -- ===========================================
-CREATE TABLE signals (
+CREATE TABLE IF NOT EXISTS signals (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     symbol VARCHAR(20) NOT NULL,
     type VARCHAR(10) NOT NULL CHECK (type IN ('LONG', 'SHORT')),
@@ -50,34 +50,39 @@ CREATE TABLE signals (
     reasoning TEXT,
     status VARCHAR(20) NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'EXECUTED', 'REJECTED')),
     review_result VARCHAR(20) CHECK (review_result IN ('WIN', 'LOSS', 'FLOATING')),
+    review_pnl DECIMAL(10, 2),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_signals_symbol ON signals(symbol);
-CREATE INDEX idx_signals_status ON signals(status);
-CREATE INDEX idx_signals_created_at ON signals(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_signals_symbol ON signals(symbol);
+CREATE INDEX IF NOT EXISTS idx_signals_status ON signals(status);
+CREATE INDEX IF NOT EXISTS idx_signals_created_at ON signals(created_at DESC);
 
 -- ===========================================
 -- PAPER POSITIONS TABLE (Virtual Trading)
 -- ===========================================
-CREATE TABLE paper_positions (
+CREATE TABLE IF NOT EXISTS paper_positions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    signal_id UUID REFERENCES signals(id) ON DELETE SET NULL,
     symbol VARCHAR(20) NOT NULL,
     side VARCHAR(10) NOT NULL CHECK (side IN ('LONG', 'SHORT')),
     entry_price DECIMAL(18, 8) NOT NULL,
+    exit_price DECIMAL(18, 8),
     size_usdt DECIMAL(18, 2) NOT NULL,
     sl_price DECIMAL(18, 8) NOT NULL,
     tp_price DECIMAL(18, 8) NOT NULL,
-    status VARCHAR(10) NOT NULL DEFAULT 'OPEN' CHECK (status IN ('OPEN', 'CLOSED')),
+    status VARCHAR(20) NOT NULL DEFAULT 'OPEN' CHECK (status IN ('OPEN', 'CLOSED', 'CLOSED_WIN', 'CLOSED_LOSS')),
     pnl DECIMAL(18, 2),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     closed_at TIMESTAMP WITH TIME ZONE
 );
 
-CREATE INDEX idx_paper_positions_user_id ON paper_positions(user_id);
-CREATE INDEX idx_paper_positions_status ON paper_positions(status);
-CREATE INDEX idx_paper_positions_symbol ON paper_positions(symbol);
+CREATE INDEX IF NOT EXISTS idx_paper_positions_user_id ON paper_positions(user_id);
+CREATE INDEX IF NOT EXISTS idx_paper_positions_signal_id ON paper_positions(signal_id);
+CREATE INDEX IF NOT EXISTS idx_paper_positions_status ON paper_positions(status);
+CREATE INDEX IF NOT EXISTS idx_paper_positions_symbol ON paper_positions(symbol);
+
 
 -- ===========================================
 -- SEED DATA: Default Strategy Presets
@@ -110,12 +115,12 @@ BEGIN
 END;
 $$ language 'plpgsql';
 
-CREATE TRIGGER update_users_updated_at
+CREATE OR REPLACE TRIGGER update_users_updated_at
     BEFORE UPDATE ON users
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
-CREATE TRIGGER update_strategy_presets_updated_at
+CREATE OR REPLACE TRIGGER update_strategy_presets_updated_at
     BEFORE UPDATE ON strategy_presets
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
