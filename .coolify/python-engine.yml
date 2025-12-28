@@ -1,0 +1,24 @@
+# Coolify Configuration for Python Engine
+# This ensures Coolify knows how to build and run the Python service
+
+# Build context
+build:
+  context: ./python-engine
+  dockerfile: Dockerfile
+
+# Port mapping
+ports:
+  - "8000:8000"
+
+# Health check
+healthcheck:
+  test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+  interval: 30s
+  timeout: 10s
+  retries: 3
+  start_period: 40s
+
+# Environment variables (will be overridden by Coolify)
+environment:
+  - PYTHONUNBUFFERED=1
+  - PYTHONDONTWRITEBYTECODE=1

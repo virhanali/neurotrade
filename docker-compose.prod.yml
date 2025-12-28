@@ -3,8 +3,6 @@ version: '3.8'
 services:
   postgres:
     image: postgres:15-alpine
-    container_name: neurotrade_postgres_prod
-    restart: always
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -12,49 +10,27 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./migrations:/docker-entrypoint-initdb.d:ro
-    ports:
-      - "127.0.0.1:5432:5432" # Only bind to localhost for security
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}" ]
       interval: 30s
       timeout: 10s
       retries: 5
-    networks:
-      - neurotrade_network
 
   redis:
     image: redis:7-alpine
-    container_name: neurotrade_redis_prod
-    restart: always
     command: redis-server --appendonly yes
     volumes:
       - redis_data:/data
-    ports:
-      - "127.0.0.1:6379:6379" # Only bind to localhost
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "5m"
-        max-file: "2"
     healthcheck:
       test: [ "CMD", "redis-cli", "ping" ]
       interval: 30s
       timeout: 5s
       retries: 3
-    networks:
-      - neurotrade_network
 
   python-engine:
     build:
       context: ./python-engine
       dockerfile: Dockerfile
-    container_name: neurotrade_python_engine_prod
-    restart: always
     depends_on:
       postgres:
         condition: service_healthy
@@ -66,38 +42,26 @@ services:
       - REDIS_PORT=6379
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
-      # Trading Parameters
       - MIN_VOLUME_USDT=${MIN_VOLUME_USDT}
       - MIN_VOLATILITY_1H=${MIN_VOLATILITY_1H}
       - TOP_COINS_LIMIT=${TOP_COINS_LIMIT}
       - MAX_RISK_PERCENT=${MAX_RISK_PERCENT}
       - MIN_CONFIDENCE=${MIN_CONFIDENCE}
-    volumes:
-      - ./python-engine:/app
-      - python_charts:/app/charts
+      - PYTHONUNBUFFERED=1
     ports:
-      - "127.0.0.1:8000:8000" # Only bind to localhost
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "20m"
-        max-file: "5"
+      - "8000:8000"
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
-    networks:
-      - neurotrade_network
 
   go-app:
     build:
       context: .
       dockerfile: Dockerfile
       target: production
-    container_name: neurotrade_go_app_prod
-    restart: always
     depends_on:
       postgres:
         condition: service_healthy
@@ -116,58 +80,14 @@ services:
       - TZ=${TZ}
       - DEFAULT_BALANCE=${DEFAULT_BALANCE}
     ports:
-      - "127.0.0.1:8080:8080" # Only bind to localhost, Nginx will proxy
-    volumes:
-      - app_logs:/app/logs
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "20m"
-        max-file: "5"
+      - "8080:8080"
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:8080/health" ]
       interval: 60s
       timeout: 10s
       retries: 3
       start_period: 40s
-    networks:
-      - neurotrade_network
-
-  nginx:
-    image: nginx:alpine
-    container_name: neurotrade_nginx_prod
-    restart: always
-    depends_on:
-      - go-app
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/conf.d:/etc/nginx/conf.d:ro
-      - ./nginx/ssl:/etc/nginx/ssl:ro # SSL certificates
-      - ./nginx/.htpasswd:/etc/nginx/.htpasswd:ro # Basic auth file
-      - nginx_logs:/var/log/nginx
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-    networks:
-      - neurotrade_network
 
 volumes:
   postgres_data:
-    driver: local
   redis_data:
-    driver: local
-  python_charts:
-    driver: local
-  app_logs:
-    driver: local
-  nginx_logs:
-    driver: local
-
-networks:
-  neurotrade_network:
-    driver: bridge
