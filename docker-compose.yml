@@ -48,8 +48,8 @@ services:
       - MAX_RISK_PERCENT=${MAX_RISK_PERCENT}
       - MIN_CONFIDENCE=${MIN_CONFIDENCE}
       - PYTHONUNBUFFERED=1
-    ports:
-      - "8000:8000"
+    expose:
+      - "8000"
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
       interval: 30s
@@ -79,8 +79,8 @@ services:
       - SCAN_INTERVAL=${SCAN_INTERVAL}
       - TZ=${TZ}
       - DEFAULT_BALANCE=${DEFAULT_BALANCE}
-    ports:
-      - "8080:8080"
+    expose:
+      - "8080"
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:8080/health" ]
       interval: 60s
