@@ -22,6 +22,7 @@ import (
 	"neurotrade/configs"
 	"neurotrade/internal/adapter"
 	"neurotrade/internal/adapter/telegram"
+	"neurotrade/internal/database"
 	httpdelivery "neurotrade/internal/delivery/http"
 	"neurotrade/internal/domain"
 	"neurotrade/internal/infra"
@@ -64,6 +65,11 @@ func main() {
 		}
 	}
 	defer db.Close()
+
+	// Run database migrations (auto-create tables if needed)
+	if err := database.RunMigrations(db); err != nil {
+		log.Fatalf("Failed to run database migrations: %v", err)
+	}
 
 	// Initialize repositories
 	signalRepo := repository.NewSignalRepository(db)
