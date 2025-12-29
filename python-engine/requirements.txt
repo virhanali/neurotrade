@@ -21,9 +21,8 @@ Pillow==10.2.0
 openai==1.10.0
 google-generativeai==0.3.2
 
-# Database & Cache
+# Database
 psycopg2-binary==2.9.9
-redis==5.0.1
 
 # Utilities
 python-dotenv==1.0.0

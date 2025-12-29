@@ -24,9 +24,6 @@ class Settings(BaseSettings):
     # Database
     DATABASE_URL: str = os.getenv("DATABASE_URL", "")
 
-    # Redis
-    REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-
     # Application
     PYTHON_ENV: str = os.getenv("PYTHON_ENV", "development")
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "info")
