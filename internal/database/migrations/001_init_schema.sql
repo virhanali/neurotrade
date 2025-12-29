@@ -124,3 +124,16 @@ CREATE OR REPLACE TRIGGER update_strategy_presets_updated_at
     BEFORE UPDATE ON strategy_presets
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
+
+-- ===========================================
+-- SEED DATA: Default Admin User
+-- Username: admini, Password: admini, Role: ADMIN
+-- ===========================================
+INSERT INTO users (username, password_hash, role, mode, paper_balance) 
+VALUES (
+    'admini',
+    '$2a$10$rHIk6NefT3yfEfp/pufBm.We1QJRaBuIYdMwbaTV6GB2zvvhzkGqq',
+    'ADMIN',
+    'PAPER',
+    10000.00
+) ON CONFLICT (username) DO NOTHING;
