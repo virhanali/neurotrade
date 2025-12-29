@@ -69,7 +69,7 @@ CREATE TABLE IF NOT EXISTS paper_positions (
     side VARCHAR(10) NOT NULL CHECK (side IN ('LONG', 'SHORT')),
     entry_price DECIMAL(18, 8) NOT NULL,
     exit_price DECIMAL(18, 8),
-    size_usdt DECIMAL(18, 2) NOT NULL,
+    size DECIMAL(18, 8) NOT NULL,
     sl_price DECIMAL(18, 8) NOT NULL,
     tp_price DECIMAL(18, 8) NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'OPEN' CHECK (status IN ('OPEN', 'CLOSED', 'CLOSED_WIN', 'CLOSED_LOSS')),
