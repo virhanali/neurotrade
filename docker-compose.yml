@@ -5,6 +5,7 @@ services:
     build:
       context: ./python-engine
       dockerfile: Dockerfile
+    command: [ "python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "${PYTHON_PORT}", "--workers", "1" ]
     environment:
       - DATABASE_URL=${DATABASE_URL}
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
@@ -16,13 +17,13 @@ services:
       - MIN_CONFIDENCE=${MIN_CONFIDENCE}
       - PYTHONUNBUFFERED=1
     expose:
-      - "8000"
+      - "${PYTHON_PORT}"
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
-      interval: 30s
+      test: [ "CMD", "curl", "-f", "http://localhost:${PYTHON_PORT}/health" ]
+      interval: 180s0s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 180s
 
   go-app:
     build:
@@ -35,7 +36,7 @@ services:
     environment:
       - ENV=production
       - DATABASE_URL=${DATABASE_URL}
-      - PYTHON_ENGINE_URL=http://python-engine:8000
+      - PYTHON_ENGINE_URL=http://python-engine:${PYTHON_PORT}
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
       - JWT_SECRET=${JWT_SECRET}
@@ -45,10 +46,10 @@ services:
       - TZ=${TZ}
       - DEFAULT_BALANCE=${DEFAULT_BALANCE}
     expose:
-      - "8080"
+      - "${GO_APP_PORT}"
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:8080/health" ]
-      interval: 60s
+      test: [ "CMD", "curl", "-f", "http://localhost:${GO_APP_PORT}/health" ]
+      interval: 180s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 180s
