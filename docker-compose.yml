@@ -16,6 +16,8 @@ services:
       - MAX_RISK_PERCENT=${MAX_RISK_PERCENT}
       - MIN_CONFIDENCE=${MIN_CONFIDENCE}
       - PYTHONUNBUFFERED=1
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     expose:
       - "${PYTHON_PORT}"
     healthcheck:
@@ -45,6 +47,8 @@ services:
       - SCAN_INTERVAL=${SCAN_INTERVAL}
       - TZ=${TZ}
       - DEFAULT_BALANCE=${DEFAULT_BALANCE}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     expose:
       - "${GO_APP_PORT}"
     healthcheck:
