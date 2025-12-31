@@ -229,22 +229,27 @@ func (h *WebHandler) HandlePositionsHTML(c echo.Context) error {
 		}
 
 		// Calculate PnL
-		pnl := 0.0
+		pnlPercent := 0.0
+		pnlValue := 0.0
 		pnlBgClass := "bg-gray-100"
 		pnlTextClass := "text-black"
 		pnlSign := ""
 
-		if pos.Side == "BUY" {
-			pnl = ((currentPrice - pos.EntryPrice) / pos.EntryPrice) * 100
+		// Check Side (support both LONG/BUY and SHORT/SELL just in case)
+		if pos.Side == "LONG" || pos.Side == "BUY" {
+			pnlPercent = ((currentPrice - pos.EntryPrice) / pos.EntryPrice) * 100
+			pnlValue = (currentPrice - pos.EntryPrice) * pos.Size
 		} else {
-			pnl = ((pos.EntryPrice - currentPrice) / pos.EntryPrice) * 100
+			// SHORT
+			pnlPercent = ((pos.EntryPrice - currentPrice) / pos.EntryPrice) * 100
+			pnlValue = (pos.EntryPrice - currentPrice) * pos.Size
 		}
 
-		if pnl > 0 {
+		if pnlPercent > 0 {
 			pnlBgClass = "bg-[#51cf66]"
 			pnlTextClass = "text-black"
 			pnlSign = "+"
-		} else if pnl < 0 {
+		} else if pnlPercent < 0 {
 			pnlBgClass = "bg-[#ff6b6b]"
 			pnlTextClass = "text-white"
 		}
@@ -274,7 +279,7 @@ func (h *WebHandler) HandlePositionsHTML(c echo.Context) error {
 				<td class="py-4 px-6 font-medium text-black">$%.4f</td>
 				<td class="py-4 px-6">
 					<span class="inline-block %s %s border-2 border-black px-3 py-2 font-bold shadow-[2px_2px_0px_0px_#000]">
-						%s%.2f%%
+						%s%.2f%% | $%.2f
 					</span>
 				</td>
 				<td class="py-4 px-6">
@@ -296,7 +301,7 @@ func (h *WebHandler) HandlePositionsHTML(c echo.Context) error {
 			currentPrice,
 			pos.SLPrice,
 			pos.TPPrice,
-			pnlBgClass, pnlTextClass, pnlSign, pnl,
+			pnlBgClass, pnlTextClass, pnlSign, pnlPercent, pnlValue,
 			pos.ID,
 		)
 	}
