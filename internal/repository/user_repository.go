@@ -25,9 +25,9 @@ func (r *UserRepositoryImpl) Create(ctx context.Context, user *domain.User) erro
 	query := `
 		INSERT INTO users (
 			id, username, password_hash, role,
-			paper_balance, mode, created_at
+			paper_balance, mode, is_auto_trade_enabled, created_at
 		) VALUES (
-			$1, $2, $3, $4, $5, $6, $7
+			$1, $2, $3, $4, $5, $6, $7, $8
 		)
 	`
 
@@ -38,6 +38,7 @@ func (r *UserRepositoryImpl) Create(ctx context.Context, user *domain.User) erro
 		user.Role,
 		user.PaperBalance,
 		user.Mode,
+		user.IsAutoTradeEnabled,
 		user.CreatedAt,
 	)
 
@@ -52,7 +53,7 @@ func (r *UserRepositoryImpl) Create(ctx context.Context, user *domain.User) erro
 func (r *UserRepositoryImpl) GetByID(ctx context.Context, id uuid.UUID) (*domain.User, error) {
 	query := `
 		SELECT id, username, password_hash, role,
-		       paper_balance, real_balance_cache, mode, created_at, updated_at
+		       paper_balance, real_balance_cache, mode, is_auto_trade_enabled, created_at, updated_at
 		FROM users
 		WHERE id = $1
 	`
@@ -66,6 +67,7 @@ func (r *UserRepositoryImpl) GetByID(ctx context.Context, id uuid.UUID) (*domain
 		&user.PaperBalance,
 		&user.RealBalanceCache,
 		&user.Mode,
+		&user.IsAutoTradeEnabled,
 		&user.CreatedAt,
 		&user.UpdatedAt,
 	)
@@ -81,7 +83,7 @@ func (r *UserRepositoryImpl) GetByID(ctx context.Context, id uuid.UUID) (*domain
 func (r *UserRepositoryImpl) GetByUsername(ctx context.Context, username string) (*domain.User, error) {
 	query := `
 		SELECT id, username, password_hash, role,
-		       paper_balance, real_balance_cache, mode, created_at, updated_at
+		       paper_balance, real_balance_cache, mode, is_auto_trade_enabled, created_at, updated_at
 		FROM users
 		WHERE username = $1
 	`
@@ -95,6 +97,7 @@ func (r *UserRepositoryImpl) GetByUsername(ctx context.Context, username string)
 		&user.PaperBalance,
 		&user.RealBalanceCache,
 		&user.Mode,
+		&user.IsAutoTradeEnabled,
 		&user.CreatedAt,
 		&user.UpdatedAt,
 	)
@@ -127,7 +130,7 @@ func (r *UserRepositoryImpl) UpdateBalance(ctx context.Context, userID uuid.UUID
 func (r *UserRepositoryImpl) GetAll(ctx context.Context) ([]*domain.User, error) {
 	query := `
 		SELECT id, username, password_hash, role,
-		       paper_balance, real_balance_cache, mode, created_at, updated_at
+		       paper_balance, real_balance_cache, mode, is_auto_trade_enabled, created_at, updated_at
 		FROM users
 		ORDER BY created_at ASC
 	`
@@ -149,6 +152,7 @@ func (r *UserRepositoryImpl) GetAll(ctx context.Context) ([]*domain.User, error)
 			&user.PaperBalance,
 			&user.RealBalanceCache,
 			&user.Mode,
+			&user.IsAutoTradeEnabled,
 			&user.CreatedAt,
 			&user.UpdatedAt,
 		)
@@ -163,4 +167,20 @@ func (r *UserRepositoryImpl) GetAll(ctx context.Context) ([]*domain.User, error)
 	}
 
 	return users, nil
+}
+
+// UpdateAutoTradeStatus updates the auto-trade flag for a user
+func (r *UserRepositoryImpl) UpdateAutoTradeStatus(ctx context.Context, userID uuid.UUID, enabled bool) error {
+	query := `
+		UPDATE users
+		SET is_auto_trade_enabled = $1, updated_at = NOW()
+		WHERE id = $2
+	`
+
+	_, err := r.db.Exec(ctx, query, enabled, userID)
+	if err != nil {
+		return fmt.Errorf("failed to update auto-trade status: %w", err)
+	}
+
+	return nil
 }

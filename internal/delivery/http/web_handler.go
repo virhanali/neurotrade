@@ -129,9 +129,29 @@ func (h *WebHandler) HandleDashboard(c echo.Context) error {
 		return c.Redirect(http.StatusFound, "/login?error=User+not+found")
 	}
 
+	// Fetch user's positions to display (server-side rendering initial state)
+	// Or fetching them via HTMX later?
+	// The dashboard template likely expects some data or uses HTMX.
+	// Looking at `HandlePositionsHTML`, it renders a table.
+	// But `PendingPositions` are separate.
+	// Let's pass PendingPositions to the template so it can render the "Approval Queue".
+
+	allPositions, err := h.positionRepo.GetByUserID(ctx, userID)
+	if err != nil {
+		allPositions = []*domain.PaperPosition{}
+	}
+
+	var pendingPositions []*domain.PaperPosition
+	for _, pos := range allPositions {
+		if pos.Status == domain.StatusPositionPendingApproval {
+			pendingPositions = append(pendingPositions, pos)
+		}
+	}
+
 	data := map[string]interface{}{
-		"User":    user,
-		"IsAdmin": user.Role == domain.RoleAdmin,
+		"User":             user,
+		"IsAdmin":          user.Role == domain.RoleAdmin,
+		"PendingPositions": pendingPositions,
 	}
 
 	// If admin, load system statistics
@@ -394,3 +414,5 @@ func RegisterWebRoutes(e *echo.Echo, handler *WebHandler, authMiddleware echo.Mi
 	e.GET("/dashboard", handler.HandleDashboard, authMiddleware)
 	e.GET("/api/user/positions/html", handler.HandlePositionsHTML, authMiddleware)
 }
+
+// RegisterWebRoutes registers all web routes (HTML pages)

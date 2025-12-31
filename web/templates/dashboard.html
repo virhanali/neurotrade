@@ -78,6 +78,20 @@
                         <p class="text-2xl font-bold text-black">${{printf "%.2f" .User.PaperBalance}}</p>
                     </div>
 
+                    <!-- Auto-Trade Toggle -->
+                    <div
+                        class="flex items-center space-x-2 bg-white border-2 border-black px-4 py-3 shadow-[4px_4px_0px_0px_#000]">
+                        <span class="text-sm font-bold text-black uppercase">AUTO-TRADE</span>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" class="sr-only peer" hx-post="/api/user/settings/autotrade"
+                                hx-vals='js:{"enabled": event.target.checked}' {{if
+                                .User.IsAutoTradeEnabled}}checked{{end}}>
+                            <div
+                                class="w-11 h-6 bg-gray-200 peer-focus:outline-none border-2 border-black rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-black after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#51cf66]">
+                            </div>
+                        </label>
+                    </div>
+
                     <!-- Mode Toggle -->
                     <button hx-post="/api/user/mode/toggle" hx-swap="none" class="neo-btn px-6 py-3 border-2 border-black font-bold uppercase tracking-wide shadow-[4px_4px_0px_0px_#000]
                         {{if eq .User.Mode " PAPER"}} bg-[#ffd43b] text-black {{else}} bg-[#51cf66] text-black
@@ -158,9 +172,66 @@
             {{end}}
         </div>
 
-        <!-- ... (rest of the file) ... -->
+        <!-- Row 1.5: Pending Approvals (If any) -->
+        {{if .PendingPositions}}
+        <div class="mb-6">
+            <div class="neo-card bg-[#fff9db] border-2 border-black shadow-[8px_8px_0px_0px_#000]">
+                <!-- Header -->
+                <div class="bg-black border-b-2 border-black px-6 py-4 flex items-center justify-between">
+                    <h2 class="text-2xl font-bold text-white">⏳ Waiting for Approval</h2>
+                    <div class="bg-[#ffd43b] text-black px-3 py-1 font-bold text-sm border border-white">
+                        Action Required
+                    </div>
+                </div>
 
-
+                <!-- Table -->
+                <div class="overflow-x-auto">
+                    <table class="w-full">
+                        <thead>
+                            <tr class="bg-black text-white border-b-2 border-black">
+                                <th class="py-4 px-6 text-left text-sm font-bold uppercase tracking-wide">Symbol</th>
+                                <th class="py-4 px-6 text-left text-sm font-bold uppercase tracking-wide">Side</th>
+                                <th class="py-4 px-6 text-left text-sm font-bold uppercase tracking-wide">Entry</th>
+                                <th class="py-4 px-6 text-left text-sm font-bold uppercase tracking-wide">Stop Loss</th>
+                                <th class="py-4 px-6 text-left text-sm font-bold uppercase tracking-wide">Take Profit
+                                </th>
+                                <th class="py-4 px-6 text-left text-sm font-bold uppercase tracking-wide">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y-2 divide-black">
+                            {{range .PendingPositions}}
+                            <tr class="hover:bg-[#fff3bf] transition-colors">
+                                <td class="py-4 px-6 font-bold text-black">{{.Symbol}}</td>
+                                <td class="py-4 px-6">
+                                    <span
+                                        class="inline-block border-2 border-black px-3 py-1 font-bold text-sm shadow-[2px_2px_0px_0px_#000] {{if eq .Side "
+                                        SHORT"}}bg-[#ff6b6b] text-white{{else}}bg-[#51cf66] text-black{{end}}">
+                                        {{.Side}}
+                                    </span>
+                                </td>
+                                <td class="py-4 px-6 font-medium text-black">${{printf "%.4f" .EntryPrice}}</td>
+                                <td class="py-4 px-6 font-medium text-black">${{printf "%.4f" .SLPrice}}</td>
+                                <td class="py-4 px-6 font-medium text-black">${{printf "%.4f" .TPPrice}}</td>
+                                <td class="py-4 px-6 flex space-x-2">
+                                    <button hx-post="/api/user/positions/{{.ID}}/approve" hx-target="closest tr"
+                                        hx-swap="outerHTML"
+                                        class="bg-[#51cf66] border-2 border-black text-black font-bold px-4 py-2 shadow-[2px_2px_0px_0px_#000] hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-none transition-all text-sm uppercase">
+                                        ✅ Approve
+                                    </button>
+                                    <button hx-post="/api/user/positions/{{.ID}}/decline" hx-target="closest tr"
+                                        hx-swap="outerHTML" hx-confirm="Decline this signal?"
+                                        class="bg-[#ff6b6b] border-2 border-black text-white font-bold px-4 py-2 shadow-[2px_2px_0px_0px_#000] hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-none transition-all text-sm uppercase">
+                                        ❌ Decline
+                                    </button>
+                                </td>
+                            </tr>
+                            {{end}}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {{end}}
 
         <!-- Row 2: Active Positions -->
         <div class="mb-6">
@@ -254,7 +325,7 @@
                         <button hx-post="/api/admin/market-scan/trigger" hx-target="#scan-response"
                             hx-confirm="Start a manual market scan? This might take up to a minute."
                             class="neo-btn bg-[#ff6b6b] border-2 border-black text-white font-bold py-2 px-6 shadow-[4px_4px_0px_0px_#000] uppercase tracking-wide text-sm">
-                            🚀 Trigger Now
+                            Trigger Now
                         </button>
                     </div>
 

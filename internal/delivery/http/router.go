@@ -63,6 +63,9 @@ func SetupRoutes(e *echo.Echo, config *RouterConfig) {
 		user.GET("/positions", config.UserHandler.GetPositions)
 		user.POST("/panic-button", config.UserHandler.PanicButton)
 		user.POST("/positions/:id/close", config.UserHandler.ClosePosition)
+		user.POST("/positions/:id/approve", config.UserHandler.ApprovePosition)
+		user.POST("/positions/:id/decline", config.UserHandler.DeclinePosition)
+		user.POST("/settings/autotrade", config.UserHandler.ToggleAutoTrade)
 	}
 
 	// Admin routes (protected with Auth + Admin middleware)

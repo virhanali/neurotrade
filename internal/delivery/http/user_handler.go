@@ -19,6 +19,8 @@ type UserHandler struct {
 	tradingService interface {
 		CloseAllPositions(ctx context.Context, userID string) error
 		ClosePosition(ctx context.Context, positionID uuid.UUID, userID uuid.UUID, isAdmin bool) error
+		ApprovePosition(ctx context.Context, positionID uuid.UUID, userID uuid.UUID) error
+		DeclinePosition(ctx context.Context, positionID uuid.UUID, userID uuid.UUID) error
 	}
 }
 
@@ -29,6 +31,8 @@ func NewUserHandler(
 	tradingService interface {
 		CloseAllPositions(ctx context.Context, userID string) error
 		ClosePosition(ctx context.Context, positionID uuid.UUID, userID uuid.UUID, isAdmin bool) error
+		ApprovePosition(ctx context.Context, positionID uuid.UUID, userID uuid.UUID) error
+		DeclinePosition(ctx context.Context, positionID uuid.UUID, userID uuid.UUID) error
 	},
 ) *UserHandler {
 	return &UserHandler{
@@ -239,5 +243,81 @@ func (h *UserHandler) ClosePosition(c echo.Context) error {
 	}
 
 	// Return empty string to remove the row from table (HTMX swap)
+	return c.String(http.StatusOK, "")
+}
+
+// ToggleAutoTrade updates the user's auto-trade setting
+// POST /api/user/settings/autotrade
+func (h *UserHandler) ToggleAutoTrade(c echo.Context) error {
+	userID, err := middleware.GetUserID(c)
+	if err != nil {
+		return UnauthorizedResponse(c, "User not authenticated")
+	}
+
+	var req struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return BadRequestResponse(c, "Invalid request payload")
+	}
+
+	ctx := c.Request().Context()
+
+	// Assuming UserRepository has UpdateAutoTradeStatus method now (we added it)
+	if err := h.userRepo.UpdateAutoTradeStatus(ctx, userID, req.Enabled); err != nil {
+		return InternalServerErrorResponse(c, "Failed to update auto-trade status", err)
+	}
+
+	return SuccessResponse(c, map[string]interface{}{
+		"enabled": req.Enabled,
+		"message": "Auto-trade setting updated",
+	})
+}
+
+// ApprovePosition approves a pending position
+// POST /api/user/positions/:id/approve
+func (h *UserHandler) ApprovePosition(c echo.Context) error {
+	userID, err := middleware.GetUserID(c)
+	if err != nil {
+		return UnauthorizedResponse(c, "User not authenticated")
+	}
+
+	positionIDStr := c.Param("id")
+	positionID, err := uuid.Parse(positionIDStr)
+	if err != nil {
+		return BadRequestResponse(c, "Invalid position ID")
+	}
+
+	ctx := c.Request().Context()
+
+	if err := h.tradingService.ApprovePosition(ctx, positionID, userID); err != nil {
+		return InternalServerErrorResponse(c, "Failed to approve position", err)
+	}
+
+	// HTMX response: remove the row from the pending table
+	return c.String(http.StatusOK, "")
+}
+
+// DeclinePosition declines a pending position
+// POST /api/user/positions/:id/decline
+func (h *UserHandler) DeclinePosition(c echo.Context) error {
+	userID, err := middleware.GetUserID(c)
+	if err != nil {
+		return UnauthorizedResponse(c, "User not authenticated")
+	}
+
+	positionIDStr := c.Param("id")
+	positionID, err := uuid.Parse(positionIDStr)
+	if err != nil {
+		return BadRequestResponse(c, "Invalid position ID")
+	}
+
+	ctx := c.Request().Context()
+
+	if err := h.tradingService.DeclinePosition(ctx, positionID, userID); err != nil {
+		return InternalServerErrorResponse(c, "Failed to decline position", err)
+	}
+
+	// HTMX response: remove the row from the pending table
 	return c.String(http.StatusOK, "")
 }

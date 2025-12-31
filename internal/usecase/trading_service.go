@@ -203,6 +203,12 @@ func (ts *TradingService) createPaperPositionForUser(ctx context.Context, user *
 	// Size = PositionSizeUSDT / EntryPrice
 	positionSize := tradeParams.PositionSizeUSDT / signal.EntryPrice
 
+	// Determine initial status based on Auto-Trade setting
+	initialStatus := domain.StatusPositionPendingApproval
+	if user.IsAutoTradeEnabled {
+		initialStatus = domain.StatusOpen
+	}
+
 	// Create paper position
 	position := &domain.PaperPosition{
 		ID:         uuid.New(),
@@ -214,7 +220,7 @@ func (ts *TradingService) createPaperPositionForUser(ctx context.Context, user *
 		SLPrice:    signal.SLPrice,
 		TPPrice:    signal.TPPrice,
 		Size:       positionSize,
-		Status:     domain.StatusOpen,
+		Status:     initialStatus,
 		CreatedAt:  time.Now(),
 	}
 
@@ -354,5 +360,65 @@ func (ts *TradingService) CloseAllPositions(ctx context.Context, userIDStr strin
 	}
 
 	log.Printf("🚨 PANIC BUTTON COMPLETE: Closed %d positions", closedCount)
+	return nil
+}
+
+// ApprovePosition approves a pending position
+func (ts *TradingService) ApprovePosition(ctx context.Context, positionID uuid.UUID, userID uuid.UUID) error {
+	// Get position
+	position, err := ts.positionRepo.GetByID(ctx, positionID)
+	if err != nil {
+		return fmt.Errorf("failed to get position: %w", err)
+	}
+
+	// Verify ownership
+	if position.UserID != userID {
+		return fmt.Errorf("unauthorized: position belongs to another user")
+	}
+
+	// Verify status
+	if position.Status != domain.StatusPositionPendingApproval {
+		return fmt.Errorf("position is not pending approval")
+	}
+
+	// Update status to OPEN
+	position.Status = domain.StatusOpen
+
+	if err := ts.positionRepo.Update(ctx, position); err != nil {
+		return fmt.Errorf("failed to approve position: %w", err)
+	}
+
+	log.Printf("✅ Position Approved: %s %s", position.Symbol, position.Side)
+	return nil
+}
+
+// DeclinePosition declines a pending position
+func (ts *TradingService) DeclinePosition(ctx context.Context, positionID uuid.UUID, userID uuid.UUID) error {
+	// Get position
+	position, err := ts.positionRepo.GetByID(ctx, positionID)
+	if err != nil {
+		return fmt.Errorf("failed to get position: %w", err)
+	}
+
+	// Verify ownership
+	if position.UserID != userID {
+		return fmt.Errorf("unauthorized: position belongs to another user")
+	}
+
+	// Verify status
+	if position.Status != domain.StatusPositionPendingApproval {
+		return fmt.Errorf("position is not pending approval")
+	}
+
+	// Update status to REJECTED
+	now := time.Now()
+	position.Status = domain.StatusPositionRejected
+	position.ClosedAt = &now
+
+	if err := ts.positionRepo.Update(ctx, position); err != nil {
+		return fmt.Errorf("failed to decline position: %w", err)
+	}
+
+	log.Printf("❌ Position Declined: %s %s", position.Symbol, position.Side)
 	return nil
 }

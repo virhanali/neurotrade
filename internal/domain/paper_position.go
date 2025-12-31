@@ -32,8 +32,10 @@ const (
 
 // PositionStatus constants
 const (
-	StatusOpen         = "OPEN"
-	StatusClosedWin    = "CLOSED_WIN"
-	StatusClosedLoss   = "CLOSED_LOSS"
-	StatusClosedManual = "CLOSED_MANUAL"
+	StatusOpen                    = "OPEN"
+	StatusClosedWin               = "CLOSED_WIN"
+	StatusClosedLoss              = "CLOSED_LOSS"
+	StatusClosedManual            = "CLOSED_MANUAL"
+	StatusPositionPendingApproval = "PENDING_APPROVAL"
+	StatusPositionRejected        = "REJECTED"
 )
