@@ -19,13 +19,22 @@ type JWTClaims struct {
 	jwt.RegisteredClaims
 }
 
-// GetJWTSecret returns the JWT secret from environment
-func GetJWTSecret() string {
-	secret := os.Getenv("JWT_SECRET")
-	if secret == "" {
-		return "default-secret-change-in-production" // Fallback for development
+var jwtSecret string
+
+// InitJWTSecret loads the JWT secret from environment
+func InitJWTSecret() {
+	jwtSecret = os.Getenv("JWT_SECRET")
+	if jwtSecret == "" {
+		jwtSecret = "default-secret-change-in-production" // Fallback for development
 	}
-	return secret
+}
+
+// GetJWTSecret returns the cached JWT secret
+func GetJWTSecret() string {
+	if jwtSecret == "" {
+		InitJWTSecret()
+	}
+	return jwtSecret
 }
 
 // GenerateJWT generates a new JWT token for a user

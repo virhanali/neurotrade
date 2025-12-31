@@ -65,11 +65,11 @@ func (ft *FlexibleTime) UnmarshalJSON(b []byte) error {
 
 // MarketAnalysisResponse represents the response from Python engine
 type MarketAnalysisResponse struct {
-	Timestamp              FlexibleTime            `json:"timestamp"`
-	BTCContext             map[string]interface{}  `json:"btc_context"`
-	OpportunitiesScreened  int                     `json:"opportunities_screened"`
-	ValidSignals           []*domain.AISignalResponse `json:"valid_signals"`
-	ExecutionTimeSeconds   float64                 `json:"execution_time_seconds"`
+	Timestamp             FlexibleTime               `json:"timestamp"`
+	BTCContext            map[string]interface{}     `json:"btc_context"`
+	OpportunitiesScreened int                        `json:"opportunities_screened"`
+	ValidSignals          []*domain.AISignalResponse `json:"valid_signals"`
+	ExecutionTimeSeconds  float64                    `json:"execution_time_seconds"`
 }
 
 // AnalyzeMarket calls the Python Engine to analyze market and generate signals
@@ -100,21 +100,17 @@ func (pb *PythonBridge) AnalyzeMarket(ctx context.Context, balance float64) ([]*
 	}
 	defer resp.Body.Close()
 
-	// Check status code
+	// Check status code first
 	if resp.StatusCode != http.StatusOK {
+		// Only read body if there's an error to report
 		body, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("Python engine returned error: status=%d, body=%s", resp.StatusCode, string(body))
 	}
 
-	// Parse response
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response body: %w", err)
-	}
-
+	// Decode response directly from stream to save memory
 	var analysisResp MarketAnalysisResponse
-	if err := json.Unmarshal(body, &analysisResp); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
+	if err := json.NewDecoder(resp.Body).Decode(&analysisResp); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
 	return analysisResp.ValidSignals, nil

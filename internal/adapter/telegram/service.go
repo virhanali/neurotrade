@@ -13,10 +13,11 @@ import (
 )
 
 type NotificationService struct {
-	botToken string
-	chatID   string
-	enabled  bool
-	location *time.Location
+	botToken   string
+	chatID     string
+	enabled    bool
+	location   *time.Location
+	httpClient *http.Client
 }
 
 type telegramMessage struct {
@@ -45,6 +46,9 @@ func NewNotificationService(botToken, chatID string) *NotificationService {
 		chatID:   chatID,
 		enabled:  enabled,
 		location: location,
+		httpClient: &http.Client{
+			Timeout: 10 * time.Second,
+		},
 	}
 }
 
@@ -164,7 +168,7 @@ func (s *NotificationService) sendMessage(text string) error {
 		return fmt.Errorf("failed to marshal telegram message: %w", err)
 	}
 
-	resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonData))
+	resp, err := s.httpClient.Post(url, "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return fmt.Errorf("failed to send telegram message: %w", err)
 	}

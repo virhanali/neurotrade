@@ -169,10 +169,18 @@ func (ts *TradingService) createPaperPosition(ctx context.Context, signal *domai
 		return fmt.Errorf("trade params not available")
 	}
 
+	if signal.EntryPrice <= 0 {
+		return fmt.Errorf("invalid entry price: %.4f", signal.EntryPrice)
+	}
+
 	// Get user to check if they're in PAPER mode
+	if ts.defaultUserID == uuid.Nil {
+		return fmt.Errorf("default user ID is not set (system initialization issue)")
+	}
+
 	user, err := ts.userRepo.GetByID(ctx, ts.defaultUserID)
 	if err != nil {
-		return fmt.Errorf("failed to get user: %w", err)
+		return fmt.Errorf("failed to get default user (%s): %w", ts.defaultUserID, err)
 	}
 
 	// Only create position if user is in PAPER mode
