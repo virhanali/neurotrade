@@ -58,7 +58,9 @@ func (ts *TradingService) ProcessMarketScan(ctx context.Context, balance float64
 	log.Println("Calling Python AI Engine for market analysis...")
 	aiSignals, err := ts.aiService.AnalyzeMarket(ctx, balance)
 	if err != nil {
-		return fmt.Errorf("failed to analyze market: %w", err)
+		// FORCE TEST: Log error but continue with empty signals so we can inject dummy
+		log.Printf("WARNING: AI Engine failed (ignored for testing): %v", err)
+		aiSignals = []*domain.AISignalResponse{}
 	}
 
 	log.Printf("Received %d signals from AI Engine", len(aiSignals))
