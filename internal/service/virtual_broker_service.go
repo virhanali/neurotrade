@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"neurotrade/internal/domain"
@@ -16,9 +17,9 @@ const (
 
 // VirtualBrokerService simulates trade execution with realistic fees
 type VirtualBrokerService struct {
-	positionRepo  domain.PaperPositionRepository
-	userRepo      domain.UserRepository
-	priceService  *MarketPriceService
+	positionRepo domain.PaperPositionRepository
+	userRepo     domain.UserRepository
+	priceService *MarketPriceService
 }
 
 // NewVirtualBrokerService creates a new VirtualBrokerService
@@ -65,7 +66,12 @@ func (s *VirtualBrokerService) CheckPositions(ctx context.Context) error {
 	// Fetch current prices
 	prices, err := s.priceService.FetchRealTimePrices(ctx, symbols)
 	if err != nil {
-		return fmt.Errorf("failed to fetch real-time prices: %w", err)
+		// If it's just missing prices for some symbols, we warn but continue with the ones we found
+		if strings.Contains(err.Error(), "missing prices") {
+			log.Printf("⚠️  Partial Price Fetch: %v", err)
+		} else {
+			return fmt.Errorf("failed to fetch real-time prices: %w", err)
+		}
 	}
 
 	// Check each position

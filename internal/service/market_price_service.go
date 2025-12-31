@@ -74,21 +74,28 @@ func (s *MarketPriceService) FetchRealTimePrices(ctx context.Context, symbols []
 		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
 
-	// Create a map for quick lookup
-	symbolMap := make(map[string]bool)
+	// Create a map for quick lookup: Normalized -> Original(s)
+	// We need to map normalized symbol (BTCUSDT) back to requested symbol (BTC/USDT)
+	symbolMap := make(map[string][]string)
 	for _, symbol := range symbols {
-		symbolMap[strings.ToUpper(symbol)] = true
+		// Remove slash and uppercase: "BTC/USDT" -> "BTCUSDT"
+		norm := strings.ReplaceAll(strings.ToUpper(symbol), "/", "")
+		symbolMap[norm] = append(symbolMap[norm], symbol)
 	}
 
 	// Extract prices for requested symbols
 	for _, ticker := range tickers {
-		if symbolMap[ticker.Symbol] {
+		if originals, ok := symbolMap[ticker.Symbol]; ok {
 			var price float64
 			_, err := fmt.Sscanf(ticker.Price, "%f", &price)
 			if err != nil {
 				continue
 			}
-			prices[ticker.Symbol] = price
+
+			// Store price for all variations requested (e.g. both BTC/USDT and BTCUSDT)
+			for _, original := range originals {
+				prices[original] = price
+			}
 		}
 	}
 
@@ -96,10 +103,11 @@ func (s *MarketPriceService) FetchRealTimePrices(ctx context.Context, symbols []
 	if len(prices) != len(symbols) {
 		missing := []string{}
 		for _, symbol := range symbols {
-			if _, ok := prices[strings.ToUpper(symbol)]; !ok {
+			if _, ok := prices[symbol]; !ok {
 				missing = append(missing, symbol)
 			}
 		}
+		// Return found prices and error listing missing ones
 		return prices, fmt.Errorf("missing prices for symbols: %v", missing)
 	}
 
