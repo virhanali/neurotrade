@@ -170,8 +170,23 @@ func (h *WebHandler) HandlePositionsHTML(c echo.Context) error {
 		`)
 	}
 
-	// Get all user positions and filter for open ones
-	allPositions, err := h.positionRepo.GetByUserID(c.Request().Context(), userID)
+	// Check if user is admin
+	isAdmin := false
+	if user, err := h.userRepo.GetByID(c.Request().Context(), userID); err == nil {
+		isAdmin = user.Role == domain.RoleAdmin
+	}
+
+	var allPositions []*domain.PaperPosition
+	var err error
+
+	if isAdmin {
+		// Admin sees ALL open positions
+		allPositions, err = h.positionRepo.GetOpenPositions(c.Request().Context())
+	} else {
+		// Regular user sees their own positions
+		allPositions, err = h.positionRepo.GetByUserID(c.Request().Context(), userID)
+	}
+
 	if err != nil {
 		return c.HTML(http.StatusInternalServerError, `
 			<tr>

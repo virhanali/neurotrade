@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 
 	"neurotrade/internal/domain"
@@ -17,6 +18,7 @@ type UserHandler struct {
 	positionRepo   domain.PaperPositionRepository
 	tradingService interface {
 		CloseAllPositions(ctx context.Context, userID string) error
+		ClosePosition(ctx context.Context, positionID uuid.UUID, userID uuid.UUID, isAdmin bool) error
 	}
 }
 
@@ -26,6 +28,7 @@ func NewUserHandler(
 	positionRepo domain.PaperPositionRepository,
 	tradingService interface {
 		CloseAllPositions(ctx context.Context, userID string) error
+		ClosePosition(ctx context.Context, positionID uuid.UUID, userID uuid.UUID, isAdmin bool) error
 	},
 ) *UserHandler {
 	return &UserHandler{
@@ -206,4 +209,35 @@ func (h *UserHandler) PanicButton(c echo.Context) error {
 		</div>
 	`
 	return c.HTML(http.StatusOK, html)
+}
+
+// ClosePosition closes a specific position
+// POST /api/user/positions/:id/close
+func (h *UserHandler) ClosePosition(c echo.Context) error {
+	userID, err := middleware.GetUserID(c)
+	if err != nil {
+		return UnauthorizedResponse(c, "User not authenticated")
+	}
+
+	positionIDStr := c.Param("id")
+	positionID, err := uuid.Parse(positionIDStr)
+	if err != nil {
+		return BadRequestResponse(c, "Invalid position ID")
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request().Context(), 10*time.Second)
+	defer cancel()
+
+	// Check if admin
+	isAdmin := false
+	if user, err := h.userRepo.GetByID(ctx, userID); err == nil {
+		isAdmin = user.Role == domain.RoleAdmin
+	}
+
+	if err := h.tradingService.ClosePosition(ctx, positionID, userID, isAdmin); err != nil {
+		return InternalServerErrorResponse(c, "Failed to close position", err)
+	}
+
+	// Return empty string to remove the row from table (HTMX swap)
+	return c.String(http.StatusOK, "")
 }

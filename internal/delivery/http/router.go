@@ -62,6 +62,7 @@ func SetupRoutes(e *echo.Echo, config *RouterConfig) {
 		user.POST("/mode/toggle", config.UserHandler.ToggleMode)
 		user.GET("/positions", config.UserHandler.GetPositions)
 		user.POST("/panic-button", config.UserHandler.PanicButton)
+		user.POST("/positions/:id/close", config.UserHandler.ClosePosition)
 	}
 
 	// Admin routes (protected with Auth + Admin middleware)
