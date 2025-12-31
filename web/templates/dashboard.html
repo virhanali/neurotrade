@@ -47,6 +47,10 @@
         .neo-card {
             transition: all 0.1s ease;
         }
+
+        .swal2-container {
+            z-index: 9999 !important;
+        }
     </style>
 </head>
 
@@ -165,13 +169,7 @@
 
         <!-- ... (rest of the file) ... -->
 
-        <!-- Admin Controls Row: Market Scan Trigger -->
-        <!-- ... inside the Market Scan card ... -->
-        <button hx-post="/api/admin/market-scan/trigger" hx-target="#scan-response"
-            hx-confirm="Start a manual market scan? This might take up to a minute."
-            class="neo-btn bg-[#ff6b6b] border-2 border-black text-white font-bold py-2 px-6 shadow-[4px_4px_0px_0px_#000] uppercase tracking-wide text-sm">
-            🚀 Trigger Now
-        </button>
+
 
         <!-- Row 2: Active Positions -->
         <div class="mb-6">
@@ -316,6 +314,8 @@
 
         // Intercept htmx:confirm to use SweetAlert2
         document.body.addEventListener('htmx:confirm', function (evt) {
+            if (!evt.detail.question) return; // If no confirmation text, let it proceed naturally
+
             evt.preventDefault();
             Swal.fire({
                 title: 'Are you sure?',
