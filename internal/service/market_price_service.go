@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 )
@@ -19,20 +20,23 @@ type PriceData struct {
 // MarketPriceService fetches real-time prices from Binance
 type MarketPriceService struct {
 	httpClient *http.Client
-	baseURL    string
+	priceURL   string
 }
 
 // NewMarketPriceService creates a new MarketPriceService
 func NewMarketPriceService() *MarketPriceService {
+	// Use single URL from environment variable, no fallback
+	priceURL := os.Getenv("BINANCE_PRICE_URL")
+
 	return &MarketPriceService{
 		httpClient: &http.Client{
 			Timeout: 10 * time.Second,
 		},
-		baseURL: "https://api.binance.com",
+		priceURL: priceURL,
 	}
 }
 
-// FetchRealTimePrices fetches current prices for multiple symbols from Binance
+// FetchRealTimePrices fetches current prices for multiple symbols from Binance Futures
 func (s *MarketPriceService) FetchRealTimePrices(ctx context.Context, symbols []string) (map[string]float64, error) {
 	if len(symbols) == 0 {
 		return make(map[string]float64), nil
@@ -40,8 +44,11 @@ func (s *MarketPriceService) FetchRealTimePrices(ctx context.Context, symbols []
 
 	prices := make(map[string]float64)
 
-	// Binance API endpoint for ticker price
-	url := fmt.Sprintf("%s/api/v3/ticker/price", s.baseURL)
+	// Use configured URL directly
+	url := s.priceURL
+	if url == "" {
+		return nil, fmt.Errorf("BINANCE_PRICE_URL environment variable is not set")
+	}
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
