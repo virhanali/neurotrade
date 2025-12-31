@@ -115,18 +115,9 @@
                     <div id="panic-response" class="mt-4"></div>
                 </div>
             </div>
-            {{else}}
-            <!-- Non-admin: Placeholder or empty col -->
-            <div class="hidden md:block col-span-12 md:col-span-4">
-                <!-- Empty space to maintain grid layout if needed, or just let other cols expand -->
-                <div
-                    class="neo-card bg-white border-2 border-black p-6 shadow-[8px_8px_0px_0px_#000] h-full flex items-center justify-center opacity-50">
-                    <p class="font-bold text-gray-400">System Normal</p>
-                </div>
-            </div>
             {{end}}
 
-            <!-- Strategy Config (Span 8) -->
+            <!-- Strategy Config (Span 8) / Dashboard Banner (Span 12 for User) -->
             {{if .IsAdmin}}
             <div class="col-span-12 md:col-span-8">
                 <div class="neo-card bg-white border-2 border-black p-6 shadow-[8px_8px_0px_0px_#000] h-full">
@@ -155,7 +146,7 @@
             </div>
             {{else}}
             <!-- Non-admin: Full width Trading Dashboard Banner -->
-            <div class="col-span-12 md:col-span-8">
+            <div class="col-span-12">
                 <div
                     class="neo-card bg-[#4dabf7] border-2 border-black p-6 shadow-[8px_8px_0px_0px_#000] h-full flex items-center justify-center">
                     <div class="text-center">
