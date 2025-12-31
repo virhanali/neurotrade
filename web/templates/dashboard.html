@@ -12,6 +12,8 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap"
         rel="stylesheet">
+    <!-- SweetAlert2 for nice alerts instead of native confirm -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script>
         tailwind.config = {
             theme: {
@@ -80,8 +82,7 @@
                     </button>
 
                     <!-- Logout -->
-                    <form method="POST" action="/api/auth/logout"
-                        onsubmit="return confirm('Are you sure you want to logout?');">
+                    <form method="POST" action="/api/auth/logout" onsubmit="confirmLogout(event)">
                         <button type="submit"
                             class="neo-btn px-4 py-3 bg-white border-2 border-black text-black font-semibold shadow-[4px_4px_0px_0px_#000] hover:bg-gray-100">
                             🚪 Logout
@@ -312,6 +313,53 @@
                 window.location.reload();
             }
         });
+
+        // Intercept htmx:confirm to use SweetAlert2
+        document.body.addEventListener('htmx:confirm', function (evt) {
+            evt.preventDefault();
+            Swal.fire({
+                title: 'Are you sure?',
+                text: evt.detail.question,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#000000', // Black for neo-brutalism
+                cancelButtonColor: '#ff6b6b',  // Red for cancel
+                confirmButtonText: 'Yes, proceed!',
+                cancelButtonText: 'Cancel',
+                customClass: {
+                    popup: 'border-2 border-black shadow-[8px_8px_0px_0px_#000] rounded-none',
+                    confirmButton: 'border-2 border-black shadow-[4px_4px_0px_0px_#000] rounded-none px-6 py-2 font-bold uppercase hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px] transition-all',
+                    cancelButton: 'border-2 border-black shadow-[4px_4px_0px_0px_#000] rounded-none px-6 py-2 font-bold uppercase hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px] transition-all'
+                }
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    evt.detail.issueRequest(true); // Proceed with the request
+                }
+            });
+        });
+
+        // Handle Logout Form separately (since it's not HTMX)
+        function confirmLogout(event) {
+            event.preventDefault();
+            Swal.fire({
+                title: 'Logout?',
+                text: "Are you sure you want to logout?",
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonColor: '#000000',
+                cancelButtonColor: '#ff6b6b',
+                confirmButtonText: 'Yes, Logout',
+                customClass: {
+                    popup: 'border-2 border-black shadow-[8px_8px_0px_0px_#000] rounded-none',
+                    confirmButton: 'border-2 border-black shadow-[4px_4px_0px_0px_#000] rounded-none px-6 py-2 font-bold uppercase hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px] transition-all',
+                    cancelButton: 'border-2 border-black shadow-[4px_4px_0px_0px_#000] rounded-none px-6 py-2 font-bold uppercase hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px] transition-all'
+                }
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    event.target.submit();
+                }
+            });
+        }
     </script>
 </body>
 
