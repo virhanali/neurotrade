@@ -128,21 +128,20 @@ func (s *NotificationService) SendReview(signal domain.Signal, pnl *float64) err
 
 	message := fmt.Sprintf(
 		"%s *SIGNAL REVIEW: %s*\n\n"+
-			"📊 Symbol: `%s`\n"+
-			"📈 Type: `%s`\n"+
+			"- Symbol: `%s`\n"+
+			"- Type: `%s`\n"+
 			"━━━━━━━━━━━━━━━━━\n"+
-			"🔵 Entry: `$%.4f`\n"+
-			"🛑 Stop Loss: `$%.4f`\n"+
-			"🎯 Take Profit: `$%.4f`\n"+
-			"📈 Confidence: `%d%%`\n",
-		statusEmoji,
+			"- Entry: `$%.4f`\n"+
+			"- Stop Loss: `$%.4f`\n"+
+			"- Take Profit: `$%.4f`\n",
+		"━━━━━━━━━━━━━━━━━\n"+
+			statusEmoji,
 		statusText,
 		signal.Symbol,
 		signal.Type,
 		signal.EntryPrice,
 		signal.SLPrice,
 		signal.TPPrice,
-		signal.Confidence,
 	)
 
 	// Add PnL if available

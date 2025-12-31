@@ -280,6 +280,7 @@ func (h *WebHandler) HandlePositionsHTML(c echo.Context) error {
 				<td class="py-4 px-6">
 					<button
 						hx-post="/api/user/positions/%s/close"
+						hx-confirm="Are you sure you want to CLOSE this position?"
 						hx-target="closest tr"
 						hx-swap="outerHTML"
 						class="bg-[#ff6b6b] border-2 border-black text-white font-bold px-4 py-2 shadow-[4px_4px_0px_0px_#000] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-none transition-all text-sm uppercase tracking-wide"
