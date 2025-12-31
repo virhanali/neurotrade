@@ -17,9 +17,11 @@ const (
 
 // VirtualBrokerService simulates trade execution with realistic fees
 type VirtualBrokerService struct {
-	positionRepo domain.PaperPositionRepository
-	userRepo     domain.UserRepository
-	priceService *MarketPriceService
+	positionRepo        domain.PaperPositionRepository
+	userRepo            domain.UserRepository
+	priceService        *MarketPriceService
+	signalRepo          domain.SignalRepository
+	notificationService NotificationService // Reuse interface from trading/review service or define new one
 }
 
 // NewVirtualBrokerService creates a new VirtualBrokerService
@@ -27,11 +29,15 @@ func NewVirtualBrokerService(
 	positionRepo domain.PaperPositionRepository,
 	userRepo domain.UserRepository,
 	priceService *MarketPriceService,
+	signalRepo domain.SignalRepository,
+	notificationService NotificationService,
 ) *VirtualBrokerService {
 	return &VirtualBrokerService{
-		positionRepo: positionRepo,
-		userRepo:     userRepo,
-		priceService: priceService,
+		positionRepo:        positionRepo,
+		userRepo:            userRepo,
+		priceService:        priceService,
+		signalRepo:          signalRepo,
+		notificationService: notificationService,
 	}
 }
 
@@ -118,6 +124,44 @@ func (s *VirtualBrokerService) CheckPositions(ctx context.Context) error {
 			continue
 		}
 
+		// --- NOTIFICATION & SIGNAL UPDATE LOGIC ---
+		// Determine result string for Signal Review
+		reviewResult := "WIN"
+		if status == domain.StatusClosedLoss {
+			reviewResult = "LOSS"
+		}
+
+		// Determine PnL % for review
+		var pnlPercent float64
+		// Use case-insensitive side check
+		side := strings.ToUpper(position.Side)
+		if side == "LONG" || side == "BUY" {
+			pnlPercent = ((currentPrice - position.EntryPrice) / position.EntryPrice) * 100
+		} else {
+			pnlPercent = ((position.EntryPrice - currentPrice) / position.EntryPrice) * 100
+		}
+
+		// Update Signal in DB if attached
+		if position.SignalID != nil {
+			// Update signal review status immediately to stop ReviewService from picking it up
+			if err := s.signalRepo.UpdateReviewStatus(ctx, *position.SignalID, reviewResult, &pnlPercent); err != nil {
+				log.Printf("WARNING: Failed to update signal review status: %v", err)
+			}
+
+			// Send Telegram Notification
+			if s.notificationService != nil {
+				// Fetch signal details for notification
+				if sig, err := s.signalRepo.GetByID(ctx, *position.SignalID); err == nil {
+					sig.ReviewResult = &reviewResult
+					// Pass netPnL (dollar amount) for user notification, NOT percentage
+					if err := s.notificationService.SendReview(*sig, &netPnL); err != nil {
+						log.Printf("WARNING: Failed to send auto-close notification: %v", err)
+					}
+				}
+			}
+		}
+		// ------------------------------------------
+
 		log.Printf("✅ Position CLOSED: %s %s | Entry=%.2f Exit=%.2f | PnL=%.2f USDT | Status=%s",
 			position.Symbol, position.Side, position.EntryPrice, currentPrice, netPnL, status)
 		log.Printf("   User balance updated: %.2f → %.2f USDT", user.PaperBalance, newBalance)
@@ -128,19 +172,27 @@ func (s *VirtualBrokerService) CheckPositions(ctx context.Context) error {
 
 // shouldClosePosition determines if a position should be closed based on current price
 func (s *VirtualBrokerService) shouldClosePosition(position *domain.PaperPosition, currentPrice float64) (bool, string) {
-	if position.Side == domain.SideLong {
+	// Normalize side to uppercase
+	side := strings.ToUpper(position.Side)
+
+	switch side {
+	case domain.SideLong, "BUY":
 		// Long position logic
 		if currentPrice >= position.TPPrice {
 			return true, domain.StatusClosedWin
 		}
+		// SL logic: For LONG, if Current <= SL, it's a loss.
 		if currentPrice <= position.SLPrice {
 			return true, domain.StatusClosedLoss
 		}
-	} else if position.Side == domain.SideShort {
+
+	case domain.SideShort, "SELL":
 		// Short position logic
+		// TP logic: For SHORT, if Current <= TP, it's a win.
 		if currentPrice <= position.TPPrice {
 			return true, domain.StatusClosedWin
 		}
+		// SL logic: For SHORT, if Current >= SL, it's a loss.
 		if currentPrice >= position.SLPrice {
 			return true, domain.StatusClosedLoss
 		}
