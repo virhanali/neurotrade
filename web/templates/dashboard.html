@@ -83,8 +83,8 @@
                         class="flex items-center space-x-2 bg-white border-2 border-black px-4 py-3 shadow-[4px_4px_0px_0px_#000]">
                         <span class="text-sm font-bold text-black uppercase">AUTO-TRADE</span>
                         <label class="relative inline-flex items-center cursor-pointer">
-                            <input type="checkbox" class="sr-only peer" hx-post="/api/user/settings/autotrade"
-                                hx-vals='js:{"enabled": event.target.checked}' {{if
+                            <input type="checkbox" name="enabled" value="true" class="sr-only peer"
+                                hx-post="/api/user/settings/autotrade" hx-swap="none" {{if
                                 .User.IsAutoTradeEnabled}}checked{{end}}>
                             <div
                                 class="w-11 h-6 bg-gray-200 peer-focus:outline-none border-2 border-black rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-black after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#51cf66]">
@@ -204,7 +204,8 @@
                                 <td class="py-4 px-6 font-bold text-black">{{.Symbol}}</td>
                                 <td class="py-4 px-6">
                                     <span
-                                        class="inline-block border-2 border-black px-3 py-1 font-bold text-sm shadow-[2px_2px_0px_0px_#000] {{if eq .Side "SHORT"}}bg-[#ff6b6b] text-white{{else}}bg-[#51cf66] text-black{{end}}">
+                                        class="inline-block border-2 border-black px-3 py-1 font-bold text-sm shadow-[2px_2px_0px_0px_#000] {{if eq .Side "
+                                        SHORT"}}bg-[#ff6b6b] text-white{{else}}bg-[#51cf66] text-black{{end}}">
                                         {{.Side}}
                                     </span>
                                 </td>

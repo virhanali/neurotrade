@@ -255,15 +255,17 @@ func (h *UserHandler) ToggleAutoTrade(c echo.Context) error {
 	}
 
 	var req struct {
-		Enabled bool `json:"enabled"`
+		// Support both JSON "enabled": true and Form "enabled=true"
+		Enabled bool `json:"enabled" form:"enabled" query:"enabled"`
 	}
+
+	// Bind automatically handles JSON body OR Form values
 	if err := c.Bind(&req); err != nil {
 		return BadRequestResponse(c, "Invalid request payload")
 	}
 
 	ctx := c.Request().Context()
 
-	// Assuming UserRepository has UpdateAutoTradeStatus method now (we added it)
 	if err := h.userRepo.UpdateAutoTradeStatus(ctx, userID, req.Enabled); err != nil {
 		return InternalServerErrorResponse(c, "Failed to update auto-trade status", err)
 	}
