@@ -347,8 +347,27 @@ func (h *WebHandler) getSystemStats(c echo.Context) (map[string]interface{}, err
 		activePositions = len(allOpenPositions)
 	}
 
-	// Calculate win rate (placeholder for now)
+	// Calculate win rate
+	// Query all closed positions
+	// Depending on repo capabilities, we might need a method GetClosedPositions(ctx)
+	// For now, let's assume we need to add it or do a raw query here since this is a specific stats need.
+	// Actually, we should check if positionRepo has GetClosedPositions or similar?
+	// The interface likely doesn't have it yet.
+	// Let's do a raw counting query here for efficiency instead of fetching all closed positions into memory.
+
+	var totalClosed, wins int
+	err = h.db.QueryRow(ctx, `
+		SELECT 
+			COUNT(*),
+			COUNT(*) FILTER (WHERE pnl > 0)
+		FROM paper_positions 
+		WHERE status IN ('CLOSED', 'CLOSED_WIN', 'CLOSED_LOSS', 'CLOSED_MANUAL')
+	`).Scan(&totalClosed, &wins)
+
 	winRate := 0.0
+	if err == nil && totalClosed > 0 {
+		winRate = (float64(wins) / float64(totalClosed)) * 100
+	}
 
 	return map[string]interface{}{
 		"TotalUsers":      totalUsers,
