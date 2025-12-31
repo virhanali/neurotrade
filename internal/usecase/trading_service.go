@@ -14,7 +14,7 @@ import (
 // NotificationService defines the interface for sending notifications
 type NotificationService interface {
 	SendSignal(signal domain.Signal) error
-	SendReview(signal domain.Signal) error
+	SendReview(signal domain.Signal, pnl *float64) error
 }
 
 // TradingService handles core trading logic
@@ -24,6 +24,7 @@ type TradingService struct {
 	positionRepo        domain.PaperPositionRepository
 	userRepo            domain.UserRepository
 	notificationService NotificationService
+	priceService        domain.MarketPriceService
 	minConfidence       int
 	defaultUserID       uuid.UUID // For Phase 3, we'll use a default user (later will be per-user)
 }
@@ -35,6 +36,7 @@ func NewTradingService(
 	positionRepo domain.PaperPositionRepository,
 	userRepo domain.UserRepository,
 	notificationService NotificationService,
+	priceService domain.MarketPriceService,
 	minConfidence int,
 	defaultUserID uuid.UUID,
 ) *TradingService {
@@ -44,6 +46,7 @@ func NewTradingService(
 		positionRepo:        positionRepo,
 		userRepo:            userRepo,
 		notificationService: notificationService,
+		priceService:        priceService,
 		minConfidence:       minConfidence,
 		defaultUserID:       defaultUserID,
 	}
@@ -247,26 +250,15 @@ func (ts *TradingService) ClosePosition(ctx context.Context, positionID uuid.UUI
 		return fmt.Errorf("position is already closed")
 	}
 
-	// Calculate PnL similar to Panic Button but for single position
-	// ideally we should fetch real price here, but for now we'll simulate or use last known
-	// For manual close, we really should try to get the real price if possible.
-	// However, TradingService doesn't have direct access to MarketPriceService (it's in handlers/services).
-	// We'll assume the handler passes the current price or we accept a slight lag/simulated execution.
-	// To keep it safe and simple for this "Panic/Manual" close, we'll use similar logic to Panic:
-	// If we can't fetch price, we might use EntryPrice (break even) or logic from VirtualBroker.
-	// BUT wait, TradingService has `aiService` but not `priceService`.
-	// Let's rely on the handler to likely not have passed price, so we might need to assume a price
-	// or update TradingService to have price access.
-	// Given the constraints and existing code, we will implement a "Force Close" using Entry Price
-	// (or just mark as ClosedManual to be processed? No, user wants immediate PnL).
-	// Let's use EntryPrice for now as "Emergency Close" logic if we can't get price,
-	// OR arguably better: WE SHOULD inject PriceService into TradingService?
-	// User asked to check for "logic errors". Using EntryPrice for manual close is a logic error (0 PnL).
-	// Let's stick to the styling of CloseAllPositions for consistency for now,
-	// but add a TODO or note. Actually, let's look at CloseAllPositions... it uses EntryPrice!
-	// "For panic button, we use entry price as exit (worst case scenario)" -> This is indeed suboptimal but safe.
+	// Calculate PnL
+	// Fetch real-time price for accurate PnL
+	currentPrice, err := ts.priceService.FetchSinglePrice(ctx, position.Symbol)
+	if err != nil {
+		log.Printf("WARNING: Failed to fetch price for closing %s, using entry price: %v", position.Symbol, err)
+		currentPrice = position.EntryPrice
+	}
 
-	exitPrice := position.EntryPrice
+	exitPrice := currentPrice
 
 	var pnl float64
 	if position.Side == domain.SideLong {
@@ -321,7 +313,7 @@ func (ts *TradingService) ClosePosition(ctx context.Context, positionID uuid.UUI
 				// It formats message based on fields.
 				// Let's update SendReview in next step to handle this better if needed.
 				// For now, let's just trigger it.
-				if err := ts.notificationService.SendReview(*sig); err != nil {
+				if err := ts.notificationService.SendReview(*sig, &pnl); err != nil {
 					log.Printf("WARNING: Failed to send close notification: %v", err)
 				}
 			}

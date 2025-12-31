@@ -17,7 +17,7 @@ const (
 // NotificationService defines the interface for sending notifications
 type NotificationService interface {
 	SendSignal(signal domain.Signal) error
-	SendReview(signal domain.Signal) error
+	SendReview(signal domain.Signal, pnl *float64) error
 }
 
 // ReviewService audits past signals and marks them as WIN/LOSS/FLOATING
@@ -100,7 +100,7 @@ func (s *ReviewService) ReviewPastSignals(ctx context.Context, olderThanMinutes 
 		// Send Telegram notification for WIN/LOSS (not for FLOATING)
 		if s.notificationService != nil && (result == "WIN" || result == "LOSS") {
 			signal.ReviewResult = &result
-			if err := s.notificationService.SendReview(*signal); err != nil {
+			if err := s.notificationService.SendReview(*signal, nil); err != nil {
 				log.Printf("WARNING: Failed to send Telegram review notification: %v", err)
 			}
 		}

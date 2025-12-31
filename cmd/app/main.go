@@ -115,6 +115,7 @@ func main() {
 		positionRepo,
 		userRepo,
 		notificationService,
+		priceService,
 		cfg.Trading.MinConfidence,
 		defaultUserID,
 	)

@@ -90,7 +90,7 @@ func (s *NotificationService) SendSignal(signal domain.Signal) error {
 }
 
 // SendReview sends a signal review (WIN/LOSS) report to Telegram
-func (s *NotificationService) SendReview(signal domain.Signal) error {
+func (s *NotificationService) SendReview(signal domain.Signal, pnl *float64) error {
 	if !s.enabled {
 		return nil
 	}
@@ -114,6 +114,9 @@ func (s *NotificationService) SendReview(signal domain.Signal) error {
 		case "FLOATING":
 			statusEmoji = "⚖️"
 			statusText = "FLOATING"
+		case "MANUAL_CLOSE":
+			statusEmoji = "⚠️"
+			statusText = "MANUAL CLOSED"
 		default:
 			statusEmoji = "⏳"
 			statusText = *signal.ReviewResult
@@ -131,9 +134,7 @@ func (s *NotificationService) SendReview(signal domain.Signal) error {
 			"🔵 Entry: `$%.4f`\n"+
 			"🛑 Stop Loss: `$%.4f`\n"+
 			"🎯 Take Profit: `$%.4f`\n"+
-			"📈 Confidence: `%d%%`\n"+
-			"🕒 Generated: `%s`\n"+
-			"🏁 Reviewed: `%s`",
+			"📈 Confidence: `%d%%`\n",
 		statusEmoji,
 		statusText,
 		signal.Symbol,
@@ -142,6 +143,20 @@ func (s *NotificationService) SendReview(signal domain.Signal) error {
 		signal.SLPrice,
 		signal.TPPrice,
 		signal.Confidence,
+	)
+
+	// Add PnL if available
+	if pnl != nil {
+		pnlEmoji := "📉"
+		if *pnl >= 0 {
+			pnlEmoji = "📈"
+		}
+		message += fmt.Sprintf("%s Realized PnL: `$%.2f`\n", pnlEmoji, *pnl)
+	}
+
+	message += fmt.Sprintf(
+		"🕒 Generated: `%s`\n"+
+			"🏁 Reviewed: `%s`",
 		signal.CreatedAt.In(s.location).Format("2006-01-02 15:04"),
 		time.Now().In(s.location).Format("2006-01-02 15:04"),
 	)
