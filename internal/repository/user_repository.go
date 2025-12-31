@@ -122,3 +122,45 @@ func (r *UserRepositoryImpl) UpdateBalance(ctx context.Context, userID uuid.UUID
 
 	return nil
 }
+
+// GetAll retrieves all users
+func (r *UserRepositoryImpl) GetAll(ctx context.Context) ([]*domain.User, error) {
+	query := `
+		SELECT id, username, password_hash, role,
+		       paper_balance, real_balance_cache, mode, created_at, updated_at
+		FROM users
+		ORDER BY created_at ASC
+	`
+
+	rows, err := r.db.Query(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query all users: %w", err)
+	}
+	defer rows.Close()
+
+	var users []*domain.User
+	for rows.Next() {
+		user := &domain.User{}
+		err := rows.Scan(
+			&user.ID,
+			&user.Username,
+			&user.PasswordHash,
+			&user.Role,
+			&user.PaperBalance,
+			&user.RealBalanceCache,
+			&user.Mode,
+			&user.CreatedAt,
+			&user.UpdatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan user: %w", err)
+		}
+		users = append(users, user)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating users: %w", err)
+	}
+
+	return users, nil
+}

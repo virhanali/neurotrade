@@ -26,7 +26,6 @@ type TradingService struct {
 	notificationService NotificationService
 	priceService        domain.MarketPriceService
 	minConfidence       int
-	defaultUserID       uuid.UUID // For Phase 3, we'll use a default user (later will be per-user)
 }
 
 // NewTradingService creates a new TradingService
@@ -38,7 +37,6 @@ func NewTradingService(
 	notificationService NotificationService,
 	priceService domain.MarketPriceService,
 	minConfidence int,
-	defaultUserID uuid.UUID,
 ) *TradingService {
 	return &TradingService{
 		aiService:           aiService,
@@ -48,7 +46,6 @@ func NewTradingService(
 		notificationService: notificationService,
 		priceService:        priceService,
 		minConfidence:       minConfidence,
-		defaultUserID:       defaultUserID,
 	}
 }
 
@@ -65,6 +62,14 @@ func (ts *TradingService) ProcessMarketScan(ctx context.Context, balance float64
 	}
 
 	log.Printf("Received %d signals from AI Engine", len(aiSignals))
+
+	// Get all eligible users for auto-trading
+	users, err := ts.userRepo.GetAll(ctx)
+	if err != nil {
+		log.Printf("WARNING: Failed to fetch users for auto-trading: %v", err)
+		// We still process signals to save them to DB
+	}
+	log.Printf("Found %d users for potential auto-trading", len(users))
 
 	// Step 2: Process each signal
 	savedCount := 0
@@ -108,10 +113,18 @@ func (ts *TradingService) ProcessMarketScan(ctx context.Context, balance float64
 			}
 		}
 
-		// Auto-create paper position for this signal
-		if err := ts.createPaperPosition(ctx, signal, aiSignal.TradeParams, balance); err != nil {
-			log.Printf("WARNING: Failed to create paper position for %s: %v", signal.Symbol, err)
-			// Don't stop - signal is already saved
+		// Distribute signal to ALL users
+		for _, user := range users {
+			// Only create position if user is in PAPER mode (and later check for Enabled AutoTrade flag)
+			if user.Mode != domain.ModePaper {
+				continue
+			}
+
+			// Auto-create paper position for this user
+			// We pass the specific user object now
+			if err := ts.createPaperPositionForUser(ctx, user, signal, aiSignal.TradeParams); err != nil {
+				log.Printf("WARNING: Failed to create paper position for user %s (%s): %v", user.Username, signal.Symbol, err)
+			}
 		}
 
 		savedCount++
@@ -166,30 +179,14 @@ func (ts *TradingService) GetSignalsBySymbol(ctx context.Context, symbol string,
 	return ts.signalRepo.GetBySymbol(ctx, symbol, limit)
 }
 
-// createPaperPosition automatically creates a paper trading position for a high-confidence signal
-func (ts *TradingService) createPaperPosition(ctx context.Context, signal *domain.Signal, tradeParams *domain.TradeParams, balance float64) error {
+// createPaperPositionForUser automatically creates a paper trading position for a specific user
+func (ts *TradingService) createPaperPositionForUser(ctx context.Context, user *domain.User, signal *domain.Signal, tradeParams *domain.TradeParams) error {
 	if tradeParams == nil {
 		return fmt.Errorf("trade params not available")
 	}
 
 	if signal.EntryPrice <= 0 {
 		return fmt.Errorf("invalid entry price: %.4f", signal.EntryPrice)
-	}
-
-	// Get user to check if they're in PAPER mode
-	if ts.defaultUserID == uuid.Nil {
-		return fmt.Errorf("default user ID is not set (system initialization issue)")
-	}
-
-	user, err := ts.userRepo.GetByID(ctx, ts.defaultUserID)
-	if err != nil {
-		return fmt.Errorf("failed to get default user (%s): %w", ts.defaultUserID, err)
-	}
-
-	// Only create position if user is in PAPER mode
-	if user.Mode != domain.ModePaper {
-		log.Printf("Skipping paper position creation: user is in %s mode", user.Mode)
-		return nil
 	}
 
 	// Determine position side based on signal type
@@ -226,8 +223,8 @@ func (ts *TradingService) createPaperPosition(ctx context.Context, signal *domai
 		return fmt.Errorf("failed to save paper position: %w", err)
 	}
 
-	log.Printf("🎯 Auto-created Paper Position: %s %s | Size: %.6f | Entry: %.4f",
-		position.Symbol, position.Side, position.Size, position.EntryPrice)
+	log.Printf("🎯 Auto-created Paper Position for %s: %s | Size: %.6f",
+		user.Username, position.Symbol, position.Size)
 
 	return nil
 }

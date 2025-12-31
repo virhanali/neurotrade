@@ -11,7 +11,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 	"github.com/labstack/echo/v4"
@@ -112,7 +111,6 @@ func main() {
 		notificationService,
 		priceService,
 		cfg.Trading.MinConfidence,
-		uuid.Nil, // No default user
 	)
 
 	// Initialize market scan scheduler

@@ -43,6 +43,8 @@ type UserRepository interface {
 
 	// UpdateBalance updates user's balance
 	UpdateBalance(ctx context.Context, userID uuid.UUID, balance float64, mode string) error
+	// GetAll retrieves all users
+	GetAll(ctx context.Context) ([]*User, error)
 }
 
 // PaperPositionRepository defines the interface for paper position operations
