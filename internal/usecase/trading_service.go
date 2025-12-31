@@ -303,16 +303,18 @@ func (ts *TradingService) ClosePosition(ctx context.Context, positionID uuid.UUI
 		// Let's try to fetch the signal if possible, otherwise mock it.
 		if position.SignalID != nil {
 			if sig, err := ts.signalRepo.GetByID(ctx, *position.SignalID); err == nil {
+				// Mark signal as manually closed in DB immediately to prevent ReviewService from processing it
+				manuallyClosed := "MANUAL_CLOSE"
+				// We don't have a specific pnl percentage for the signal here readily available from position pnl (which is $)
+				// But we can approximate or just leave pnl nil.
+				// UpdateReviewStatus(ctx, id, status, pnl)
+				if err := ts.signalRepo.UpdateReviewStatus(ctx, sig.ID, manuallyClosed, nil); err != nil {
+					log.Printf("WARNING: Failed to update signal status to MANUAL_CLOSE: %v", err)
+				}
+
 				status := "MANUAL_CLOSE"
-				sig.ReviewResult = &status // Custom status
-				// Pass the PnL we just calculated
-				// But SendReview might calculate its own or use what's passed?
-				// Looking at SendReview code... it checks ReviewResult.
-				// It doesn't seem to take PnL explicitly in the struct for the message?
-				// Wait, SendReview code: "SendSignal(signal domain.Signal)".
-				// It formats message based on fields.
-				// Let's update SendReview in next step to handle this better if needed.
-				// For now, let's just trigger it.
+				sig.ReviewResult = &status // Custom status for notification logic
+
 				if err := ts.notificationService.SendReview(*sig, &pnl); err != nil {
 					log.Printf("WARNING: Failed to send close notification: %v", err)
 				}

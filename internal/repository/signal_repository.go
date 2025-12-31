@@ -212,6 +212,7 @@ func (r *SignalRepositoryImpl) GetPendingSignals(ctx context.Context, olderThanM
 		       confidence, reasoning, status, review_result, created_at
 		FROM signals
 		WHERE status = 'PENDING'
+		  AND (review_result IS NULL OR review_result LIKE 'FLOATING%')
 		  AND created_at < NOW() - INTERVAL '1 minute' * $1
 		ORDER BY created_at ASC
 	`
