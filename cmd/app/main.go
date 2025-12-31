@@ -17,14 +17,12 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/robfig/cron/v3"
-	"golang.org/x/crypto/bcrypt"
 
 	"neurotrade/configs"
 	"neurotrade/internal/adapter"
 	"neurotrade/internal/adapter/telegram"
 	"neurotrade/internal/database"
 	httpdelivery "neurotrade/internal/delivery/http"
-	"neurotrade/internal/domain"
 	"neurotrade/internal/infra"
 	authmiddleware "neurotrade/internal/middleware"
 	"neurotrade/internal/repository"
@@ -76,9 +74,6 @@ func main() {
 	userRepo := repository.NewUserRepository(db)
 	positionRepo := repository.NewPaperPositionRepository(db)
 
-	// Create default user for Phase 3-4 (later will be per-user authentication)
-	defaultUserID := ensureDefaultUserWithPassword(ctx, userRepo)
-
 	// Initialize Telegram notification service (Phase 5)
 	telegramBotToken := os.Getenv("TELEGRAM_BOT_TOKEN")
 	telegramChatID := os.Getenv("TELEGRAM_CHAT_ID")
@@ -117,7 +112,7 @@ func main() {
 		notificationService,
 		priceService,
 		cfg.Trading.MinConfidence,
-		defaultUserID,
+		uuid.Nil, // No default user
 	)
 
 	// Initialize market scan scheduler
@@ -268,45 +263,4 @@ func main() {
 	}
 
 	log.Println("✓ Server exited gracefully")
-}
-
-func ensureDefaultUserWithPassword(ctx context.Context, userRepo domain.UserRepository) uuid.UUID {
-	// Try to get existing default user
-	defaultUser, err := userRepo.GetByUsername(ctx, "default")
-	if err == nil {
-		log.Printf("✓ Using existing default user: %s", defaultUser.ID)
-		return defaultUser.ID
-	}
-
-	// Create new default user with hashed password
-	log.Println("Creating default user for paper trading...")
-	userID := uuid.New()
-
-	// Hash default password "password123"
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.DefaultCost)
-	if err != nil {
-		log.Fatalf("Failed to hash password: %v", err)
-	}
-
-	user := &domain.User{
-		ID:           userID,
-		Username:     "default",
-		PasswordHash: string(hashedPassword),
-		Role:         domain.RoleUser,
-		PaperBalance: 1000.0, // Start with $1000 paper balance
-		Mode:         domain.ModePaper,
-		CreatedAt:    time.Now(),
-		UpdatedAt:    time.Now(),
-	}
-
-	if err := userRepo.Create(ctx, user); err != nil {
-		log.Printf("WARNING: Failed to create default user: %v", err)
-		log.Println("Paper trading will not work without a default user")
-		return uuid.Nil
-	}
-
-	log.Printf("✓ Created default user with $%.2f paper balance", user.PaperBalance)
-	log.Println("  Username: default")
-	log.Println("  Password: password123")
-	return userID
 }
