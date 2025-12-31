@@ -63,6 +63,24 @@ func (ts *TradingService) ProcessMarketScan(ctx context.Context, balance float64
 
 	log.Printf("Received %d signals from AI Engine", len(aiSignals))
 
+	// --- FORCE TEST INJECTION ---
+	// Inject a dummy signal to test approval workflow
+	dummySignal := &domain.AISignalResponse{
+		Symbol:             "TEST-BTC",
+		FinalSignal:        "LONG",
+		CombinedConfidence: 99,
+		LogicReasoning:     "Force Test Signal",
+		VisionAnalysis:     "Force Test Signal",
+		TradeParams: &domain.TradeParams{
+			EntryPrice:       50000.0,
+			StopLoss:         49000.0,
+			TakeProfit:       52000.0,
+			PositionSizeUSDT: 100.0,
+		},
+	}
+	aiSignals = append(aiSignals, dummySignal)
+	// ---------------------------
+
 	// Get all eligible users for auto-trading
 	users, err := ts.userRepo.GetAll(ctx)
 	if err != nil {
