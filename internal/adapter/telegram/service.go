@@ -146,16 +146,12 @@ func (s *NotificationService) SendReview(signal domain.Signal, pnl *float64) err
 
 	// Add PnL if available
 	if pnl != nil {
-		pnlEmoji := "📉"
-		if *pnl >= 0 {
-			pnlEmoji = "📈"
-		}
-		message += fmt.Sprintf("%s Realized PnL: `$%.2f`\n", pnlEmoji, *pnl)
+		message += fmt.Sprintf("- Realized PnL: `$%.2f`\n", *pnl)
 	}
 
 	message += fmt.Sprintf(
-		"🕒 Generated: `%s`\n"+
-			"🏁 Reviewed: `%s`",
+		"- Generated: `%s`\n"+
+			"- Reviewed: `%s`",
 		signal.CreatedAt.In(s.location).Format("2006-01-02 15:04"),
 		time.Now().In(s.location).Format("2006-01-02 15:04"),
 	)
