@@ -80,7 +80,8 @@
                     </button>
 
                     <!-- Logout -->
-                    <form method="POST" action="/api/auth/logout">
+                    <form method="POST" action="/api/auth/logout"
+                        onsubmit="return confirm('Are you sure you want to logout?');">
                         <button type="submit"
                             class="neo-btn px-4 py-3 bg-white border-2 border-black text-black font-semibold shadow-[4px_4px_0px_0px_#000] hover:bg-gray-100">
                             🚪 Logout
@@ -95,12 +96,13 @@
     <div class="max-w-7xl mx-auto px-6 py-8">
         <!-- Row 1: Critical Controls -->
         <div class="grid grid-cols-12 gap-6 mb-6">
-            <!-- Panic Button (Span 4) -->
+            <!-- Panic Button (Span 4) - Admin Only -->
+            {{if .IsAdmin}}
             <div class="col-span-12 md:col-span-4">
                 <div class="neo-card bg-[#ff6b6b] border-2 border-black p-6 shadow-[8px_8px_0px_0px_#000] h-full">
                     <h2 class="text-2xl font-bold text-white mb-4">⚠️ EMERGENCY</h2>
                     <button hx-post="/api/user/panic-button"
-                        hx-confirm="Are you sure you want to CLOSE ALL positions immediately?"
+                        hx-confirm="🚨 DANGER: Are you sure you want to FORCE CLOSE ALL positions immediately? This cannot be undone."
                         hx-target="#panic-response"
                         class="neo-btn w-full bg-black border-2 border-black text-white font-bold py-4 px-6 text-lg shadow-[4px_4px_0px_0px_#fff] hover:shadow-none uppercase tracking-wide">
                         🚨 STOP ALL
@@ -108,13 +110,25 @@
                     <div id="panic-response" class="mt-4"></div>
                 </div>
             </div>
+            {{else}}
+            <!-- Non-admin: Placeholder or empty col -->
+            <div class="hidden md:block col-span-12 md:col-span-4">
+                <!-- Empty space to maintain grid layout if needed, or just let other cols expand -->
+                <div
+                    class="neo-card bg-white border-2 border-black p-6 shadow-[8px_8px_0px_0px_#000] h-full flex items-center justify-center opacity-50">
+                    <p class="font-bold text-gray-400">System Normal</p>
+                </div>
+            </div>
+            {{end}}
 
             <!-- Strategy Config (Span 8) -->
             {{if .IsAdmin}}
             <div class="col-span-12 md:col-span-8">
                 <div class="neo-card bg-white border-2 border-black p-6 shadow-[8px_8px_0px_0px_#000] h-full">
                     <h2 class="text-2xl font-bold text-black mb-4">🎯 Strategy Configuration</h2>
-                    <form hx-put="/api/admin/strategies/active" hx-target="#strategy-response">
+                    <form hx-put="/api/admin/strategies/active" hx-target="#strategy-response"
+                        hx-confirm="Are you sure you want to change the active strategy?">
+                        <!-- ... form content ... -->
                         <label for="strategy" class="block text-sm font-bold text-black uppercase tracking-wide mb-2">
                             Active Strategy Prompt:
                         </label>
@@ -135,7 +149,7 @@
                 </div>
             </div>
             {{else}}
-            <!-- Non-admin: Full width panic button -->
+            <!-- Non-admin: Full width Trading Dashboard Banner -->
             <div class="col-span-12 md:col-span-8">
                 <div
                     class="neo-card bg-[#4dabf7] border-2 border-black p-6 shadow-[8px_8px_0px_0px_#000] h-full flex items-center justify-center">
@@ -147,6 +161,16 @@
             </div>
             {{end}}
         </div>
+
+        <!-- ... (rest of the file) ... -->
+
+        <!-- Admin Controls Row: Market Scan Trigger -->
+        <!-- ... inside the Market Scan card ... -->
+        <button hx-post="/api/admin/market-scan/trigger" hx-target="#scan-response"
+            hx-confirm="Start a manual market scan? This might take up to a minute."
+            class="neo-btn bg-[#ff6b6b] border-2 border-black text-white font-bold py-2 px-6 shadow-[4px_4px_0px_0px_#000] uppercase tracking-wide text-sm">
+            🚀 Trigger Now
+        </button>
 
         <!-- Row 2: Active Positions -->
         <div class="mb-6">
@@ -238,6 +262,7 @@
                     <div class="flex items-center justify-between mb-4 pb-4 border-b-2 border-black">
                         <h3 class="text-xl font-bold text-black">🔄 Market Scan</h3>
                         <button hx-post="/api/admin/market-scan/trigger" hx-target="#scan-response"
+                            hx-confirm="Start a manual market scan? This might take up to a minute."
                             class="neo-btn bg-[#ff6b6b] border-2 border-black text-white font-bold py-2 px-6 shadow-[4px_4px_0px_0px_#000] uppercase tracking-wide text-sm">
                             🚀 Trigger Now
                         </button>
