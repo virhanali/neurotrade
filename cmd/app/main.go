@@ -102,6 +102,7 @@ func main() {
 	priceService := service.NewMarketPriceService()
 	virtualBroker := service.NewVirtualBrokerService(positionRepo, userRepo, priceService, signalRepo, notificationService)
 	reviewService := service.NewReviewService(signalRepo, priceService, notificationService)
+	bodyguard := service.NewBodyguardService(positionRepo, userRepo, priceService, signalRepo, notificationService)
 
 	// Initialize trading service
 	tradingService := usecase.NewTradingService(
@@ -131,10 +132,21 @@ func main() {
 	defer marketScanScheduler.Stop()
 
 	// Initialize Phase 3 cron jobs
-	cronScheduler := cron.New()
+	cronScheduler := cron.New(cron.WithSeconds()) // Enable seconds-level scheduling
 
-	// Virtual Broker: Check positions every 1 minute
-	_, err = cronScheduler.AddFunc("*/1 * * * *", func() {
+	// Bodyguard: Fast position check every 10 seconds (Phase 2 - Safety)
+	_, err = cronScheduler.AddFunc("*/10 * * * * *", func() {
+		ctx := context.Background()
+		if err := bodyguard.CheckPositionsFast(ctx); err != nil {
+			log.Printf("ERROR: Bodyguard check failed: %v", err)
+		}
+	})
+	if err != nil {
+		log.Fatalf("Failed to add bodyguard cron job: %v", err)
+	}
+
+	// Virtual Broker: Check positions every 1 minute (backup to Bodyguard)
+	_, err = cronScheduler.AddFunc("0 */1 * * * *", func() {
 		ctx := context.Background()
 		if err := virtualBroker.CheckPositions(ctx); err != nil {
 			log.Printf("ERROR: Virtual broker check failed: %v", err)
@@ -145,7 +157,7 @@ func main() {
 	}
 
 	// Review Service: Review signals at minute 5 of every hour
-	_, err = cronScheduler.AddFunc("5 * * * *", func() {
+	_, err = cronScheduler.AddFunc("0 5 * * * *", func() {
 		ctx := context.Background()
 		if err := reviewService.ReviewPastSignals(ctx, 60); err != nil {
 			log.Printf("ERROR: Review service failed: %v", err)
@@ -156,7 +168,7 @@ func main() {
 	}
 
 	// Health Check: Verify Python Engine every 6 hours
-	_, err = cronScheduler.AddFunc("0 */6 * * *", func() {
+	_, err = cronScheduler.AddFunc("0 0 */6 * * *", func() {
 		log.Println("🏥 Running scheduled health check...")
 		if bridge, ok := aiService.(*adapter.PythonBridge); ok {
 			if err := bridge.HealthCheck(context.Background()); err != nil {
@@ -174,9 +186,11 @@ func main() {
 	cronScheduler.Start()
 	defer cronScheduler.Stop()
 
-	log.Println("  - Virtual Broker: Every 1 minute (*/1 * * * *)")
-	log.Println("  - Review Service: Minute 5 of every hour (5 * * * *)")
-	log.Println("  - Health Check: Every 6 hours (0 */6 * * *)")
+	log.Println("✓ Phase 3 services initialized:")
+	log.Println("  - 🛡️ Bodyguard: Every 10 seconds (*/10 * * * * *) [FAST SL/TP]")
+	log.Println("  - Virtual Broker: Every 1 minute (0 */1 * * * *)")
+	log.Println("  - Review Service: Minute 5 of every hour (0 5 * * * *)")
+	log.Println("  - Health Check: Every 6 hours (0 0 */6 * * *)")
 
 	// Initialize Echo HTTP server
 	e := echo.New()
