@@ -242,6 +242,9 @@ async def analyze_market(request: MarketAnalysisRequest):
         )
 
     except Exception as e:
+        print(f"CRITICAL ERROR in analyze_market: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 
