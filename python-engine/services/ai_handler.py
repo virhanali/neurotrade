@@ -114,28 +114,35 @@ CAPITAL:
 
 Analyze this data and provide a trading decision in JSON format."""
 
-            # Call DeepSeek API
+            # Call DeepSeek API (Reasoner Model)
             response = self.deepseek_client.chat.completions.create(
-                model="deepseek-chat",
+                model="deepseek-reasoner",
                 messages=[
                     {"role": "system", "content": self.system_prompt},
                     {"role": "user", "content": user_message}
                 ],
                 temperature=0.3,
-                max_tokens=1000,
+                max_tokens=2000, # Increased for COT
             )
 
             # Parse response
-            content = response.choices[0].message.content
+            message = response.choices[0].message
+            content = message.content
+            reasoning_content = getattr(message, 'reasoning_content', '')
 
             # Extract JSON from response
             # Sometimes AI wraps JSON in markdown code blocks
+            json_str = content
             if "```json" in content:
-                content = content.split("```json")[1].split("```")[0].strip()
+                json_str = content.split("```json")[1].split("```")[0].strip()
             elif "```" in content:
-                content = content.split("```")[1].split("```")[0].strip()
+                json_str = content.split("```")[1].split("```")[0].strip()
 
-            result = json.loads(content)
+            result = json.loads(json_str)
+
+            # Append Chain of Thought to the reasoning field if available
+            if reasoning_content:
+                result['reasoning'] = f"[THINKING PROCESS]\n{reasoning_content}\n\n[FINAL ANALYSIS]\n{result.get('reasoning', '')}"
 
             return result
 
@@ -193,7 +200,7 @@ Format your response as JSON:
 
             # Call OpenRouter Vision API (using Google Gemini 2.0 Flash Lite via OpenRouter)
             response = self.vision_client.chat.completions.create(
-                model="google/gemini-2.0-flash-lite-001",  # Vision-capable model
+                model="google/gemini-2.5-flash-lite-preview-09-2025",  # Vision-capable model
                 messages=[
                     {
                         "role": "user",
