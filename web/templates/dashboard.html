@@ -204,7 +204,8 @@
                                 <td class="py-4 px-6 font-bold text-black">{{.Symbol}}</td>
                                 <td class="py-4 px-6">
                                     <span
-                                        class="inline-block border-2 border-black px-3 py-1 font-bold text-sm shadow-[2px_2px_0px_0px_#000] {{if eq .Side "SHORT"}}bg-[#ff6b6b] text-white{{else}}bg-[#51cf66] text-black{{end}}">
+                                        class="inline-block border-2 border-black px-3 py-1 font-bold text-sm shadow-[2px_2px_0px_0px_#000] {{if eq .Side "
+                                        SHORT"}}bg-[#ff6b6b] text-white{{else}}bg-[#51cf66] text-black{{end}}">
                                         {{.Side}}
                                     </span>
                                 </td>
@@ -349,16 +350,48 @@
             </div>
         </div>
 
-        <!-- System Health (Bottom Section) -->
+        <!-- Trading Mode Section -->
         <div class="grid grid-cols-12 gap-6 mt-6">
+            <!-- Trading Mode Switcher -->
             <div class="col-span-12 md:col-span-6">
                 <div class="neo-card bg-white border-2 border-black p-6 shadow-[6px_6px_0px_0px_#000]">
-                    <h3 class="text-xl font-bold text-black mb-4">🏥 System Health</h3>
-                    <button hx-get="/api/admin/system/health" hx-target="#health-status" hx-trigger="click, load"
-                        class="neo-btn w-full bg-[#4dabf7] border-2 border-black text-black font-bold py-3 px-4 shadow-[4px_4px_0px_0px_#000] uppercase tracking-wide mb-4">
-                        🔍 Check Status
-                    </button>
-                    <div id="health-status"></div>
+                    <h3 class="text-xl font-bold text-black mb-4">🎯 Trading Mode</h3>
+                    <form hx-put="/api/admin/trading-mode" hx-target="#mode-response"
+                        hx-confirm="Change trading mode? This will affect how the AI analyzes markets.">
+                        <div class="grid grid-cols-2 gap-4 mb-4">
+                            <!-- SCALPER Option -->
+                            <label class="cursor-pointer">
+                                <input type="radio" name="mode" value="SCALPER" class="hidden peer" id="mode-scalper"
+                                    {{if eq .TradingMode "SCALPER" }}checked{{end}}>
+                                <div
+                                    class="peer-checked:bg-[#d4ff00] peer-checked:border-black border-2 border-gray-300 p-4 shadow-[4px_4px_0px_0px_#ccc] peer-checked:shadow-[4px_4px_0px_0px_#000] transition-all">
+                                    <div class="text-center">
+                                        <p class="text-2xl mb-1">⚡</p>
+                                        <p class="font-bold text-black uppercase">SCALPER</p>
+                                        <p class="text-xs text-gray-600 mt-1">M15 Ping-Pong</p>
+                                    </div>
+                                </div>
+                            </label>
+                            <!-- INVESTOR Option -->
+                            <label class="cursor-pointer">
+                                <input type="radio" name="mode" value="INVESTOR" class="hidden peer" id="mode-investor"
+                                    {{if eq .TradingMode "INVESTOR" }}checked{{end}}>
+                                <div
+                                    class="peer-checked:bg-[#4dabf7] peer-checked:border-black border-2 border-gray-300 p-4 shadow-[4px_4px_0px_0px_#ccc] peer-checked:shadow-[4px_4px_0px_0px_#000] transition-all">
+                                    <div class="text-center">
+                                        <p class="text-2xl mb-1">📈</p>
+                                        <p class="font-bold text-black uppercase">INVESTOR</p>
+                                        <p class="text-xs text-gray-600 mt-1">H1 Trend Following</p>
+                                    </div>
+                                </div>
+                            </label>
+                        </div>
+                        <button type="submit"
+                            class="neo-btn w-full bg-black border-2 border-black text-white font-bold py-3 px-4 shadow-[4px_4px_0px_0px_#666] uppercase tracking-wide">
+                            💾 Save Mode
+                        </button>
+                    </form>
+                    <div id="mode-response" class="mt-4"></div>
                 </div>
             </div>
         </div>

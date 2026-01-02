@@ -72,6 +72,7 @@ func main() {
 	signalRepo := repository.NewSignalRepository(db)
 	userRepo := repository.NewUserRepository(db)
 	positionRepo := repository.NewPaperPositionRepository(db)
+	settingsRepo := repository.NewSystemSettingsRepository(db)
 
 	// Initialize Telegram notification service (Phase 5)
 	telegramBotToken := os.Getenv("TELEGRAM_BOT_TOKEN")
@@ -113,8 +114,17 @@ func main() {
 		cfg.Trading.MinConfidence,
 	)
 
+	// Load trading mode from database (default: SCALPER if not set)
+	tradingMode, err := settingsRepo.GetTradingMode(ctx)
+	if err != nil {
+		tradingMode = "SCALPER" // Default mode
+		log.Printf("⚠️ Trading mode not found in DB, using default: %s", tradingMode)
+	} else {
+		log.Printf("✓ Trading mode loaded from database: %s", tradingMode)
+	}
+
 	// Initialize market scan scheduler
-	marketScanScheduler := infra.NewScheduler(tradingService, cfg.Trading.DefaultBalance)
+	marketScanScheduler := infra.NewScheduler(tradingService, cfg.Trading.DefaultBalance, tradingMode)
 	if err := marketScanScheduler.Start(); err != nil {
 		log.Fatalf("Failed to start market scan scheduler: %v", err)
 	}
@@ -124,7 +134,6 @@ func main() {
 	cronScheduler := cron.New()
 
 	// Virtual Broker: Check positions every 1 minute
-	_, err = cronScheduler.AddFunc("*/1 * * * *", func() {
 		ctx := context.Background()
 		if err := virtualBroker.CheckPositions(ctx); err != nil {
 			log.Printf("ERROR: Virtual broker check failed: %v", err)
@@ -145,6 +154,21 @@ func main() {
 		log.Fatalf("Failed to add review service cron job: %v", err)
 	}
 
+	// Health Check: Verify Python Engine every 6 hours
+	_, err = cronScheduler.AddFunc("0 */6 * * *", func() {
+		log.Println("🏥 Running scheduled health check...")
+		if bridge, ok := aiService.(*adapter.PythonBridge); ok {
+			if err := bridge.HealthCheck(context.Background()); err != nil {
+				log.Printf("⚠️ HEALTH CHECK FAILED: Python Engine is not available: %v", err)
+			} else {
+				log.Println("✅ Health check passed: Python Engine is healthy")
+			}
+		}
+	})
+	if err != nil {
+		log.Fatalf("Failed to add health check cron job: %v", err)
+	}
+
 	// Start Phase 3 cron scheduler
 	cronScheduler.Start()
 	defer cronScheduler.Stop()
@@ -152,6 +176,7 @@ func main() {
 	log.Println("✓ Phase 3 services initialized:")
 	log.Println("  - Virtual Broker: Every 1 minute (*/1 * * * *)")
 	log.Println("  - Review Service: Minute 5 of every hour (5 * * * *)")
+	log.Println("  - Health Check: Every 6 hours (0 */6 * * *)")
 
 	// Initialize Echo HTTP server
 	e := echo.New()
@@ -175,7 +200,7 @@ func main() {
 	// Initialize HTTP handlers
 	authHandler := httpdelivery.NewAuthHandler(userRepo)
 	userHandler := httpdelivery.NewUserHandler(userRepo, positionRepo, tradingService)
-	adminHandler := httpdelivery.NewAdminHandler(db, marketScanScheduler, signalRepo)
+	adminHandler := httpdelivery.NewAdminHandler(db, marketScanScheduler, signalRepo, settingsRepo)
 
 	// Initialize web handler (Phase 5 - HTML pages)
 	webHandler := httpdelivery.NewWebHandler(templates, userRepo, positionRepo, db, priceService)
@@ -223,6 +248,7 @@ func main() {
 	log.Printf("📊 Environment: %s", cfg.Server.Env)
 	log.Printf("💰 Default Balance: $%.2f USDT", cfg.Trading.DefaultBalance)
 	log.Printf("📈 Min Confidence: %d%%", cfg.Trading.MinConfidence)
+	log.Printf("🎯 Trading Mode: %s (15-min intervals)", tradingMode)
 	log.Println("========================================")
 	log.Println("  - POST /api/auth/login")
 	log.Println("  - POST /api/auth/logout")

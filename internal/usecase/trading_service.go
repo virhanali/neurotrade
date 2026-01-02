@@ -50,13 +50,14 @@ func NewTradingService(
 }
 
 // ProcessMarketScan performs a complete market scan and saves high-confidence signals
-func (ts *TradingService) ProcessMarketScan(ctx context.Context, balance float64) error {
-	log.Println("=== Starting Market Scan ===")
+// mode: "SCALPER" for M15 aggressive trading, "INVESTOR" for H1 trend following
+func (ts *TradingService) ProcessMarketScan(ctx context.Context, balance float64, mode string) error {
+	log.Printf("=== Starting Market Scan [Mode: %s] ===", mode)
 	startTime := time.Now()
 
 	// Step 1: Call Python AI Engine to analyze market
-	log.Println("Calling Python AI Engine for market analysis...")
-	aiSignals, err := ts.aiService.AnalyzeMarket(ctx, balance)
+	log.Printf("Calling Python AI Engine for market analysis (Mode: %s)...", mode)
+	aiSignals, err := ts.aiService.AnalyzeMarket(ctx, balance, mode)
 	if err != nil {
 		return fmt.Errorf("failed to analyze market: %w", err)
 	}

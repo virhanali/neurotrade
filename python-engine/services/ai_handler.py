@@ -1,6 +1,7 @@
 """
 AI Handler Service
 Integrates DeepSeek (Logic) and Gemini (Vision) for hybrid trading analysis
+Supports SCALPER (M15 Mean Reversion) and INVESTOR (H1/4H Trend Following) modes
 """
 
 import json
@@ -11,25 +12,55 @@ from openai import OpenAI
 from config import settings
 
 
-class AIHandler:
-    """Handles AI analysis using DeepSeek and Gemini"""
+def get_system_prompt(mode: str = "INVESTOR") -> str:
+    """
+    Returns the appropriate system prompt based on trading mode
+    
+    Args:
+        mode: Trading mode - "SCALPER" or "INVESTOR"
+    
+    Returns:
+        System prompt string for the Logic LLM
+    """
+    if mode == "SCALPER":
+        return """ROLE: You are an Elite Crypto Scalper AI specializing in the M15 Timeframe.
+OBJECTIVE: Find high-probability entries based on MEAN REVERSION and MOMENTUM within 15-minute candles.
 
-    def __init__(self):
-        """Initialize AI clients"""
-        # DeepSeek via OpenAI-compatible API
-        self.deepseek_client = OpenAI(
-            api_key=settings.DEEPSEEK_API_KEY,
-            base_url="https://api.deepseek.com"
-        )
+CORE STRATEGY (THE "PING-PONG" PROTOCOL):
+1. MARKET CONDITION CHECK (CRITICAL):
+   - Check Bitcoin (BTC) Change % first.
+   - IF BTC < -1.5% (Bearish): ONLY look for SHORT signals on Altcoins. Ignore Longs.
+   - IF BTC > +1.5% (Bullish): ONLY look for LONG signals. Ignore Shorts.
+   - IF BTC is Flat (-1.5% to +1.5%): ENABLE "Ping-Pong" Mode (Buy Support, Sell Resistance).
 
-        # OpenRouter for Vision Analysis (using GPT-4 Vision or Google Gemini)
-        self.vision_client = OpenAI(
-            api_key=settings.OPENROUTER_API_KEY,
-            base_url="https://openrouter.ai/api/v1"
-        )
+2. ENTRY TRIGGERS (M15):
+   - BUY Signal: Price touches Lower Bollinger Band AND RSI < 35 AND Bullish Divergence.
+   - SELL Signal: Price touches Upper Bollinger Band AND RSI > 65 AND Bearish Divergence.
+   - VOLATILITY FILTER: If Bollinger Bands are extremely tight (Squeeze), WAIT for expansion.
 
-        # System prompt for DeepSeek
-        self.system_prompt = """ROLE: Quantitative Risk Manager & Senior Crypto Analyst.
+3. DYNAMIC LEVERAGE & RISK:
+   - Calculate Leverage based on ATR (Volatility).
+   - IF ATR is High (Volatile): Set Leverage 5x - 10x.
+   - IF ATR is Low (Stable): Set Leverage 15x - 20x.
+   - STOP LOSS: Must be placed at the recent Swing Low/High (not a fixed %).
+
+OUTPUT FORMAT (JSON ONLY):
+The final response content MUST be a valid raw JSON object. Do not use markdown blocks.
+{
+  "symbol": "string",
+  "signal": "LONG" | "SHORT" | "WAIT",
+  "confidence": 0-100,
+  "reasoning": "string explaining the setup",
+  "trade_params": {
+    "entry_price": float,
+    "stop_loss": float,
+    "take_profit": float,
+    "suggested_leverage": int,
+    "position_size_usdt": float
+  }
+}"""
+    else:  # INVESTOR mode (default)
+        return """ROLE: Quantitative Risk Manager & Senior Crypto Analyst.
 
 INPUT DATA:
 1. GLOBAL MARKET (BTC/USDT): [Trend 4H, % Change 1H]
@@ -60,13 +91,95 @@ OUTPUT FORMAT (STRICT JSON ONLY):
 The final response content MUST be a valid raw JSON object. Do not use markdown blocks.
 { "symbol": "...", "signal": "LONG/SHORT/WAIT", "confidence": int, "reasoning": "...", "trade_params": { "entry_price": float, "stop_loss": float, "take_profit": float, "suggested_leverage": int, "position_size_usdt": float } }"""
 
+
+def get_vision_prompt(mode: str = "INVESTOR") -> str:
+    """
+    Returns the appropriate vision analysis prompt based on trading mode
+    
+    Args:
+        mode: Trading mode - "SCALPER" or "INVESTOR"
+    
+    Returns:
+        Vision prompt string for chart analysis
+    """
+    if mode == "SCALPER":
+        return """ACT AS: Senior Technical Analyst reading an M15 Scalping Chart.
+TASK: Analyze the attached chart image for IMMEDIATE price reversals.
+
+LOOK FOR:
+1. Wick Rejections at key Support/Resistance.
+2. Engulfing patterns indicating momentum shift.
+3. Double Top/Bottom formations.
+4. Bollinger Band touches with RSI confirmation.
+
+DECISION LOGIC:
+- Long lower wick at support -> VOTE BULLISH.
+- Long upper wick at resistance -> VOTE BEARISH.
+- Choppy/Overlapping candles -> VOTE NEUTRAL.
+- BB squeeze (tight bands) -> CAUTION, wait for breakout.
+
+OUTPUT FORMAT (JSON):
+{
+    "verdict": "BULLISH/BEARISH/NEUTRAL",
+    "confidence": <0-100>,
+    "setup_valid": "VALID_SETUP" or "INVALID_CHOPPY",
+    "patterns_detected": ["list", "of", "patterns"],
+    "key_levels": {
+        "support": <price or null>,
+        "resistance": <price or null>
+    },
+    "analysis": "brief explanation focusing on M15 reversal signals"
+}"""
+    else:  # INVESTOR mode
+        return """Analyze this candlestick chart. Identify key patterns and technical signals.
+
+Look for:
+- Chart patterns (Bull Flag, Head & Shoulders, Double Top/Bottom, Triangle, etc.)
+- Trend direction and strength
+- Support and resistance levels
+- Volume confirmation
+- Potential reversal or continuation signals
+
+Provide a clear verdict: BULLISH, BEARISH, or NEUTRAL.
+
+Format your response as JSON:
+{
+    "verdict": "BULLISH/BEARISH/NEUTRAL",
+    "confidence": <0-100>,
+    "patterns_detected": ["list", "of", "patterns"],
+    "key_levels": {
+        "support": <price or null>,
+        "resistance": <price or null>
+    },
+    "analysis": "brief explanation"
+}"""
+
+
+class AIHandler:
+    """Handles AI analysis using DeepSeek and Gemini"""
+
+    def __init__(self):
+        """Initialize AI clients"""
+        # DeepSeek via OpenAI-compatible API
+        self.deepseek_client = OpenAI(
+            api_key=settings.DEEPSEEK_API_KEY,
+            base_url="https://api.deepseek.com"
+        )
+
+        # OpenRouter for Vision Analysis (using GPT-4 Vision or Google Gemini)
+        self.vision_client = OpenAI(
+            api_key=settings.OPENROUTER_API_KEY,
+            base_url="https://openrouter.ai/api/v1"
+        )
+
     def analyze_logic(
         self,
         btc_data: Dict,
         target_4h: Dict,
-        target_1h: Dict,
+        target_trigger: Dict,
         balance: float = 1000.0,
-        symbol: str = "UNKNOWN"
+        symbol: str = "UNKNOWN",
+        mode: str = "INVESTOR"
     ) -> Dict:
         """
         Analyze trading logic using DeepSeek
@@ -74,40 +187,83 @@ The final response content MUST be a valid raw JSON object. Do not use markdown 
         Args:
             btc_data: BTC market context
             target_4h: Target asset 4H data
-            target_1h: Target asset 1H data
+            target_trigger: Target asset trigger data (1H for INVESTOR, 15M for SCALPER)
             balance: Trading balance in USDT
             symbol: Trading symbol
+            mode: Trading mode - "SCALPER" or "INVESTOR"
 
         Returns:
             Dict with trading signal and parameters
         """
         try:
-            # Prepare user message with market data
-            user_message = f"""MARKET ANALYSIS REQUEST:
+            # Get mode-specific system prompt
+            system_prompt = get_system_prompt(mode)
+            
+            # Determine timeframe label based on mode
+            trigger_tf = "15M" if mode == "SCALPER" else "1H"
+            
+            # Build user message with market data
+            if mode == "SCALPER":
+                # SCALPER mode: Include Bollinger Bands data
+                user_message = f"""SCALPER ANALYSIS REQUEST (M15 Timeframe):
 
 GLOBAL MARKET (BTC/USDT):
-- Trend 4H: {btc_data['trend_4h']}
-- 1H Change: {btc_data['pct_change_1h']}%
-- Direction: {btc_data['direction']}
-- Current Price: ${btc_data['current_price']:,.2f}
-- RSI 1H: {btc_data['rsi_1h']}
+- Trend 4H: {btc_data.get('trend_4h', 'N/A')}
+- 15M Change: {btc_data.get('pct_change_15m', btc_data.get('pct_change_1h', 0))}%
+- Direction: {btc_data.get('direction', 'N/A')}
+- Current Price: ${btc_data.get('current_price', 0):,.2f}
+- RSI 15M: {btc_data.get('rsi_15m', btc_data.get('rsi_1h', 50))}
 
 TARGET ASSET ({symbol}):
 4H CONTEXT:
-- Trend: {target_4h['trend']}
-- Price: ${target_4h['price']:,.4f}
-- RSI: {target_4h['rsi']}
-- ATR: {target_4h['atr']}
-- EMA 50: ${target_4h['ema_50']:,.4f}
-- EMA 200: ${target_4h['ema_200']:,.4f}
+- Trend: {target_4h.get('trend', 'N/A')}
+- Price: ${target_4h.get('price', 0):,.4f}
+- RSI: {target_4h.get('rsi', 50)}
+- ATR: {target_4h.get('atr', 0)}
+
+M15 TRIGGER (PRIMARY):
+- Trend: {target_trigger.get('trend', 'N/A')}
+- Price: ${target_trigger.get('price', 0):,.4f}
+- RSI: {target_trigger.get('rsi', 50)}
+- ATR: {target_trigger.get('atr', 0)}
+- Bollinger Upper: ${target_trigger.get('bb_upper', 'N/A')}
+- Bollinger Lower: ${target_trigger.get('bb_lower', 'N/A')}
+- Bollinger Middle: ${target_trigger.get('bb_middle', 'N/A')}
+- EMA 50: ${target_trigger.get('ema_50', 0):,.4f}
+- EMA 200: ${target_trigger.get('ema_200', 0):,.4f}
+
+CAPITAL:
+- Balance: ${balance:,.2f} USDT
+- Max Risk: 2% (${balance * 0.02:,.2f})
+
+Analyze for SCALPER entry (Mean Reversion / Ping-Pong strategy). Provide JSON response."""
+            else:
+                # INVESTOR mode: Standard trend following analysis
+                user_message = f"""MARKET ANALYSIS REQUEST:
+
+GLOBAL MARKET (BTC/USDT):
+- Trend 4H: {btc_data.get('trend_4h', 'N/A')}
+- 1H Change: {btc_data.get('pct_change_1h', 0)}%
+- Direction: {btc_data.get('direction', 'N/A')}
+- Current Price: ${btc_data.get('current_price', 0):,.2f}
+- RSI 1H: {btc_data.get('rsi_1h', 50)}
+
+TARGET ASSET ({symbol}):
+4H CONTEXT:
+- Trend: {target_4h.get('trend', 'N/A')}
+- Price: ${target_4h.get('price', 0):,.4f}
+- RSI: {target_4h.get('rsi', 50)}
+- ATR: {target_4h.get('atr', 0)}
+- EMA 50: ${target_4h.get('ema_50', 0):,.4f}
+- EMA 200: ${target_4h.get('ema_200', 0):,.4f}
 
 1H TRIGGER:
-- Trend: {target_1h['trend']}
-- Price: ${target_1h['price']:,.4f}
-- RSI: {target_1h['rsi']}
-- ATR: {target_1h['atr']}
-- EMA 50: ${target_1h['ema_50']:,.4f}
-- EMA 200: ${target_1h['ema_200']:,.4f}
+- Trend: {target_trigger.get('trend', 'N/A')}
+- Price: ${target_trigger.get('price', 0):,.4f}
+- RSI: {target_trigger.get('rsi', 50)}
+- ATR: {target_trigger.get('atr', 0)}
+- EMA 50: ${target_trigger.get('ema_50', 0):,.4f}
+- EMA 200: ${target_trigger.get('ema_200', 0):,.4f}
 
 CAPITAL:
 - Balance: ${balance:,.2f} USDT
@@ -119,7 +275,7 @@ Analyze this data and provide a trading decision in JSON format."""
             response = self.deepseek_client.chat.completions.create(
                 model="deepseek-chat",
                 messages=[
-                    {"role": "system", "content": self.system_prompt},
+                    {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_message}
                 ],
                 temperature=0.1, # Low temp for consistency
@@ -158,12 +314,13 @@ Analyze this data and provide a trading decision in JSON format."""
         except Exception as e:
             raise Exception(f"DeepSeek analysis failed: {str(e)}")
 
-    def analyze_vision(self, image_buffer: BytesIO) -> Dict:
+    def analyze_vision(self, image_buffer: BytesIO, mode: str = "INVESTOR") -> Dict:
         """
         Analyze chart image using OpenRouter Vision API
 
         Args:
             image_buffer: BytesIO buffer containing chart PNG
+            mode: Trading mode - "SCALPER" or "INVESTOR"
 
         Returns:
             Dict with visual analysis verdict
@@ -174,29 +331,8 @@ Analyze this data and provide a trading decision in JSON format."""
             image_bytes = image_buffer.read()
             image_base64 = base64.b64encode(image_bytes).decode('utf-8')
 
-            # Prompt for vision analysis
-            prompt = """Analyze this candlestick chart. Identify key patterns and technical signals.
-
-Look for:
-- Chart patterns (Bull Flag, Head & Shoulders, Double Top/Bottom, Triangle, etc.)
-- Trend direction and strength
-- Support and resistance levels
-- Volume confirmation
-- Potential reversal or continuation signals
-
-Provide a clear verdict: BULLISH, BEARISH, or NEUTRAL.
-
-Format your response as JSON:
-{
-    "verdict": "BULLISH/BEARISH/NEUTRAL",
-    "confidence": <0-100>,
-    "patterns_detected": ["list", "of", "patterns"],
-    "key_levels": {
-        "support": <price or null>,
-        "resistance": <price or null>
-    },
-    "analysis": "brief explanation"
-}"""
+            # Get mode-specific vision prompt
+            prompt = get_vision_prompt(mode)
 
             # Call OpenRouter Vision API (using Google Gemini 2.0 Flash Lite via OpenRouter)
             response = self.vision_client.chat.completions.create(
@@ -240,6 +376,7 @@ Format your response as JSON:
             return {
                 "verdict": "NEUTRAL",
                 "confidence": 0,
+                "setup_valid": "INVALID_CHOPPY",
                 "patterns_detected": [],
                 "key_levels": {"support": None, "resistance": None},
                 "analysis": f"Failed to parse vision response: {str(e)}"
@@ -263,6 +400,9 @@ Format your response as JSON:
         vision_verdict = vision_result.get('verdict', 'NEUTRAL')
         logic_confidence = logic_result.get('confidence', 0)
         vision_confidence = vision_result.get('confidence', 0)
+        
+        # Check for SCALPER-specific vision validation
+        setup_valid = vision_result.get('setup_valid', 'VALID_SETUP')
 
         # Agreement logic
         agreement = False
@@ -282,12 +422,17 @@ Format your response as JSON:
         else:
             # Penalize confidence if they disagree
             combined_confidence = max(0, logic_confidence - 30)
+        
+        # Additional penalty for INVALID_CHOPPY setup in SCALPER mode
+        if setup_valid == "INVALID_CHOPPY":
+            combined_confidence = max(0, combined_confidence - 20)
 
         return {
             "final_signal": logic_signal if agreement else "WAIT",
             "combined_confidence": combined_confidence,
             "agreement": agreement,
+            "setup_valid": setup_valid,
             "logic_analysis": logic_result,
             "vision_analysis": vision_result,
-            "recommendation": "EXECUTE" if (agreement and combined_confidence >= settings.MIN_CONFIDENCE) else "SKIP"
+            "recommendation": "EXECUTE" if (agreement and combined_confidence >= settings.MIN_CONFIDENCE and setup_valid != "INVALID_CHOPPY") else "SKIP"
         }

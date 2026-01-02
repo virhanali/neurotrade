@@ -86,5 +86,8 @@ func SetupRoutes(e *echo.Echo, config *RouterConfig) {
 		admin.GET("/statistics", config.AdminHandler.GetStatistics)
 		admin.POST("/market-scan/trigger", config.AdminHandler.TriggerMarketScan)
 		admin.GET("/market-scan/results", config.AdminHandler.GetLatestScanResults)
+		// Trading mode control
+		admin.GET("/trading-mode", config.AdminHandler.GetTradingMode)
+		admin.PUT("/trading-mode", config.AdminHandler.SetTradingMode)
 	}
 }

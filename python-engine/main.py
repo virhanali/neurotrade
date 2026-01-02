@@ -55,6 +55,7 @@ class WelcomeResponse(BaseModel):
 
 class MarketAnalysisRequest(BaseModel):
     balance: float = Field(default=1000.0, description="Trading balance in USDT")
+    mode: str = Field(default="SCALPER", description="Trading mode: SCALPER (M15) or INVESTOR (H1)")
     custom_symbols: Optional[List[str]] = Field(default=None, description="Custom symbols to analyze")
 
 
@@ -125,14 +126,17 @@ async def analyze_market(request: MarketAnalysisRequest):
 
     Workflow:
     1. Screen market for top opportunities
-    2. Fetch BTC context
+    2. Fetch BTC context (mode-aware: SCALPER uses 15m, INVESTOR uses 1h)
     3. For each opportunity:
        - Fetch data & generate chart
-       - Analyze with DeepSeek (logic) & Gemini (vision)
+       - Analyze with DeepSeek (logic) & Gemini (vision) with mode-specific prompts
        - Combine results
     4. Return valid signals (confidence >= 75% and agreement)
     """
     start_time = datetime.utcnow()
+    mode = request.mode.upper() if request.mode else "SCALPER"
+    
+    print(f"\n🎯 Market Analysis Started [Mode: {mode}]")
 
     try:
         # Step 1: Get top opportunities
@@ -144,39 +148,49 @@ async def analyze_market(request: MarketAnalysisRequest):
         if not top_symbols:
             raise HTTPException(status_code=404, detail="No trading opportunities found")
 
-        # Step 2: Fetch BTC context
-        btc_context = data_fetcher.fetch_btc_context()
+        # Step 2: Fetch BTC context (mode-aware)
+        btc_context = data_fetcher.fetch_btc_context(mode=mode)
 
         # Step 3: Analyze each opportunity
         valid_signals = []
 
         for symbol in top_symbols:
             try:
-                # Fetch target data
-                target_data = data_fetcher.fetch_target_data(symbol)
+                # Fetch target data (mode-aware: SCALPER uses 15m, INVESTOR uses 1h/4h)
+                target_data = data_fetcher.fetch_target_data(symbol, mode=mode)
+
+                # Get the appropriate timeframe data for chart generation
+                chart_timeframe = 'data_15m' if mode == "SCALPER" else 'data_1h'
+                chart_df = target_data.get(chart_timeframe, target_data.get('data_1h', {})).get('df')
+                
+                if chart_df is None:
+                    print(f"⚠️ No chart data available for {symbol}")
+                    continue
 
                 # Generate chart image
                 chart_buffer = charter.generate_chart_image(
-                    df=target_data['data_1h']['df'],
+                    df=chart_df,
                     symbol=symbol
                 )
 
-                # Run AI analysis concurrently
+                # Run AI analysis concurrently with mode-aware prompts
                 logic_task = asyncio.create_task(
                     asyncio.to_thread(
                         ai_handler.analyze_logic,
                         btc_context,
-                        target_data['data_4h'],
-                        target_data['data_1h'],
+                        target_data.get('data_4h', target_data.get('data_1h', {})),
+                        target_data.get('data_15m', target_data.get('data_1h', {})) if mode == "SCALPER" else target_data.get('data_1h', {}),
                         request.balance,
-                        symbol
+                        symbol,
+                        mode  # Pass mode to AI handler
                     )
                 )
 
                 vision_task = asyncio.create_task(
                     asyncio.to_thread(
                         ai_handler.analyze_vision,
-                        chart_buffer
+                        chart_buffer,
+                        mode  # Pass mode to vision analysis
                     )
                 )
 
@@ -188,11 +202,12 @@ async def analyze_market(request: MarketAnalysisRequest):
 
                 # Log analysis results
                 current_time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                print(f"\n=== Analysis for {symbol} [{current_time_str}] ===")
+                print(f"\n=== Analysis for {symbol} [{current_time_str}] [Mode: {mode}] ===")
                 print(f"Logic Signal: {logic_result.get('signal', 'N/A')}")
                 print(f"Logic Confidence: {logic_result.get('confidence', 0)}%")
                 print(f"Vision Verdict: {vision_result.get('verdict', 'N/A')}")
                 print(f"Vision Confidence: {vision_result.get('confidence', 0)}%")
+                print(f"Setup Valid: {combined.get('setup_valid', 'N/A')}")
                 print(f"Agreement: {combined['agreement']}")
                 print(f"Combined Confidence: {combined['combined_confidence']}%")
                 print(f"Recommendation: {combined['recommendation']}")

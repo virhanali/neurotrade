@@ -32,6 +32,7 @@ func NewPythonBridge(baseURL string) domain.AIService {
 // MarketAnalysisRequest represents the request to Python engine
 type MarketAnalysisRequest struct {
 	Balance       float64  `json:"balance"`
+	Mode          string   `json:"mode"`
 	CustomSymbols []string `json:"custom_symbols,omitempty"`
 }
 
@@ -73,10 +74,17 @@ type MarketAnalysisResponse struct {
 }
 
 // AnalyzeMarket calls the Python Engine to analyze market and generate signals
-func (pb *PythonBridge) AnalyzeMarket(ctx context.Context, balance float64) ([]*domain.AISignalResponse, error) {
+// mode: "SCALPER" for M15 aggressive trading, "INVESTOR" for H1 trend following
+func (pb *PythonBridge) AnalyzeMarket(ctx context.Context, balance float64, mode string) ([]*domain.AISignalResponse, error) {
+	// Default to SCALPER if mode is empty
+	if mode == "" {
+		mode = "SCALPER"
+	}
+
 	// Prepare request
 	reqBody := MarketAnalysisRequest{
 		Balance: balance,
+		Mode:    mode,
 	}
 
 	jsonData, err := json.Marshal(reqBody)

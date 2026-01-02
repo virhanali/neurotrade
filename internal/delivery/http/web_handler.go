@@ -154,7 +154,7 @@ func (h *WebHandler) HandleDashboard(c echo.Context) error {
 		"PendingPositions": pendingPositions,
 	}
 
-	// If admin, load system statistics
+	// If admin, load system statistics and settings
 	if user.Role == domain.RoleAdmin {
 		// Load strategies from database
 		strategies, err := h.loadStrategies(ctx)
@@ -169,6 +169,17 @@ func (h *WebHandler) HandleDashboard(c echo.Context) error {
 		if err == nil {
 			data["Stats"] = stats
 		}
+
+		// Load current trading mode from database
+		tradingMode := "SCALPER" // default
+		var modeValue string
+		err = h.db.QueryRow(ctx, `
+			SELECT value FROM system_settings WHERE key = 'trading_mode'
+		`).Scan(&modeValue)
+		if err == nil {
+			tradingMode = modeValue
+		}
+		data["TradingMode"] = tradingMode
 	}
 
 	return h.templates.ExecuteTemplate(c.Response().Writer, "dashboard", data)

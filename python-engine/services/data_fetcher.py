@@ -110,36 +110,55 @@ class DataFetcher:
 
         return df
 
-    def fetch_btc_context(self) -> Dict:
+    def fetch_btc_context(self, mode: str = "INVESTOR") -> Dict:
         """
         Fetch BTC/USDT context to determine overall market direction
+        
+        Args:
+            mode: Trading mode - "SCALPER" uses 15m candles, "INVESTOR" uses 1h candles
 
         Returns:
             Dict with BTC market data and analysis
         """
         try:
-            # Fetch 4H and 1H data
+            # Fetch 4H data for trend context
             df_4h = self._fetch_ohlcv('BTC/USDT', '4h', limit=100)
-            df_1h = self._fetch_ohlcv('BTC/USDT', '1h', limit=100)
+            df_4h = self._calculate_indicators(df_4h)
+            
+            # For SCALPER mode, use 15m candles for trigger data
+            if mode == "SCALPER":
+                df_trigger = self._fetch_ohlcv('BTC/USDT', '15m', limit=100)
+                trigger_label = "15m"
+            else:
+                df_trigger = self._fetch_ohlcv('BTC/USDT', '1h', limit=100)
+                trigger_label = "1h"
 
             # Calculate indicators
-            df_4h = self._calculate_indicators(df_4h)
-            df_1h = self._calculate_indicators(df_1h)
+            df_trigger = self._calculate_indicators(df_trigger)
 
             # Get latest candle data
-            latest_1h = df_1h.iloc[-1]
-            prev_1h = df_1h.iloc[-2]
+            latest_trigger = df_trigger.iloc[-1]
+            prev_trigger = df_trigger.iloc[-2]
 
-            # Calculate 1H percentage change
-            pct_change_1h = ((latest_1h['close'] - prev_1h['close']) / prev_1h['close']) * 100
+            # Calculate percentage change (based on trigger timeframe)
+            pct_change = ((latest_trigger['close'] - prev_trigger['close']) / prev_trigger['close']) * 100
 
             # Determine trend based on EMAs
-            trend_4h = "UPTREND" if latest_1h['ema_50'] > latest_1h['ema_200'] else "DOWNTREND"
+            trend_4h = "UPTREND" if latest_trigger['ema_50'] > latest_trigger['ema_200'] else "DOWNTREND"
 
-            # Market direction
-            if pct_change_1h > 1.0:
+            # Market direction with mode-specific thresholds
+            # SCALPER mode: more sensitive thresholds (±1.5% for 15m)
+            # INVESTOR mode: standard thresholds (±1% for 1h)
+            if mode == "SCALPER":
+                pump_threshold = 1.5
+                dump_threshold = -1.5
+            else:
+                pump_threshold = 1.0
+                dump_threshold = -1.0
+
+            if pct_change > pump_threshold:
                 direction = "PUMPING"
-            elif pct_change_1h < -1.0:
+            elif pct_change < dump_threshold:
                 direction = "DUMPING"
             else:
                 direction = "NEUTRAL"
@@ -147,46 +166,48 @@ class DataFetcher:
             return {
                 "symbol": "BTC/USDT",
                 "trend_4h": trend_4h,
-                "pct_change_1h": round(float(pct_change_1h), 2),
+                f"pct_change_{trigger_label}": round(float(pct_change), 2),
+                "pct_change_1h": round(float(pct_change), 2),  # Keep for backward compatibility
                 "direction": direction,
-                "current_price": float(latest_1h['close']),
-                "rsi_1h": round(float(latest_1h['rsi']), 2) if pd.notna(latest_1h['rsi']) else 50.0,
-                "ema_50": float(latest_1h['ema_50']) if pd.notna(latest_1h['ema_50']) else float(latest_1h['close']),
-                "ema_200": float(latest_1h['ema_200']) if pd.notna(latest_1h['ema_200']) else float(latest_1h['close']),
+                "current_price": float(latest_trigger['close']),
+                f"rsi_{trigger_label}": round(float(latest_trigger['rsi']), 2) if pd.notna(latest_trigger['rsi']) else 50.0,
+                "rsi_1h": round(float(latest_trigger['rsi']), 2) if pd.notna(latest_trigger['rsi']) else 50.0,  # Backward compat
+                "ema_50": float(latest_trigger['ema_50']) if pd.notna(latest_trigger['ema_50']) else float(latest_trigger['close']),
+                "ema_200": float(latest_trigger['ema_200']) if pd.notna(latest_trigger['ema_200']) else float(latest_trigger['close']),
+                "mode": mode,
+                "timeframe": trigger_label,
             }
 
         except Exception as e:
             raise Exception(f"Failed to fetch BTC context: {str(e)}")
 
-    def fetch_target_data(self, symbol: str) -> Dict:
+    def fetch_target_data(self, symbol: str, mode: str = "INVESTOR") -> Dict:
         """
         Fetch target symbol data with technical analysis
 
         Args:
             symbol: Trading pair (e.g., 'ETH/USDT')
+            mode: Trading mode - "SCALPER" uses 15m candles as primary trigger, "INVESTOR" uses 1h
 
         Returns:
-            Dict with 4H and 1H data and indicators
+            Dict with timeframe data and indicators based on mode
         """
         try:
-            # Fetch 4H and 1H data
+            # Always fetch 4H data for context
             df_4h = self._fetch_ohlcv(symbol, '4h', limit=100)
-            df_1h = self._fetch_ohlcv(symbol, '1h', limit=100)
-
-            # Calculate indicators
             df_4h = self._calculate_indicators(df_4h)
-            df_1h = self._calculate_indicators(df_1h)
-
-            # Get latest candle data
             latest_4h = df_4h.iloc[-1]
-            latest_1h = df_1h.iloc[-1]
-
-            # Determine trend
             trend_4h = "UPTREND" if latest_4h['ema_50'] > latest_4h['ema_200'] else "DOWNTREND"
+            
+            # Fetch 1H data (context for both modes)
+            df_1h = self._fetch_ohlcv(symbol, '1h', limit=100)
+            df_1h = self._calculate_indicators(df_1h)
+            latest_1h = df_1h.iloc[-1]
             trend_1h = "UPTREND" if latest_1h['ema_50'] > latest_1h['ema_200'] else "DOWNTREND"
-
-            return {
+            
+            result = {
                 "symbol": symbol,
+                "mode": mode,
                 "data_4h": {
                     "df": df_4h,
                     "trend": trend_4h,
@@ -206,6 +227,36 @@ class DataFetcher:
                     "ema_200": float(latest_1h['ema_200']) if pd.notna(latest_1h['ema_200']) else float(latest_1h['close']),
                 },
             }
+            
+            # For SCALPER mode, also fetch 15m candles as primary trigger data
+            if mode == "SCALPER":
+                df_15m = self._fetch_ohlcv(symbol, '15m', limit=100)
+                df_15m = self._calculate_indicators(df_15m)
+                latest_15m = df_15m.iloc[-1]
+                trend_15m = "UPTREND" if latest_15m['ema_50'] > latest_15m['ema_200'] else "DOWNTREND"
+                
+                # Add Bollinger Bands for SCALPER mode (Mean Reversion strategy)
+                from ta.volatility import BollingerBands
+                bb = BollingerBands(close=df_15m['close'], window=20, window_dev=2)
+                df_15m['bb_upper'] = bb.bollinger_hband()
+                df_15m['bb_lower'] = bb.bollinger_lband()
+                df_15m['bb_middle'] = bb.bollinger_mavg()
+                latest_15m = df_15m.iloc[-1]
+                
+                result["data_15m"] = {
+                    "df": df_15m,
+                    "trend": trend_15m,
+                    "price": float(latest_15m['close']),
+                    "rsi": round(float(latest_15m['rsi']), 2) if pd.notna(latest_15m['rsi']) else 50.0,
+                    "atr": round(float(latest_15m['atr']), 4) if pd.notna(latest_15m['atr']) else 0.01,
+                    "ema_50": float(latest_15m['ema_50']) if pd.notna(latest_15m['ema_50']) else float(latest_15m['close']),
+                    "ema_200": float(latest_15m['ema_200']) if pd.notna(latest_15m['ema_200']) else float(latest_15m['close']),
+                    "bb_upper": round(float(latest_15m['bb_upper']), 4) if pd.notna(latest_15m['bb_upper']) else None,
+                    "bb_lower": round(float(latest_15m['bb_lower']), 4) if pd.notna(latest_15m['bb_lower']) else None,
+                    "bb_middle": round(float(latest_15m['bb_middle']), 4) if pd.notna(latest_15m['bb_middle']) else None,
+                }
+            
+            return result
 
         except Exception as e:
             raise Exception(f"Failed to fetch target data for {symbol}: {str(e)}")

@@ -11,26 +11,31 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"neurotrade/internal/domain"
+	"neurotrade/internal/repository"
 )
 
 // MarketScanScheduler defines the interface for market scan scheduler
 type MarketScanScheduler interface {
 	RunNow() error
+	SetMode(mode string)
+	GetMode() string
 }
 
 // AdminHandler handles admin-related requests
 type AdminHandler struct {
-	db         *pgxpool.Pool
-	scheduler  MarketScanScheduler
-	signalRepo domain.SignalRepository
+	db           *pgxpool.Pool
+	scheduler    MarketScanScheduler
+	signalRepo   domain.SignalRepository
+	settingsRepo *repository.SystemSettingsRepository
 }
 
 // NewAdminHandler creates a new AdminHandler
-func NewAdminHandler(db *pgxpool.Pool, scheduler MarketScanScheduler, signalRepo domain.SignalRepository) *AdminHandler {
+func NewAdminHandler(db *pgxpool.Pool, scheduler MarketScanScheduler, signalRepo domain.SignalRepository, settingsRepo *repository.SystemSettingsRepository) *AdminHandler {
 	return &AdminHandler{
-		db:         db,
-		scheduler:  scheduler,
-		signalRepo: signalRepo,
+		db:           db,
+		scheduler:    scheduler,
+		signalRepo:   signalRepo,
+		settingsRepo: settingsRepo,
 	}
 }
 
@@ -356,6 +361,122 @@ func (h *AdminHandler) GetLatestScanResults(c echo.Context) error {
 	}
 
 	html += `</div>`
+
+	return c.HTML(http.StatusOK, html)
+}
+
+// TradingModeResponse represents the trading mode response
+type TradingModeResponse struct {
+	Mode        string `json:"mode"`
+	Description string `json:"description"`
+}
+
+// GetTradingMode returns the current trading mode
+// GET /api/admin/trading-mode
+func (h *AdminHandler) GetTradingMode(c echo.Context) error {
+	ctx, cancel := context.WithTimeout(c.Request().Context(), 5*time.Second)
+	defer cancel()
+
+	// Get from database via settings repo
+	mode := "SCALPER" // default
+	if h.settingsRepo != nil {
+		if dbMode, err := h.settingsRepo.GetTradingMode(ctx); err == nil {
+			mode = dbMode
+		}
+	}
+
+	// If scheduler is available, sync with its current mode
+	if h.scheduler != nil {
+		schedulerMode := h.scheduler.GetMode()
+		if schedulerMode != mode {
+			// Sync scheduler with database
+			h.scheduler.SetMode(mode)
+		}
+	}
+
+	description := "M15 Mean Reversion (Ping-Pong)"
+	if mode == "INVESTOR" {
+		description = "H1 Trend Following"
+	}
+
+	return SuccessResponse(c, TradingModeResponse{
+		Mode:        mode,
+		Description: description,
+	})
+}
+
+// SetTradingModeRequest represents the request to set trading mode
+type SetTradingModeRequest struct {
+	Mode string `json:"mode" form:"mode"`
+}
+
+// SetTradingMode updates the trading mode
+// PUT /api/admin/trading-mode
+func (h *AdminHandler) SetTradingMode(c echo.Context) error {
+	var mode string
+
+	// Try to get from form data first (HTMX sends form-urlencoded)
+	if formValue := c.FormValue("mode"); formValue != "" {
+		mode = formValue
+	} else {
+		// Fallback to JSON binding
+		var req SetTradingModeRequest
+		if err := c.Bind(&req); err != nil {
+			return c.HTML(http.StatusBadRequest, `
+				<div class="p-4 bg-[#ff6b6b] border-2 border-black text-white font-bold shadow-[4px_4px_0px_0px_#000]">
+					❌ Invalid request payload
+				</div>
+			`)
+		}
+		mode = req.Mode
+	}
+
+	// Validate mode
+	if mode != "SCALPER" && mode != "INVESTOR" {
+		return c.HTML(http.StatusBadRequest, fmt.Sprintf(`
+			<div class="p-4 bg-[#ff6b6b] border-2 border-black text-white font-bold shadow-[4px_4px_0px_0px_#000]">
+				❌ Invalid mode: %s (must be SCALPER or INVESTOR)
+			</div>
+		`, mode))
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request().Context(), 5*time.Second)
+	defer cancel()
+
+	// Save to database
+	if h.settingsRepo != nil {
+		if err := h.settingsRepo.SetTradingMode(ctx, mode); err != nil {
+			return c.HTML(http.StatusInternalServerError, fmt.Sprintf(`
+				<div class="p-4 bg-[#ff6b6b] border-2 border-black text-white font-bold shadow-[4px_4px_0px_0px_#000]">
+					❌ Failed to save: %s
+				</div>
+			`, err.Error()))
+		}
+	}
+
+	// Update scheduler mode in real-time
+	if h.scheduler != nil {
+		h.scheduler.SetMode(mode)
+	}
+
+	// Get description
+	description := "M15 Mean Reversion (Ping-Pong)"
+	emoji := "⚡"
+	if mode == "INVESTOR" {
+		description = "H1 Trend Following"
+		emoji = "📈"
+	}
+
+	html := fmt.Sprintf(`
+		<div class="space-y-3">
+			<div class="p-4 bg-[#51cf66] border-2 border-black text-black font-bold shadow-[4px_4px_0px_0px_#000]">
+				✅ Mode updated to %s %s
+			</div>
+			<div class="p-3 bg-white border-2 border-black text-black font-medium shadow-[2px_2px_0px_0px_#000] text-sm">
+				Strategy: %s
+			</div>
+		</div>
+	`, mode, emoji, description)
 
 	return c.HTML(http.StatusOK, html)
 }
