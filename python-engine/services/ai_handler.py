@@ -115,21 +115,23 @@ CAPITAL:
 
 Analyze this data and provide a trading decision in JSON format."""
 
-            # Call DeepSeek API (Reasoner Model)
+            # Call DeepSeek API (Standard V3 for Speed)
             response = self.deepseek_client.chat.completions.create(
-                model="deepseek-reasoner",
+                model="deepseek-chat",
                 messages=[
                     {"role": "system", "content": self.system_prompt},
                     {"role": "user", "content": user_message}
                 ],
-                temperature=0.0, # Strict determinism for JSON
-                max_tokens=8000, # Increased to prevent truncation during reasoning
+                temperature=0.1, # Low temp for consistency
+                max_tokens=1000,
             )
 
             # Parse response
             message = response.choices[0].message
             content = message.content
-            reasoning_content = getattr(message, 'reasoning_content', '')
+            
+            # No reasoning_content in standard models
+            reasoning_content = ""
 
             # Extract JSON from response
             # Sometimes AI wraps JSON in markdown code blocks
@@ -140,10 +142,6 @@ Analyze this data and provide a trading decision in JSON format."""
                 json_str = content.split("```")[1].split("```")[0].strip()
 
             result = json.loads(json_str)
-
-            # Append Chain of Thought to the reasoning field if available
-            if reasoning_content:
-                result['reasoning'] = f"[THINKING PROCESS]\n{reasoning_content}\n\n[FINAL ANALYSIS]\n{result.get('reasoning', '')}"
 
             return result
 
