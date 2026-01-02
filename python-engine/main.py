@@ -187,7 +187,8 @@ async def analyze_market(request: MarketAnalysisRequest):
                 combined = ai_handler.combine_analysis(logic_result, vision_result)
 
                 # Log analysis results
-                print(f"\n=== Analysis for {symbol} ===")
+                current_time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                print(f"\n=== Analysis for {symbol} [{current_time_str}] ===")
                 print(f"Logic Signal: {logic_result.get('signal', 'N/A')}")
                 print(f"Logic Confidence: {logic_result.get('confidence', 0)}%")
                 print(f"Vision Verdict: {vision_result.get('verdict', 'N/A')}")
@@ -195,6 +196,8 @@ async def analyze_market(request: MarketAnalysisRequest):
                 print(f"Agreement: {combined['agreement']}")
                 print(f"Combined Confidence: {combined['combined_confidence']}%")
                 print(f"Recommendation: {combined['recommendation']}")
+                print("--- AI Reasoning ---")
+                print(logic_result.get('reasoning', 'No reasoning available')[:500] + "...") # Limit to 500 chars to avoid massive logs
                 print(f"==============================\n")
 
                 # Check if signal meets criteria

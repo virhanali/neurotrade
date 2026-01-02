@@ -63,7 +63,6 @@ class MarketScreener:
                     status = market.get('info', {}).get('status', 'UNKNOWN')
                     # Skip if not TRADING
                     if status != 'TRADING':
-                        print(f"⚠️  Skipping {clean_symbol} - Status: {status}")
                         continue
 
                 # Filter by volume and volatility

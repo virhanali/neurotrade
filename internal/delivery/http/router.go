@@ -17,7 +17,16 @@ type RouterConfig struct {
 // SetupRoutes configures all HTTP routes
 func SetupRoutes(e *echo.Echo, config *RouterConfig) {
 	// Middleware
-	e.Use(middleware.Logger())
+	e.Use(middleware.LoggerWithConfig(middleware.LoggerConfig{
+		Skipper: func(c echo.Context) bool {
+			// Skip logging for high-frequency polling endpoints to reduce noise
+			path := c.Request().URL.Path
+			return path == "/api/admin/market-scan/results" ||
+				path == "/health" ||
+				path == "/api/user/positions/html" ||
+				path == "/api/admin/system/health"
+		},
+	}))
 	e.Use(middleware.Recover())
 	e.Use(middleware.CORS())
 	e.Use(middleware.RequestID())
