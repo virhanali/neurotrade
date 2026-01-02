@@ -43,8 +43,6 @@ func NewVirtualBrokerService(
 
 // CheckPositions checks all open positions and closes them if TP/SL is hit
 func (s *VirtualBrokerService) CheckPositions(ctx context.Context) error {
-	log.Println("🔍 Virtual Broker: Checking open positions...")
-
 	// Get all open positions
 	positions, err := s.positionRepo.GetOpenPositions(ctx)
 	if err != nil {
@@ -52,7 +50,6 @@ func (s *VirtualBrokerService) CheckPositions(ctx context.Context) error {
 	}
 
 	if len(positions) == 0 {
-		log.Println("✓ No open positions to check")
 		return nil
 	}
 

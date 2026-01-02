@@ -134,6 +134,7 @@ func main() {
 	cronScheduler := cron.New()
 
 	// Virtual Broker: Check positions every 1 minute
+	_, err = cronScheduler.AddFunc("*/1 * * * *", func() {
 		ctx := context.Background()
 		if err := virtualBroker.CheckPositions(ctx); err != nil {
 			log.Printf("ERROR: Virtual broker check failed: %v", err)
@@ -173,7 +174,6 @@ func main() {
 	cronScheduler.Start()
 	defer cronScheduler.Stop()
 
-	log.Println("✓ Phase 3 services initialized:")
 	log.Println("  - Virtual Broker: Every 1 minute (*/1 * * * *)")
 	log.Println("  - Review Service: Minute 5 of every hour (5 * * * *)")
 	log.Println("  - Health Check: Every 6 hours (0 */6 * * *)")
