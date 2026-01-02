@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"golang.org/x/crypto/bcrypt"
 
@@ -153,6 +154,7 @@ func (h *AuthHandler) Register(c echo.Context) error {
 	defer cancel()
 
 	user := &domain.User{
+		ID:           uuid.New(),
 		Username:     req.Username,
 		PasswordHash: string(hashedPassword),
 		Role:         domain.RoleUser,
