@@ -56,7 +56,8 @@ PHASE 4: RISK SIZING
 - Calculate Position Size so loss never exceeds 2% of capital.
 - Leverage: Max 5x (Alts), 10x (BTC).
 
-OUTPUT JSON:
+OUTPUT FORMAT (STRICT JSON ONLY):
+The final response content MUST be a valid raw JSON object. Do not use markdown blocks.
 { "symbol": "...", "signal": "LONG/SHORT/WAIT", "confidence": int, "reasoning": "...", "trade_params": { "entry_price": float, "stop_loss": float, "take_profit": float, "suggested_leverage": int, "position_size_usdt": float } }"""
 
     def analyze_logic(
@@ -121,8 +122,8 @@ Analyze this data and provide a trading decision in JSON format."""
                     {"role": "system", "content": self.system_prompt},
                     {"role": "user", "content": user_message}
                 ],
-                temperature=0.3,
-                max_tokens=2000, # Increased for COT
+                temperature=0.0, # Strict determinism for JSON
+                max_tokens=8000, # Increased to prevent truncation during reasoning
             )
 
             # Parse response
@@ -148,8 +149,9 @@ Analyze this data and provide a trading decision in JSON format."""
 
         except json.JSONDecodeError as e:
             # Fallback if JSON parsing fails
+            print(f"DEBUG: JSON Parse Error. Raw Content: {content[:500]}...") # Print first 500 chars of raw content
             return {
-                "symbol": target_4h.get('symbol', 'UNKNOWN'),
+                "symbol": str(symbol), # Ensure symbol is string
                 "signal": "WAIT",
                 "confidence": 0,
                 "reasoning": f"Failed to parse AI response: {str(e)}",
