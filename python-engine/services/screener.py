@@ -16,10 +16,25 @@ class MarketScreener:
     """Screens market for top trading opportunities"""
 
     def __init__(self):
-        """Initialize CCXT Binance Futures client (public API only)"""
+        """Initialize CCXT Binance Futures client with increased connection pool"""
+        import requests
+        from requests.adapters import HTTPAdapter
+        from urllib3.util.retry import Retry
+        
+        # Create session with larger connection pool for parallel requests
+        session = requests.Session()
+        adapter = HTTPAdapter(
+            pool_connections=20,  # Number of connection pools
+            pool_maxsize=20,      # Connections per pool
+            max_retries=Retry(total=3, backoff_factor=0.5)
+        )
+        session.mount('https://', adapter)
+        session.mount('http://', adapter)
+        
         self.exchange = ccxt.binance({
             'enableRateLimit': True,
-            'options': {'defaultType': 'future'}
+            'options': {'defaultType': 'future'},
+            'session': session  # Use custom session with larger pool
         })
 
     def get_top_opportunities(self) -> List[str]:
@@ -90,9 +105,9 @@ class MarketScreener:
                     })
 
             # Sort by volatility and take Top Candidates (Deep Scan)
-            # We fetch 6x the final limit, but CAP it at 60 to prevent loop timeout (15s limit)
-            # With parallel processing, 60 coins can be scanned in ~3-5 seconds.
-            scan_limit = min(settings.TOP_COINS_LIMIT * 6, 60)
+            # We fetch 6x the final limit, but CAP it at 90 for powerful VPS (16 cores)
+            # With 12 parallel threads, 90 coins can be scanned in ~4 seconds.
+            scan_limit = min(settings.TOP_COINS_LIMIT * 6, 90)
             
             opportunities.sort(key=lambda x: x['volatility'], reverse=True)
             candidates = opportunities[:scan_limit]
