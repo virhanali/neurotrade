@@ -102,6 +102,9 @@ func (s *BodyguardService) CheckPositionsFast(ctx context.Context) error {
 			}
 			closedCount++
 			log.Printf("🛡️ Bodyguard: Closed %s via %s @ $%.4f", pos.Symbol, status, currentPrice)
+		} else {
+			// Try to apply Trailing Stop if profit is good
+			s.applyTrailingStop(ctx, pos, currentPrice)
 		}
 	}
 
@@ -177,4 +180,51 @@ func (s *BodyguardService) closePosition(ctx context.Context, pos *domain.PaperP
 // GetBulkPrices fetches all prices in a single API call (exported for potential reuse)
 func (s *BodyguardService) GetBulkPrices(ctx context.Context, symbols []string) (map[string]float64, error) {
 	return s.priceService.FetchRealTimePrices(ctx, symbols)
+}
+
+// applyTrailingStop updates SL dynamically to lock in profits
+func (s *BodyguardService) applyTrailingStop(ctx context.Context, pos *domain.PaperPosition, currentPrice float64) {
+	// 1. Activation Check: Must be in Profit > 1.0% (Aggressive Scalping)
+	activationThreshold := 1.0
+	pnlPct := pos.CalculatePnLPercent(currentPrice)
+
+	if pnlPct < activationThreshold {
+		return
+	}
+
+	// 2. Trailing Distance: 0.5% from Current Price
+	trailingDistancePct := 0.5
+
+	var newSL float64
+	updated := false
+
+	if pos.IsLong() {
+		// LONG: New SL = Price * (1 - 0.5%)
+		// Move SL UP
+		trailPrice := currentPrice * (1.0 - (trailingDistancePct / 100.0))
+		if trailPrice > pos.SLPrice {
+			newSL = trailPrice
+			updated = true
+		}
+	} else {
+		// SHORT: New SL = Price * (1 + 0.5%)
+		// Move SL DOWN
+		trailPrice := currentPrice * (1.0 + (trailingDistancePct / 100.0))
+		// For SHORT, SL is above price. We want to lower it.
+		if trailPrice < pos.SLPrice {
+			newSL = trailPrice
+			updated = true
+		}
+	}
+
+	if updated {
+		pos.SLPrice = newSL
+		// Update SL in DB
+		if err := s.positionRepo.Update(ctx, pos); err != nil {
+			log.Printf("⚠️ Failed to update Trailing Stop for %s: %v", pos.Symbol, err)
+		} else {
+			log.Printf("⛓️ Trailing Stop Updated for %s: New SL %.4f (Price %.4f, PnL %.2f%%)",
+				pos.Symbol, pos.SLPrice, currentPrice, pnlPct)
+		}
+	}
 }
