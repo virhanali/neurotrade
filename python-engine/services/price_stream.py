@@ -60,14 +60,27 @@ class PriceStreamService:
     
     async def _run_forever(self):
         """Main loop with auto-reconnection"""
+        reconnect_delay = 5
+        max_reconnect_delay = 60
+        
         while self._running:
             try:
                 await self._connect_and_stream()
+                # Reset delay on successful connection
+                reconnect_delay = 5
+            except ConnectionClosed as e:
+                logger.warning(f"WebSocket connection closed: code={e.code}, reason={e.reason}")
+                if self._running:
+                    logger.info(f"Reconnecting in {reconnect_delay} seconds...")
+                    await asyncio.sleep(reconnect_delay)
+                    # Exponential backoff with max limit
+                    reconnect_delay = min(reconnect_delay * 1.5, max_reconnect_delay)
             except Exception as e:
                 logger.error(f"WebSocket error: {e}")
                 if self._running:
-                    logger.info("Reconnecting in 5 seconds...")
-                    await asyncio.sleep(5)
+                    logger.info(f"Reconnecting in {reconnect_delay} seconds...")
+                    await asyncio.sleep(reconnect_delay)
+                    reconnect_delay = min(reconnect_delay * 1.5, max_reconnect_delay)
     
     async def _connect_and_stream(self):
         """Connect to WebSocket and process messages"""
@@ -75,17 +88,24 @@ class PriceStreamService:
         
         async with websockets.connect(
             self.WS_URL,
-            ping_interval=20,
-            ping_timeout=10,
-            close_timeout=5
+            ping_interval=30,      # Send ping every 30s (was 20)
+            ping_timeout=30,       # Wait 30s for pong (was 10) - more tolerant
+            close_timeout=10,      # Allow 10s for graceful close (was 5)
+            max_size=10 * 1024 * 1024,  # 10MB max message size
         ) as ws:
             self._ws = ws
             logger.info("✅ WebSocket connected")
             
-            async for message in ws:
-                if not self._running:
-                    break
-                await self._process_message(message)
+            try:
+                async for message in ws:
+                    if not self._running:
+                        break
+                    await self._process_message(message)
+            except asyncio.CancelledError:
+                logger.info("WebSocket stream cancelled")
+                raise
+            finally:
+                self._ws = None
     
     async def _process_message(self, message: str):
         """Process incoming WebSocket message"""
