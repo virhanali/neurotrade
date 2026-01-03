@@ -96,8 +96,17 @@ func main() {
 	telegramBotToken := os.Getenv("TELEGRAM_BOT_TOKEN")
 	telegramChatID := os.Getenv("TELEGRAM_CHAT_ID")
 	notificationService := telegram.NewNotificationService(telegramBotToken, telegramChatID)
+
+	// Initialize Telegram Bot Controller for remote commands
+	var botController *telegram.BotController
 	if telegramBotToken != "" && telegramChatID != "" {
 		log.Println("[OK] Telegram notifications enabled")
+
+		// Create bot controller
+		botController = telegram.NewBotController(notificationService)
+
+		// Register commands (handlers will be set after services are initialized)
+		log.Println("[OK] Telegram Bot Controller initialized")
 	} else {
 		log.Println("[WARN]  Telegram notifications disabled (set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID to enable)")
 	}
@@ -148,6 +157,70 @@ func main() {
 		log.Fatalf("Failed to start market scan scheduler: %v", err)
 	}
 	defer marketScanScheduler.Stop()
+
+	// Register Telegram Bot commands (if enabled)
+	if botController != nil {
+		// /status command
+		botController.RegisterCommand("/status", func() string {
+			return fmt.Sprintf("✅ *Bot Status*\n\n"+
+				"Mode: `%s`\n"+
+				"Scheduler: `Running`\n"+
+				"Time: `%s`",
+				tradingMode,
+				time.Now().Format("2006-01-02 15:04:05"))
+		})
+
+		// /balance command
+		botController.RegisterCommand("/balance", func() string {
+			users, _ := userRepo.GetAll(ctx)
+			if len(users) == 0 {
+				return "No users found"
+			}
+			user := users[0]
+			return fmt.Sprintf("💰 *Balance*\n\n"+
+				"Paper: `$%.2f`\n"+
+				"Mode: `%s`",
+				user.PaperBalance,
+				user.Mode)
+		})
+
+		// /stats command
+		botController.RegisterCommand("/stats", func() string {
+			// Get all users to calculate total balance
+			users, _ := userRepo.GetAll(ctx)
+			totalBalance := 0.0
+			for _, u := range users {
+				totalBalance += u.PaperBalance
+			}
+
+			// Get open positions
+			openPositions, _ := positionRepo.GetOpenPositions(ctx)
+
+			return fmt.Sprintf("📊 *Trading Stats*\n\n"+
+				"Total Balance: `$%.2f`\n"+
+				"Open Positions: `%d`\n"+
+				"Mode: `%s`",
+				totalBalance, len(openPositions), tradingMode)
+		})
+
+		// /positions command
+		botController.RegisterCommand("/positions", func() string {
+			positions, _ := positionRepo.GetOpenPositions(ctx)
+			if len(positions) == 0 {
+				return "No open positions"
+			}
+			msg := "📈 *Open Positions*\n\n"
+			for _, p := range positions {
+				msg += fmt.Sprintf("• %s %s @ $%.4f\n", p.Symbol, p.Side, p.EntryPrice)
+			}
+			return msg
+		})
+
+		// Start polling for commands
+		botController.StartPolling()
+		defer botController.StopPolling()
+		log.Println("[OK] Telegram Bot polling started")
+	}
 
 	// Initialize Phase 3 cron jobs
 	cronScheduler := cron.New(cron.WithSeconds()) // Enable seconds-level scheduling

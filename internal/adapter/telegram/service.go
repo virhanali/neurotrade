@@ -191,3 +191,128 @@ func (s *NotificationService) sendMessage(text string) error {
 
 	return nil
 }
+
+// === TELEGRAM BOT COMMAND HANDLER ===
+
+type telegramUpdate struct {
+	UpdateID int `json:"update_id"`
+	Message  *struct {
+		MessageID int `json:"message_id"`
+		Chat      struct {
+			ID int64 `json:"id"`
+		} `json:"chat"`
+		Text string `json:"text"`
+	} `json:"message"`
+}
+
+type telegramUpdatesResponse struct {
+	OK     bool             `json:"ok"`
+	Result []telegramUpdate `json:"result"`
+}
+
+// CommandHandler is a function that handles a command
+type CommandHandler func() string
+
+// BotController handles incoming Telegram commands
+type BotController struct {
+	service      *NotificationService
+	lastUpdateID int
+	handlers     map[string]CommandHandler
+	stopPolling  chan struct{}
+	isPolling    bool
+}
+
+// NewBotController creates a new bot controller
+func NewBotController(service *NotificationService) *BotController {
+	return &BotController{
+		service:      service,
+		lastUpdateID: 0,
+		handlers:     make(map[string]CommandHandler),
+		stopPolling:  make(chan struct{}),
+		isPolling:    false,
+	}
+}
+
+// RegisterCommand registers a command handler
+func (b *BotController) RegisterCommand(command string, handler CommandHandler) {
+	b.handlers[command] = handler
+}
+
+// StartPolling starts polling for updates
+func (b *BotController) StartPolling() {
+	if !b.service.enabled || b.isPolling {
+		return
+	}
+
+	b.isPolling = true
+	go b.pollLoop()
+}
+
+// StopPolling stops the polling loop
+func (b *BotController) StopPolling() {
+	if b.isPolling {
+		close(b.stopPolling)
+		b.isPolling = false
+	}
+}
+
+func (b *BotController) pollLoop() {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-b.stopPolling:
+			return
+		case <-ticker.C:
+			b.processUpdates()
+		}
+	}
+}
+
+func (b *BotController) processUpdates() {
+	url := fmt.Sprintf("https://api.telegram.org/bot%s/getUpdates?offset=%d&timeout=1",
+		b.service.botToken, b.lastUpdateID+1)
+
+	resp, err := b.service.httpClient.Get(url)
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+
+	var updates telegramUpdatesResponse
+	if err := json.NewDecoder(resp.Body).Decode(&updates); err != nil {
+		return
+	}
+
+	for _, update := range updates.Result {
+		b.lastUpdateID = update.UpdateID
+
+		if update.Message == nil || update.Message.Text == "" {
+			continue
+		}
+
+		// Security check: only respond to authorized chat
+		if fmt.Sprintf("%d", update.Message.Chat.ID) != b.service.chatID {
+			continue
+		}
+
+		// Process command
+		cmd := update.Message.Text
+		if handler, ok := b.handlers[cmd]; ok {
+			response := handler()
+			b.service.sendMessage(response)
+		} else if cmd == "/help" {
+			b.service.sendMessage(b.getHelpMessage())
+		}
+	}
+}
+
+func (b *BotController) getHelpMessage() string {
+	return "🤖 *NeuroTrade Bot Commands*\n\n" +
+		"/status - Check bot status\n" +
+		"/balance - Check current balance\n" +
+		"/stats - View trading statistics\n" +
+		"/positions - View open positions\n" +
+		"/help - Show this message"
+}
