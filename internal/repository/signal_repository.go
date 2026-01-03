@@ -55,7 +55,7 @@ func (r *SignalRepositoryImpl) Save(ctx context.Context, signal *domain.Signal) 
 func (r *SignalRepositoryImpl) GetRecent(ctx context.Context, limit int) ([]*domain.Signal, error) {
 	query := `
 		SELECT id, symbol, type, entry_price, sl_price, tp_price,
-		       confidence, reasoning, status, review_result, created_at
+		       confidence, reasoning, status, review_result, review_pnl, created_at
 		FROM signals
 		ORDER BY created_at DESC
 		LIMIT $1
@@ -81,6 +81,7 @@ func (r *SignalRepositoryImpl) GetRecent(ctx context.Context, limit int) ([]*dom
 			&signal.Reasoning,
 			&signal.Status,
 			&signal.ReviewResult,
+			&signal.ReviewPnL,
 			&signal.CreatedAt,
 		)
 		if err != nil {
@@ -100,7 +101,7 @@ func (r *SignalRepositoryImpl) GetRecent(ctx context.Context, limit int) ([]*dom
 func (r *SignalRepositoryImpl) GetByID(ctx context.Context, id uuid.UUID) (*domain.Signal, error) {
 	query := `
 		SELECT id, symbol, type, entry_price, sl_price, tp_price,
-		       confidence, reasoning, status, review_result, created_at
+		       confidence, reasoning, status, review_result, review_pnl, created_at
 		FROM signals
 		WHERE id = $1
 	`
@@ -117,6 +118,7 @@ func (r *SignalRepositoryImpl) GetByID(ctx context.Context, id uuid.UUID) (*doma
 		&signal.Reasoning,
 		&signal.Status,
 		&signal.ReviewResult,
+		&signal.ReviewPnL,
 		&signal.CreatedAt,
 	)
 

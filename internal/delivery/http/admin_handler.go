@@ -342,22 +342,59 @@ func (h *AdminHandler) GetLatestScanResults(c echo.Context) error {
 
 		timestamp := signal.CreatedAt.In(loc).Format("15:04 WIB")
 
+		// PnL Badge Logic
+		pnlBadge := ""
+		if signal.ReviewResult != nil {
+			res := *signal.ReviewResult
+			pnlVal := 0.0
+			if signal.ReviewPnL != nil {
+				pnlVal = *signal.ReviewPnL // This is price move % (unleveraged)
+			}
+
+			// Simulation: Leverage 20x, Margin $30
+			leverage := 20.0
+			margin := 30.0
+
+			roe := pnlVal * leverage
+			pnlDollar := (margin * leverage) * (pnlVal / 100.0)
+
+			resColor := "bg-[#ff6b6b] text-white" // Loss Red by default
+			if res == "WIN" || roe > 0 {
+				resColor = "bg-[#51cf66] text-black" // Profit Green
+			}
+
+			pnlBadge = fmt.Sprintf(`
+				<div class="mt-1 flex items-center space-x-1">
+					<span class="inline-block %s border-2 border-black px-2 py-0.5 text-xs font-bold shadow-[1px_1px_0px_0px_#000]">
+						%s
+					</span>
+					
+					<span class="inline-block %s border-2 border-black px-2 py-0.5 text-xs font-bold shadow-[1px_1px_0px_0px_#000]">
+						%.0f%% | $%.2f
+					</span>
+				</div>
+			`, resColor, res, resColor, roe, pnlDollar)
+		}
+
 		html += fmt.Sprintf(`
 			<div class="bg-white border-2 border-black p-2 shadow-[2px_2px_0px_0px_#000] mb-2">
-				<div class="flex items-center justify-between">
-					<div class="flex items-center space-x-2">
-						<span class="font-bold text-black text-sm">%s</span>
-						<span class="inline-block %s %s border-2 border-black px-2 py-0.5 text-xs font-bold shadow-[1px_1px_0px_0px_#000]">
-							%s %s
-						</span>
-						<span class="inline-block %s border-2 border-black px-2 py-0.5 text-xs font-bold text-black shadow-[1px_1px_0px_0px_#000]">
-							%d%%
-						</span>
+				<div class="flex flex-col">
+					<div class="flex items-center justify-between">
+						<div class="flex items-center space-x-2">
+							<span class="font-bold text-black text-sm">%s</span>
+							<span class="inline-block %s %s border-2 border-black px-2 py-0.5 text-xs font-bold shadow-[1px_1px_0px_0px_#000]">
+								%s %s
+							</span>
+							<span class="inline-block %s border-2 border-black px-2 py-0.5 text-xs font-bold text-black shadow-[1px_1px_0px_0px_#000]">
+								%d%%
+							</span>
+						</div>
+						<span class="text-xs text-gray-600">%s</span>
 					</div>
-					<span class="text-xs text-gray-600">%s</span>
+					%s
 				</div>
 			</div>
-		`, signal.Symbol, sideBg, sideText, sideEmoji, signal.Type, confidenceBg, signal.Confidence, timestamp)
+		`, signal.Symbol, sideBg, sideText, sideEmoji, signal.Type, confidenceBg, signal.Confidence, timestamp, pnlBadge)
 	}
 
 	html += `</div>`
