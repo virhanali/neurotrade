@@ -282,11 +282,25 @@
                                 <p class="text-sm font-medium text-slate-500 dark:text-slate-400">Total Equity</p>
                                 <h3 class="text-2xl font-bold text-slate-900 dark:text-white mt-1">${{printf "%.2f"
                                     .User.PaperBalance}}</h3>
+                                {{if gt .TodayPnLPercent 0.0}}
                                 <div
                                     class="flex items-center mt-1 text-xs text-emerald-600 dark:text-emerald-400 font-medium">
                                     <i class="ri-arrow-up-line mr-1"></i>
-                                    <span>+0.00% Today</span>
+                                    <span>+{{printf "%.2f" .TodayPnLPercent}}% Today</span>
                                 </div>
+                                {{else if lt .TodayPnLPercent 0.0}}
+                                <div
+                                    class="flex items-center mt-1 text-xs text-rose-600 dark:text-rose-400 font-medium">
+                                    <i class="ri-arrow-down-line mr-1"></i>
+                                    <span>{{printf "%.2f" .TodayPnLPercent}}% Today</span>
+                                </div>
+                                {{else}}
+                                <div
+                                    class="flex items-center mt-1 text-xs text-slate-500 dark:text-slate-400 font-medium">
+                                    <i class="ri-subtract-line mr-1"></i>
+                                    <span>0.00% Today</span>
+                                </div>
+                                {{end}}
                             </div>
                             <div
                                 class="p-2 bg-slate-50 dark:bg-slate-800 rounded-lg text-slate-600 dark:text-slate-400 group-hover:text-emerald-500 transition-colors">

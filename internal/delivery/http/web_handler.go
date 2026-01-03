@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"time"
 
 	"neurotrade/internal/domain"
 	"neurotrade/internal/middleware"
@@ -178,6 +179,36 @@ func (h *WebHandler) HandleDashboard(c echo.Context) error {
 		"IsAdmin":          user.Role == domain.RoleAdmin,
 		"PendingPositions": pendingPositions,
 	}
+
+	// Calculate today's realized PnL from closed positions
+	// Calculate start of day in Jakarta
+	loc, _ := time.LoadLocation("Asia/Jakarta")
+	if loc == nil {
+		loc = time.Local
+	}
+	now := time.Now().In(loc)
+	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
+
+	var todayPnL float64
+	err = h.db.QueryRow(ctx, `
+		SELECT COALESCE(SUM(pnl), 0) 
+		FROM paper_positions 
+		WHERE user_id = $1 
+		AND closed_at >= $2 
+		AND status IN ('CLOSED_WIN', 'CLOSED_LOSS', 'CLOSED_MANUAL')
+	`, userID, startOfDay).Scan(&todayPnL)
+	if err != nil {
+		todayPnL = 0
+	}
+
+	// Calculate percentage (relative to paper balance)
+	todayPnLPercent := 0.0
+	if user.PaperBalance > 0 {
+		todayPnLPercent = (todayPnL / user.PaperBalance) * 100
+	}
+
+	data["TodayPnL"] = todayPnL
+	data["TodayPnLPercent"] = todayPnLPercent
 
 	// If admin, load system statistics and settings
 	if user.Role == domain.RoleAdmin {
