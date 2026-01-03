@@ -7,6 +7,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NeuroTrade | AI Quantitative System</title>
+    <link rel="icon" type="image/svg+xml" href="/static/images/favicon.svg">
+    <link rel="apple-touch-icon" href="/static/images/favicon.svg">
 
     <!-- Dependencies -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -194,11 +196,20 @@
                         class="w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-900 flex items-center justify-center text-emerald-600 dark:text-emerald-400 font-bold text-sm">
                         {{if .User.Username}}{{slice .User.Username 0 1}}{{else}}A{{end}}
                     </div>
-                    <div class="ml-3 overflow-hidden">
+                    <div class="ml-3 overflow-hidden flex-1">
                         <p class="text-sm font-medium text-slate-900 dark:text-white truncate">{{.User.Username}}</p>
                         <p class="text-xs text-slate-500 dark:text-slate-400 capitalize">{{.User.Role}}</p>
                     </div>
                 </div>
+                <!-- Logout Button -->
+                <form action="/api/auth/logout" method="POST" class="mt-3"
+                    onsubmit="return confirm('Are you sure you want to logout?')">
+                    <button type="submit"
+                        class="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg transition-colors">
+                        <i class="ri-logout-box-r-line"></i>
+                        Logout
+                    </button>
+                </form>
             </div>
         </aside>
 
@@ -221,6 +232,7 @@
                             <!-- Health Status injected here -->
                         </div>
                         <button hx-post="/api/admin/market-scan/trigger" hx-swap="none"
+                            hx-confirm="Trigger a new market scan? This will analyze top coins for trading signals."
                             class="inline-flex items-center px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg shadow-sm transition-colors focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500">
                             <i class="ri-radar-line mr-2"></i>
                             Scan Now
@@ -284,7 +296,8 @@
                         <div class="flex justify-between items-start">
                             <div>
                                 <p class="text-sm font-medium text-slate-500 dark:text-slate-400">Win Rate</p>
-                                <h3 class="text-2xl font-bold text-slate-900 dark:text-white mt-1">--%</h3>
+                                <h3 class="text-2xl font-bold text-slate-900 dark:text-white mt-1">{{if .Stats}}{{printf
+                                    "%.1f" .Stats.WinRate}}%{{else}}--%{{end}}</h3>
                             </div>
                             <div
                                 class="p-2 bg-slate-50 dark:bg-slate-800 rounded-lg text-slate-600 dark:text-slate-400">

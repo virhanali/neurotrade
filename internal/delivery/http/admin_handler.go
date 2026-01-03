@@ -323,13 +323,33 @@ func (h *AdminHandler) GetLatestScanResults(c echo.Context) error {
 		return c.HTML(http.StatusInternalServerError, fmt.Sprintf("<div class='text-red-500'>Error loading signals: %v</div>", err))
 	}
 
-	// Fetch user settings for simulated PnL calculation
-	// In a real app, this would be actual PnL from position history
-	var userMargin float64 = 50.0
-	userLeverage := 10
-	if h.settingsRepo != nil {
-		// Try to get from settings or use default
-		userMargin = 50.0
+	// Pre-fetch PnL dollar values from paper_positions for all signals in one query
+	// Build a map of signal_id -> pnl dollar
+	pnlMap := make(map[string]float64)
+	if len(signals) > 0 {
+		// Get all signal IDs
+		var signalIDs []string
+		for _, s := range signals {
+			signalIDs = append(signalIDs, s.ID.String())
+		}
+
+		// Query paper_positions for PnL values
+		query := `
+			SELECT signal_id::text, COALESCE(pnl, 0) 
+			FROM paper_positions 
+			WHERE signal_id = ANY($1::uuid[])
+		`
+		rows, err := h.db.Query(ctx, query, signalIDs)
+		if err == nil {
+			defer rows.Close()
+			for rows.Next() {
+				var signalID string
+				var pnl float64
+				if err := rows.Scan(&signalID, &pnl); err == nil {
+					pnlMap[signalID] = pnl
+				}
+			}
+		}
 	}
 
 	var viewModels []SignalViewModel
@@ -353,44 +373,39 @@ func (h *AdminHandler) GetLatestScanResults(c echo.Context) error {
 		// 3. Format Time
 		timestamp := signal.CreatedAt.In(loc).Format("15:04")
 
-		// 4. Calculate PnL (Simulated based on ID hash)
-		// Logic: Use signal ID to deterministically decide WIN/LOSS/RUNNING
-		// For demo purposes, we want recent signals to be "RUNNING"
-
+		// 4. Determine Result from REAL signal data
 		isRunning := false
-		res := "WIN"
-		resColor := "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800"
-
-		// Use ID hash for randomness consistency
-		// Fix: Access first byte of UUID array
-		hash := int(signal.ID[0]) % 100
-
-		// Time since signal
-		timeSince := time.Since(signal.CreatedAt)
-
+		res := ""
+		resColor := "bg-slate-50 text-slate-700 dark:bg-slate-800/50 dark:text-slate-400 border-slate-200 dark:border-slate-700"
 		var pnlVal, pnlDollar float64
 
-		if timeSince < 15*time.Minute {
-			// Very recent signals are always RUNNING
-			isRunning = true
-		} else {
-			// Older signals have outcome
-			if hash > 45 {
+		// Use actual ReviewResult from signal
+		if signal.ReviewResult != nil {
+			switch *signal.ReviewResult {
+			case "WIN":
 				res = "WIN"
-				// Random win 5% - 40%
-				pnlVal = float64(hash) / 2.5
 				resColor = "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800"
-			} else {
+			case "LOSS":
 				res = "LOSS"
-				// Random loss 1% - 15%
-				pnlVal = float64(hash) / 3.0 * -1
 				resColor = "bg-rose-50 text-rose-700 dark:bg-rose-900/20 dark:text-rose-400 border-rose-200 dark:border-rose-800"
+			case "FLOATING":
+				isRunning = true
+			default:
+				isRunning = true
 			}
+		} else {
+			// No review result yet = still running/pending
+			isRunning = true
+		}
 
-			// Calculate Dollar Value: (Margin * Leverage) * (Percent / 100)
-			// Example: $50 * 10 = $500 position size
-			positionSize := userMargin * float64(userLeverage)
-			pnlDollar = positionSize * (pnlVal / 100)
+		// Use actual ReviewPnL (percentage) from signal
+		if signal.ReviewPnL != nil {
+			pnlVal = *signal.ReviewPnL
+		}
+
+		// Use actual PnL dollar from paper_positions
+		if pnl, exists := pnlMap[signal.ID.String()]; exists {
+			pnlDollar = pnl
 		}
 
 		viewModels = append(viewModels, SignalViewModel{
