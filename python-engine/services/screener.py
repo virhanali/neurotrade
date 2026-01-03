@@ -164,10 +164,13 @@ class MarketScreener:
             # Ini memastikan kita dapat koin yang benar-benar Overbought/Oversold
             final_list.sort(key=lambda x: x['rsi_score'], reverse=True)
 
-            # Return top N symbols
-            top_symbols = [opp['symbol'] for opp in final_list[:settings.TOP_COINS_LIMIT]]
+            # Return top N symbols (Limit to 5 for AI Analysis safety)
+            # Even if we screen 50 coins, we only want AI to deep dive into the top 5
+            # 5 coins * 15s avg analysis = 75s (Safe for 2 min cron)
+            safe_limit = 5
+            top_symbols = [opp['symbol'] for opp in final_list[:safe_limit]]
             
-            print(f"✅ Selected {len(top_symbols)} coins based on Volatility + RSI")
+            print(f"✅ Selected {len(top_symbols)} coins (from {len(candidates)} candidates) based on Volatility + RSI")
             return top_symbols
 
         except Exception as e:
