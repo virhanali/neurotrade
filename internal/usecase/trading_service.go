@@ -96,12 +96,32 @@ func (ts *TradingService) ProcessMarketScan(ctx context.Context, balance float64
 	savedCount := 0
 	processedSymbols := make(map[string]bool)
 
+	// Pre-fetch active positions to avoid duplicates
+	activePositions, err := ts.positionRepo.GetOpenPositions(ctx)
+	activeSymbolMap := make(map[string]bool)
+	if err == nil {
+		for _, pos := range activePositions {
+			// Check if status is OPEN or PENDING_APPROVAL
+			if pos.Status == domain.StatusOpen || pos.Status == domain.StatusPositionPendingApproval {
+				activeSymbolMap[pos.Symbol] = true
+			}
+		}
+	} else {
+		log.Printf("WARNING: Failed to fetch open positions: %v", err)
+	}
+
 	for _, aiSignal := range aiSignals {
-		// Dedup check: Prevent processing the same symbol twice in one batch
+		// Dedup check 1: Prevent processing the same symbol twice in one batch
 		if processedSymbols[aiSignal.Symbol] {
 			continue
 		}
 		processedSymbols[aiSignal.Symbol] = true
+
+		// Dedup check 2: Prevent processing if we already have an active position
+		if activeSymbolMap[aiSignal.Symbol] {
+			log.Printf("Skipping %s: Active position already exists", aiSignal.Symbol)
+			continue
+		}
 		// Skip WAIT signals (not actionable)
 		if aiSignal.FinalSignal == "WAIT" {
 			log.Printf("Skipping %s: signal is WAIT (not actionable)", aiSignal.Symbol)
