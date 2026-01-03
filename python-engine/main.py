@@ -76,11 +76,11 @@ class MarketAnalysisRequest(BaseModel):
 
 
 class TradeParams(BaseModel):
-    entry_price: float
-    stop_loss: float
-    take_profit: float
-    suggested_leverage: int
-    position_size_usdt: float
+    entry_price: Optional[float] = None
+    stop_loss: Optional[float] = None
+    take_profit: Optional[float] = None
+    suggested_leverage: Optional[int] = None
+    position_size_usdt: Optional[float] = None
 
 
 class SignalResult(BaseModel):
@@ -242,20 +242,10 @@ async def analyze_market(request: MarketAnalysisRequest):
                 # Combine results
                 combined = ai_handler.combine_analysis(logic_result, vision_result)
 
-                # Log analysis results
-                current_time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                print(f"\n=== Analysis for {symbol} [{current_time_str}] [Mode: {mode}] ===")
-                print(f"Logic Signal: {logic_result.get('signal', 'N/A')}")
-                print(f"Logic Confidence: {logic_result.get('confidence', 0)}%")
-                print(f"Vision Verdict: {vision_result.get('verdict', 'N/A')}")
-                print(f"Vision Confidence: {vision_result.get('confidence', 0)}%")
-                print(f"Setup Valid: {combined.get('setup_valid', 'N/A')}")
-                print(f"Agreement: {combined['agreement']}")
-                print(f"Combined Confidence: {combined['combined_confidence']}%")
-                print(f"Recommendation: {combined['recommendation']}")
-                print("--- AI Reasoning ---")
-                print(logic_result.get('reasoning', 'No reasoning available')[:500] + "...") # Limit to 500 chars to avoid massive logs
-                print(f"==============================\n")
+                # Only log signals that are NOT wait/skip to keep logs clean
+                if combined.get('recommendation') == 'EXECUTE':
+                     current_time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                     print(f"🚀 SIGNAL FOUND: {symbol} {combined.get('final_signal')} (Conf: {combined.get('combined_confidence')}%)")
 
                 # Check if signal meets criteria
                 if combined['recommendation'] == 'EXECUTE':

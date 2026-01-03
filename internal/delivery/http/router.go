@@ -1,6 +1,8 @@
 package http
 
 import (
+	"strings"
+
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 
@@ -21,10 +23,17 @@ func SetupRoutes(e *echo.Echo, config *RouterConfig) {
 		Skipper: func(c echo.Context) bool {
 			// Skip logging for high-frequency polling endpoints to reduce noise
 			path := c.Request().URL.Path
-			return path == "/api/admin/market-scan/results" ||
-				path == "/health" ||
-				path == "/api/user/positions/html" ||
-				path == "/api/admin/system/health"
+			// Exact match or contains for polling endpoints
+			if strings.HasSuffix(path, "/api/user/positions/html") {
+				return true
+			}
+			if strings.HasSuffix(path, "/api/admin/market-scan/results") {
+				return true
+			}
+			if path == "/health" || path == "/api/admin/system/health" {
+				return true
+			}
+			return false
 		},
 	}))
 	e.Use(middleware.Recover())

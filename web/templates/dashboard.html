@@ -204,7 +204,8 @@
                                 <td class="py-4 px-6 font-bold text-black">{{.Symbol}}</td>
                                 <td class="py-4 px-6">
                                     <span
-                                        class="inline-block border-2 border-black px-3 py-1 font-bold text-sm shadow-[2px_2px_0px_0px_#000] {{if eq .Side "SHORT"}}bg-[#ff6b6b] text-white{{else}}bg-[#51cf66] text-black{{end}}">
+                                        class="inline-block border-2 border-black px-3 py-1 font-bold text-sm shadow-[2px_2px_0px_0px_#000] {{if eq .Side "
+                                        SHORT"}}bg-[#ff6b6b] text-white{{else}}bg-[#51cf66] text-black{{end}}">
                                         {{.Side}}
                                     </span>
                                 </td>
@@ -240,7 +241,8 @@
                     <h2 class="text-2xl font-bold text-white">📊 Active Positions</h2>
                     <div class="flex items-center space-x-2">
                         <div class="w-3 h-3 bg-[#51cf66] rounded-full animate-pulse border-2 border-white"></div>
-                        <span class="text-sm font-semibold text-white uppercase tracking-wide">Live (5s)</span>
+                        <span class="text-sm font-semibold text-white uppercase tracking-wide">Realtime Sync
+                            (10s)</span>
                     </div>
                 </div>
 
@@ -260,7 +262,7 @@
                                 <th class="py-4 px-6 text-left text-sm font-bold uppercase tracking-wide">Action</th>
                             </tr>
                         </thead>
-                        <tbody hx-get="/api/user/positions/html" hx-trigger="load, every 5s" hx-swap="innerHTML"
+                        <tbody hx-get="/api/user/positions/html" hx-trigger="load, every 10s" hx-swap="innerHTML"
                             class="divide-y-2 divide-black">
                             <!-- HTMX will load positions here -->
                             <tr>

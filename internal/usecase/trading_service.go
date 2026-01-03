@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -26,6 +27,8 @@ type TradingService struct {
 	notificationService NotificationService
 	priceService        domain.MarketPriceService
 	minConfidence       int
+	scanMu              sync.Mutex
+	isScanning          bool
 }
 
 // NewTradingService creates a new TradingService
@@ -52,6 +55,23 @@ func NewTradingService(
 // ProcessMarketScan performs a complete market scan and saves high-confidence signals
 // mode: "SCALPER" for M15 aggressive trading, "INVESTOR" for H1 trend following
 func (ts *TradingService) ProcessMarketScan(ctx context.Context, balance float64, mode string) error {
+	// Mutex Lock to prevent overlapping scans (Race Condition fix)
+	ts.scanMu.Lock()
+	if ts.isScanning {
+		ts.scanMu.Unlock()
+		log.Println("⚠️ Market scan skipped: Previous scan still running")
+		return nil
+	}
+	ts.isScanning = true
+	ts.scanMu.Unlock()
+
+	// Ensure we release the flag when done
+	defer func() {
+		ts.scanMu.Lock()
+		ts.isScanning = false
+		ts.scanMu.Unlock()
+	}()
+
 	log.Printf("=== Starting Market Scan [Mode: %s] ===", mode)
 	startTime := time.Now()
 
@@ -74,7 +94,14 @@ func (ts *TradingService) ProcessMarketScan(ctx context.Context, balance float64
 
 	// Step 2: Process each signal
 	savedCount := 0
+	processedSymbols := make(map[string]bool)
+
 	for _, aiSignal := range aiSignals {
+		// Dedup check: Prevent processing the same symbol twice in one batch
+		if processedSymbols[aiSignal.Symbol] {
+			continue
+		}
+		processedSymbols[aiSignal.Symbol] = true
 		// Skip WAIT signals (not actionable)
 		if aiSignal.FinalSignal == "WAIT" {
 			log.Printf("Skipping %s: signal is WAIT (not actionable)", aiSignal.Symbol)
