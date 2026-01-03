@@ -308,7 +308,7 @@ func (h *WebHandler) HandlePositionsHTML(c echo.Context) error {
 		}
 
 		html += fmt.Sprintf(`
-			<tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors border-b border-slate-50 dark:border-slate-800/50 last:border-0">
+			<tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors border-b border-slate-50 dark:border-slate-800/50 last:border-0" data-symbol="%s">
 				<td class="py-3 px-4">
 					<div class="font-bold text-slate-900 dark:text-white">%s</div>
 				</td>
@@ -323,9 +323,9 @@ func (h *WebHandler) HandlePositionsHTML(c echo.Context) error {
 					TP: <span class="text-emerald-500">$%.4f</span><br>
 					SL: <span class="text-rose-500">$%.4f</span>
 				</td>
-				<td class="py-3 px-4">
+				<td class="py-3 px-4 pnl-cell">
 					<div class="flex flex-col">
-						<span class="font-bold text-sm %s">%s$%.2f</span>
+						<span class="pnl-value font-bold text-sm %s">%s$%.2f</span>
 						<span class="text-xs %s opacity-80">%s%.2f%%</span>
 					</div>
 				</td>
@@ -342,6 +342,7 @@ func (h *WebHandler) HandlePositionsHTML(c echo.Context) error {
 				</td>
 			</tr>
 		`,
+			pos.Symbol, // data-symbol
 			pos.Symbol,
 			sideBadgeClass, pos.Side,
 			pos.EntryPrice,

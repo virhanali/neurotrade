@@ -44,6 +44,7 @@ services:
       - DEBUG_MODE=${DEBUG_MODE}
       - TZ=${TZ}
       - DEFAULT_BALANCE=${DEFAULT_BALANCE}
+      - BINANCE_PRICE_URL=${BINANCE_PRICE_URL}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     expose:
