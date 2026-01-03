@@ -3,6 +3,7 @@ services:
     build:
       context: ./python-engine
       dockerfile: Dockerfile
+    restart: always
     command: [ "python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "${PYTHON_PORT}", "--workers", "1" ]
     environment:
       - DATABASE_URL=${DATABASE_URL}
@@ -30,6 +31,7 @@ services:
       context: .
       dockerfile: Dockerfile
       target: production
+    restart: always
     depends_on:
       python-engine:
         condition: service_healthy
