@@ -17,6 +17,7 @@ type User struct {
 	RealBalanceCache   *float64  `json:"real_balance_cache,omitempty"`
 	MaxDailyLoss       float64   `json:"max_daily_loss"`
 	IsAutoTradeEnabled bool      `json:"is_auto_trade_enabled"`
+	FixedOrderSize     float64   `json:"fixed_order_size"`
 	CreatedAt          time.Time `json:"created_at"`
 	UpdatedAt          time.Time `json:"updated_at"`
 }

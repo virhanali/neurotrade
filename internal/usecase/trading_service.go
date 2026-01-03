@@ -227,9 +227,19 @@ func (ts *TradingService) createPaperPositionForUser(ctx context.Context, user *
 		return fmt.Errorf("invalid signal type: %s", signal.Type)
 	}
 
-	// Calculate position size in base asset (BTC, ETH, etc.)
-	// Size = PositionSizeUSDT / EntryPrice
-	positionSize := tradeParams.PositionSizeUSDT / signal.EntryPrice
+	// Calculate position size based on User Setting (DB Priority)
+	// If user has set fixed_order_size (e.g., 30), usage that.
+	// Otherwise fallback to AI suggestion.
+	entrySizeUSDT := user.FixedOrderSize
+	if entrySizeUSDT <= 0 {
+		entrySizeUSDT = tradeParams.PositionSizeUSDT
+	}
+	// Safety net
+	if entrySizeUSDT <= 0 {
+		entrySizeUSDT = 30.0
+	}
+
+	positionSize := entrySizeUSDT / signal.EntryPrice
 
 	// Determine initial status based on Auto-Trade setting
 	initialStatus := domain.StatusPositionPendingApproval
