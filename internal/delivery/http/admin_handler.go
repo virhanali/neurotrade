@@ -8,11 +8,14 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v4"
 
+	"neurotrade/internal/delivery/http/dto"
 	"neurotrade/internal/domain"
 	"neurotrade/internal/repository"
+	"neurotrade/internal/utils"
 )
 
 // MarketScanScheduler defines the interface for market scan scheduler
@@ -27,16 +30,18 @@ type AdminHandler struct {
 	db           *pgxpool.Pool
 	scheduler    MarketScanScheduler
 	signalRepo   domain.SignalRepository
+	positionRepo domain.PaperPositionRepository
 	settingsRepo *repository.SystemSettingsRepository
 	templates    *template.Template
 }
 
 // NewAdminHandler creates a new AdminHandler
-func NewAdminHandler(db *pgxpool.Pool, scheduler MarketScanScheduler, signalRepo domain.SignalRepository, settingsRepo *repository.SystemSettingsRepository, templates *template.Template) *AdminHandler {
+func NewAdminHandler(db *pgxpool.Pool, scheduler MarketScanScheduler, signalRepo domain.SignalRepository, positionRepo domain.PaperPositionRepository, settingsRepo *repository.SystemSettingsRepository, templates *template.Template) *AdminHandler {
 	return &AdminHandler{
 		db:           db,
 		scheduler:    scheduler,
 		signalRepo:   signalRepo,
+		positionRepo: positionRepo,
 		settingsRepo: settingsRepo,
 		templates:    templates,
 	}
@@ -194,7 +199,7 @@ func (h *AdminHandler) GetSystemHealth(c echo.Context) error {
 	}
 
 	// Get current time in WIB
-	loc, _ := time.LoadLocation("Asia/Jakarta")
+	loc := utils.GetLocation()
 	timestamp := time.Now().In(loc).Format("15:04:05 WIB")
 
 	html := fmt.Sprintf(`
@@ -283,7 +288,7 @@ func (h *AdminHandler) TriggerMarketScan(c echo.Context) error {
 	}()
 
 	// Get current time in WIB
-	loc, _ := time.LoadLocation("Asia/Jakarta")
+	loc := utils.GetLocation()
 	timestamp := time.Now().In(loc).Format("15:04:05 WIB")
 
 	html := fmt.Sprintf(`
@@ -300,21 +305,6 @@ func (h *AdminHandler) TriggerMarketScan(c echo.Context) error {
 	return c.HTML(http.StatusOK, html)
 }
 
-// SignalViewModel represents the data structure for the signal list template
-type SignalViewModel struct {
-	Symbol          string
-	Type            string // SHORT/LONG
-	SideBg          string // Tailwind classes
-	Confidence      int
-	ConfidenceColor string
-	Timestamp       string // HH:mm
-	IsRunning       bool
-	Res             string // WIN/LOSS
-	ResColor        string
-	PnlVal          float64
-	PnlDollar       float64
-}
-
 // GetLatestScanResults returns the latest scan results formatted as HTML for HTMX
 func (h *AdminHandler) GetLatestScanResults(c echo.Context) error {
 	ctx := c.Request().Context()
@@ -327,33 +317,23 @@ func (h *AdminHandler) GetLatestScanResults(c echo.Context) error {
 	// Build a map of signal_id -> pnl dollar
 	pnlMap := make(map[string]float64)
 	if len(signals) > 0 {
-		// Get all signal IDs
-		var signalIDs []string
+		var signalIDs []uuid.UUID
 		for _, s := range signals {
-			signalIDs = append(signalIDs, s.ID.String())
+			signalIDs = append(signalIDs, s.ID)
 		}
 
-		// Query paper_positions for PnL values
-		query := `
-			SELECT signal_id::text, COALESCE(pnl, 0) 
-			FROM paper_positions 
-			WHERE signal_id = ANY($1::uuid[])
-		`
-		rows, err := h.db.Query(ctx, query, signalIDs)
-		if err == nil {
-			defer rows.Close()
-			for rows.Next() {
-				var signalID string
-				var pnl float64
-				if err := rows.Scan(&signalID, &pnl); err == nil {
-					pnlMap[signalID] = pnl
+		if h.positionRepo != nil {
+			idMap, err := h.positionRepo.GetPnLBySignalIDs(ctx, signalIDs)
+			if err == nil {
+				for id, val := range idMap {
+					pnlMap[id.String()] = val
 				}
 			}
 		}
 	}
 
-	var viewModels []SignalViewModel
-	loc, _ := time.LoadLocation("Asia/Jakarta")
+	var viewModels []dto.SignalViewModel
+	loc := utils.GetLocation()
 
 	for _, signal := range signals {
 		// 1. Determine Side Badge Color
@@ -408,7 +388,7 @@ func (h *AdminHandler) GetLatestScanResults(c echo.Context) error {
 			pnlDollar = pnl
 		}
 
-		viewModels = append(viewModels, SignalViewModel{
+		viewModels = append(viewModels, dto.SignalViewModel{
 			Symbol:          signal.Symbol,
 			Type:            signal.Type,
 			SideBg:          sideBg,

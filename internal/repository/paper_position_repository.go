@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -209,4 +210,65 @@ func (r *PaperPositionRepositoryImpl) GetByID(ctx context.Context, id uuid.UUID)
 	}
 
 	return position, nil
+}
+
+// GetTodayRealizedPnL retrieves the realized PnL for positions closed today (WIB)
+func (r *PaperPositionRepositoryImpl) GetTodayRealizedPnL(ctx context.Context, userID uuid.UUID, startOfDay time.Time) (float64, error) {
+	query := `
+		SELECT COALESCE(SUM(pnl), 0) 
+		FROM paper_positions 
+		WHERE user_id = $1 
+		AND closed_at >= $2 
+		AND status IN ('CLOSED_WIN', 'CLOSED_LOSS', 'CLOSED_MANUAL')
+	`
+
+	var todayPnL float64
+	err := r.db.QueryRow(ctx, query, userID, startOfDay).Scan(&todayPnL)
+	if err != nil {
+		return 0, fmt.Errorf("failed to calculate today's PnL: %w", err)
+	}
+
+	return todayPnL, nil
+}
+
+// GetPnLBySignalIDs retrieves PnL values for a list of signal IDs
+func (r *PaperPositionRepositoryImpl) GetPnLBySignalIDs(ctx context.Context, signalIDs []uuid.UUID) (map[uuid.UUID]float64, error) {
+	if len(signalIDs) == 0 {
+		return make(map[uuid.UUID]float64), nil
+	}
+
+	// Convert UUIDs to strings for array query
+	idStrings := make([]string, len(signalIDs))
+	for i, id := range signalIDs {
+		idStrings[i] = id.String()
+	}
+
+	query := `
+		SELECT signal_id::text, COALESCE(pnl, 0)
+		FROM paper_positions
+		WHERE signal_id = ANY($1::uuid[])
+	`
+
+	rows, err := r.db.Query(ctx, query, idStrings)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query PnL for signals: %w", err)
+	}
+	defer rows.Close()
+
+	pnlMap := make(map[uuid.UUID]float64)
+	for rows.Next() {
+		var signalIDStr string
+		var pnl float64
+		if err := rows.Scan(&signalIDStr, &pnl); err == nil {
+			if id, err := uuid.Parse(signalIDStr); err == nil {
+				pnlMap[id] = pnl
+			}
+		}
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating pnl rows: %w", err)
+	}
+
+	return pnlMap, nil
 }

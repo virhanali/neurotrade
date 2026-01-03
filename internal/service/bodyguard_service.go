@@ -93,15 +93,15 @@ func (s *BodyguardService) CheckPositionsFast(ctx context.Context) error {
 		}
 
 		// Check SL/TP
-		shouldClose, closeReason := s.checkSLTP(pos, currentPrice)
+		shouldClose, status := pos.CheckSLTP(currentPrice)
 		if shouldClose {
-			err := s.closePosition(ctx, pos, currentPrice, closeReason)
+			err := s.closePosition(ctx, pos, currentPrice, status)
 			if err != nil {
 				log.Printf("⚠️ Bodyguard: Failed to close %s: %v", pos.Symbol, err)
 				continue
 			}
 			closedCount++
-			log.Printf("🛡️ Bodyguard: Closed %s via %s @ $%.4f", pos.Symbol, closeReason, currentPrice)
+			log.Printf("🛡️ Bodyguard: Closed %s via %s @ $%.4f", pos.Symbol, status, currentPrice)
 		}
 	}
 
@@ -112,55 +112,15 @@ func (s *BodyguardService) CheckPositionsFast(ctx context.Context) error {
 	return nil
 }
 
-// checkSLTP checks if position should be closed due to SL or TP
-func (s *BodyguardService) checkSLTP(pos *domain.PaperPosition, currentPrice float64) (bool, string) {
-	side := strings.ToUpper(pos.Side)
-
-	if side == "LONG" || side == "BUY" {
-		// LONG: SL hit when price drops below SL, TP hit when price rises above TP
-		if currentPrice <= pos.SLPrice {
-			return true, "STOP_LOSS"
-		}
-		if currentPrice >= pos.TPPrice {
-			return true, "TAKE_PROFIT"
-		}
-	} else {
-		// SHORT: SL hit when price rises above SL, TP hit when price drops below TP
-		if currentPrice >= pos.SLPrice {
-			return true, "STOP_LOSS"
-		}
-		if currentPrice <= pos.TPPrice {
-			return true, "TAKE_PROFIT"
-		}
-	}
-	return false, ""
-}
-
 // closePosition closes a position and updates all related records
-func (s *BodyguardService) closePosition(ctx context.Context, pos *domain.PaperPosition, exitPrice float64, reason string) error {
-	// Calculate PnL
-	var pnl float64
-	side := strings.ToUpper(pos.Side)
-	if side == "LONG" || side == "BUY" {
-		pnl = (exitPrice - pos.EntryPrice) * pos.Size
-	} else {
-		pnl = (pos.EntryPrice - exitPrice) * pos.Size
-	}
+func (s *BodyguardService) closePosition(ctx context.Context, pos *domain.PaperPosition, exitPrice float64, status string) error {
+	// Calculate Net PnL (Gross - Fees)
+	grossPnL := pos.CalculateGrossPnL(exitPrice)
 
 	// Apply fees (0.05% maker + 0.05% taker = 0.1% total)
 	feeRate := TradingFeePercent / 100.0
 	fees := (pos.EntryPrice * pos.Size * feeRate) + (exitPrice * pos.Size * feeRate)
-	pnl -= fees
-
-	// Determine status
-	var status string
-	if reason == "TAKE_PROFIT" {
-		status = domain.StatusClosedWin
-	} else if reason == "STOP_LOSS" {
-		status = domain.StatusClosedLoss
-	} else {
-		status = domain.StatusClosedManual
-	}
+	pnl := grossPnL - fees
 
 	// Update position
 	now := time.Now()
@@ -190,12 +150,7 @@ func (s *BodyguardService) closePosition(ctx context.Context, pos *domain.PaperP
 		}
 
 		// Calculate PnL percentage
-		var pnlPercent float64
-		if side == "LONG" || side == "BUY" {
-			pnlPercent = ((exitPrice - pos.EntryPrice) / pos.EntryPrice) * 100
-		} else {
-			pnlPercent = ((pos.EntryPrice - exitPrice) / pos.EntryPrice) * 100
-		}
+		pnlPercent := pos.CalculatePnLPercent(exitPrice)
 
 		if err := s.signalRepo.UpdateReviewStatus(ctx, *pos.SignalID, result, &pnlPercent); err != nil {
 			log.Printf("⚠️ Failed to update signal status: %v", err)

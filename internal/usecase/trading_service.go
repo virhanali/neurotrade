@@ -239,11 +239,12 @@ func (ts *TradingService) createPaperPositionForUser(ctx context.Context, user *
 
 	// Determine position side based on signal type
 	var side string
-	if signal.Type == "LONG" {
+	switch signal.Type {
+	case "LONG":
 		side = domain.SideLong
-	} else if signal.Type == "SHORT" {
+	case "SHORT":
 		side = domain.SideShort
-	} else {
+	default:
 		return fmt.Errorf("invalid signal type: %s", signal.Type)
 	}
 
@@ -393,11 +394,7 @@ func (ts *TradingService) ClosePosition(ctx context.Context, positionID uuid.UUI
 }
 
 // CloseAllPositions closes all open positions for a user (PANIC BUTTON)
-func (ts *TradingService) CloseAllPositions(ctx context.Context, userIDStr string) error {
-	userID, err := uuid.Parse(userIDStr)
-	if err != nil {
-		return fmt.Errorf("invalid user ID: %w", err)
-	}
+func (ts *TradingService) CloseAllPositions(ctx context.Context, userID uuid.UUID) error {
 
 	log.Printf("🚨 PANIC BUTTON TRIGGERED for user %s - Closing all positions", userID)
 

@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
-	"time"
 
 	"neurotrade/internal/domain"
 	"neurotrade/internal/middleware"
+	"neurotrade/internal/utils"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
@@ -181,24 +181,13 @@ func (h *WebHandler) HandleDashboard(c echo.Context) error {
 	}
 
 	// Calculate today's realized PnL from closed positions
-	// Calculate start of day in Jakarta
-	loc, _ := time.LoadLocation("Asia/Jakarta")
-	if loc == nil {
-		loc = time.Local
-	}
-	now := time.Now().In(loc)
-	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
+	startOfDay := utils.GetStartOfDay()
 
 	var todayPnL float64
-	err = h.db.QueryRow(ctx, `
-		SELECT COALESCE(SUM(pnl), 0) 
-		FROM paper_positions 
-		WHERE user_id = $1 
-		AND closed_at >= $2 
-		AND status IN ('CLOSED_WIN', 'CLOSED_LOSS', 'CLOSED_MANUAL')
-	`, userID, startOfDay).Scan(&todayPnL)
+	todayPnL, err = h.positionRepo.GetTodayRealizedPnL(ctx, userID, startOfDay)
 	if err != nil {
 		todayPnL = 0
+		// Log error if needed, but for dashboard display 0 is safe fallback
 	}
 
 	// Calculate percentage (relative to paper balance)
@@ -310,18 +299,8 @@ func (h *WebHandler) HandlePositionsHTML(c echo.Context) error {
 		}
 
 		// Calculate PnL
-		pnlPercent := 0.0
-		pnlValue := 0.0
-
-		// Check Side
-		if pos.Side == "LONG" || pos.Side == "BUY" {
-			pnlPercent = ((currentPrice - pos.EntryPrice) / pos.EntryPrice) * 100
-			pnlValue = (currentPrice - pos.EntryPrice) * pos.Size
-		} else {
-			// SHORT
-			pnlPercent = ((pos.EntryPrice - currentPrice) / pos.EntryPrice) * 100
-			pnlValue = (pos.EntryPrice - currentPrice) * pos.Size
-		}
+		pnlPercent := pos.CalculatePnLPercent(currentPrice)
+		pnlValue := pos.CalculateGrossPnL(currentPrice)
 
 		// Colors
 		pnlClass := "text-slate-500"

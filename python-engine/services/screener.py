@@ -4,6 +4,7 @@ Scans Binance Futures market for high-volume, volatile opportunities
 """
 
 import ccxt
+import logging
 import pandas as pd
 import ta
 from typing import List, Dict
@@ -42,13 +43,13 @@ class MarketScreener:
             if price_stream.is_connected and len(price_stream.get_all_tickers()) > 100:
                 raw_tickers = price_stream.get_all_tickers()
                 source = "WEBSOCKET"
-                print(f"📊 Using WebSocket data for screening ({len(raw_tickers)} tickers)")
+                logging.info(f"📊 Using WebSocket data for screening ({len(raw_tickers)} tickers)")
             else:
                 # Fallback to REST API
                 if not self.exchange.markets:
                     self.exchange.load_markets()
                 raw_tickers = self.exchange.fetch_tickers()
-                print("⚠️ Using REST API for screening (WebSocket not ready)")
+                logging.warning("⚠️ Using REST API for screening (WebSocket not ready)")
 
             # Filter USDT futures pairs
             opportunities = []
@@ -110,23 +111,16 @@ class MarketScreener:
                         'change': percentage_change,
                     })
 
-                # Filter by volume and volatility
-                if quote_volume >= settings.MIN_VOLUME_USDT and abs(percentage_change) >= settings.MIN_VOLATILITY_1H:
-                    opportunities.append({
-                        'symbol': clean_symbol,
-                        'volume': quote_volume,
-                        'volatility': abs(percentage_change),
-                        'change': percentage_change,
-                    })
+
 
             # Sort by volatility (highest first) to get Candidates
             opportunities.sort(key=lambda x: x['volatility'], reverse=True)
             
-            # Take top 20 candidates for RSI check (Pre-filter)
-            candidates = opportunities[:20]
+            # Take top 10 candidates for RSI check (Pre-filter)
+            candidates = opportunities[:10]
             final_list = []
             
-            print(f"🔍 Analyzing RSI for top {len(candidates)} volatile coins...")
+            logging.info(f"🔍 Analyzing RSI for top {len(candidates)} volatile coins...")
             
             for cand in candidates:
                 symbol = cand['symbol']
@@ -149,15 +143,14 @@ class MarketScreener:
                     # RSI 30 -> Score 20. RSI 80 -> Score 30.
                     cand['rsi_score'] = abs(current_rsi - 50)
                     
-                    # Optional: Basic Trend Filter
-                    # Jika RSI masih netral (45-55), skip aja biar AI ga buang duit
-                    if 45 <= current_rsi <= 55:
+                    # Strict Filter: Only allow signals with momentum (RSI < 40 or > 60)
+                    if 40 <= current_rsi <= 60:
                         continue
                         
                     final_list.append(cand)
                     
                 except Exception as e:
-                    print(f"⚠️ Failed to calc RSI for {symbol}: {e}")
+                    logging.error(f"⚠️ Failed to calc RSI for {symbol}: {e}")
                     continue
             
             # Sort by RSI Score (Most Extreme First)
@@ -170,7 +163,7 @@ class MarketScreener:
             safe_limit = 5
             top_symbols = [opp['symbol'] for opp in final_list[:safe_limit]]
             
-            print(f"✅ Selected {len(top_symbols)} coins (from {len(candidates)} candidates) based on Volatility + RSI")
+            logging.info(f"✅ Selected {len(top_symbols)} coins (from {len(candidates)} candidates) based on Volatility + RSI")
             return top_symbols
 
         except Exception as e:

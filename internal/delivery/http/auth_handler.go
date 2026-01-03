@@ -9,6 +9,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"golang.org/x/crypto/bcrypt"
 
+	"neurotrade/internal/delivery/http/dto"
 	"neurotrade/internal/domain"
 	"neurotrade/internal/middleware"
 )
@@ -25,31 +26,10 @@ func NewAuthHandler(userRepo domain.UserRepository) *AuthHandler {
 	}
 }
 
-// LoginRequest represents the login request payload
-type LoginRequest struct {
-	Username string `json:"username" validate:"required"`
-	Password string `json:"password" validate:"required"`
-}
-
-// LoginResponse represents the login response
-type LoginResponse struct {
-	Token string      `json:"token"`
-	User  *UserOutput `json:"user"`
-}
-
-// UserOutput represents user data in API responses
-type UserOutput struct {
-	ID           string  `json:"id"`
-	Username     string  `json:"username"`
-	Role         string  `json:"role"`
-	Mode         string  `json:"mode"`
-	PaperBalance float64 `json:"paper_balance"`
-}
-
 // Login handles user login
 // POST /api/auth/login
 func (h *AuthHandler) Login(c echo.Context) error {
-	var req LoginRequest
+	var req dto.LoginRequest
 	if err := c.Bind(&req); err != nil {
 		return BadRequestResponse(c, "Invalid request payload")
 	}
@@ -92,9 +72,9 @@ func (h *AuthHandler) Login(c echo.Context) error {
 	c.SetCookie(cookie)
 
 	// Return response
-	return SuccessResponse(c, LoginResponse{
+	return SuccessResponse(c, dto.LoginResponse{
 		Token: token,
-		User: &UserOutput{
+		User: &dto.UserOutput{
 			ID:           user.ID.String(),
 			Username:     user.Username,
 			Role:         user.Role,
@@ -124,12 +104,7 @@ func (h *AuthHandler) Logout(c echo.Context) error {
 // Register handles user registration (for future use)
 // POST /api/auth/register
 func (h *AuthHandler) Register(c echo.Context) error {
-	type RegisterRequest struct {
-		Username string `json:"username" validate:"required"`
-		Password string `json:"password" validate:"required,min=6"`
-	}
-
-	var req RegisterRequest
+	var req dto.RegisterRequest
 	if err := c.Bind(&req); err != nil {
 		return BadRequestResponse(c, "Invalid request payload")
 	}

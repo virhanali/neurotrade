@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"context"
 	"time"
 
 	"github.com/google/uuid"
@@ -61,4 +62,28 @@ type AISignalResponse struct {
 	LogicReasoning     string       `json:"logic_reasoning"`
 	VisionAnalysis     string       `json:"vision_analysis"`
 	TradeParams        *TradeParams `json:"trade_params"`
+}
+
+// SignalRepository defines the interface for signal data operations
+type SignalRepository interface {
+	// Save saves a new signal to the database
+	Save(ctx context.Context, signal *Signal) error
+
+	// GetRecent retrieves the most recent signals
+	GetRecent(ctx context.Context, limit int) ([]*Signal, error)
+
+	// GetByID retrieves a signal by its ID
+	GetByID(ctx context.Context, id uuid.UUID) (*Signal, error)
+
+	// GetBySymbol retrieves signals for a specific symbol
+	GetBySymbol(ctx context.Context, symbol string, limit int) ([]*Signal, error)
+
+	// UpdateStatus updates the status of a signal
+	UpdateStatus(ctx context.Context, id uuid.UUID, status string) error
+
+	// UpdateReviewStatus updates the review result and PnL of a signal
+	UpdateReviewStatus(ctx context.Context, id uuid.UUID, result string, pnl *float64) error
+
+	// GetPendingSignals retrieves signals that are pending review (older than specified minutes)
+	GetPendingSignals(ctx context.Context, olderThanMinutes int) ([]*Signal, error)
 }

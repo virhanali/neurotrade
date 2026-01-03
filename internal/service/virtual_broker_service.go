@@ -86,7 +86,7 @@ func (s *VirtualBrokerService) CheckPositions(ctx context.Context) error {
 		}
 
 		// Check if TP or SL is hit
-		shouldClose, status := s.shouldClosePosition(position, currentPrice)
+		shouldClose, status := position.CheckSLTP(currentPrice)
 		if !shouldClose {
 			log.Printf("Position %s: Current=%.2f, Entry=%.2f, SL=%.2f, TP=%.2f (Still OPEN)",
 				position.Symbol, currentPrice, position.EntryPrice, position.SLPrice, position.TPPrice)
@@ -167,37 +167,6 @@ func (s *VirtualBrokerService) CheckPositions(ctx context.Context) error {
 	return nil
 }
 
-// shouldClosePosition determines if a position should be closed based on current price
-func (s *VirtualBrokerService) shouldClosePosition(position *domain.PaperPosition, currentPrice float64) (bool, string) {
-	// Normalize side to uppercase
-	side := strings.ToUpper(position.Side)
-
-	switch side {
-	case domain.SideLong, "BUY":
-		// Long position logic
-		if currentPrice >= position.TPPrice {
-			return true, domain.StatusClosedWin
-		}
-		// SL logic: For LONG, if Current <= SL, it's a loss.
-		if currentPrice <= position.SLPrice {
-			return true, domain.StatusClosedLoss
-		}
-
-	case domain.SideShort, "SELL":
-		// Short position logic
-		// TP logic: For SHORT, if Current <= TP, it's a win.
-		if currentPrice <= position.TPPrice {
-			return true, domain.StatusClosedWin
-		}
-		// SL logic: For SHORT, if Current >= SL, it's a loss.
-		if currentPrice >= position.SLPrice {
-			return true, domain.StatusClosedLoss
-		}
-	}
-
-	return false, domain.StatusOpen
-}
-
 // calculateNetPnL calculates net PnL after fees
 // Formula:
 // - GrossPnL = (ExitPrice - EntryPrice) * Size * (1 if Long, -1 if Short)
@@ -206,14 +175,7 @@ func (s *VirtualBrokerService) shouldClosePosition(position *domain.PaperPositio
 // - NetPnL = GrossPnL - EntryFee - ExitFee
 func (s *VirtualBrokerService) calculateNetPnL(position *domain.PaperPosition, exitPrice float64) float64 {
 	// Calculate gross PnL
-	var grossPnL float64
-	if position.Side == domain.SideLong {
-		// Long: profit when price goes up
-		grossPnL = (exitPrice - position.EntryPrice) * position.Size
-	} else {
-		// Short: profit when price goes down
-		grossPnL = (position.EntryPrice - exitPrice) * position.Size
-	}
+	grossPnL := position.CalculateGrossPnL(exitPrice)
 
 	// Calculate fees (0.05% on both entry and exit)
 	feeRate := TradingFeePercent / 100.0 // Convert 0.05% to 0.0005

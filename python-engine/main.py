@@ -4,6 +4,7 @@ FastAPI service for AI-powered trading signal generation
 """
 
 import asyncio
+import logging
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -16,6 +17,8 @@ from services.screener import MarketScreener
 from services.charter import ChartGenerator
 from services.ai_handler import AIHandler
 from services.price_stream import price_stream
+
+
 
 app = FastAPI(
     title="NeuroTrade AI Engine",
@@ -193,6 +196,20 @@ async def analyze_market(request: MarketAnalysisRequest):
         # Step 2: Fetch BTC context (mode-aware)
         btc_context = data_fetcher.fetch_btc_context(mode=mode)
 
+        # --- BTC SLEEP CHECK ---
+        # If market is dead flat (< 0.2% move), don't waste AI calls on altcoins.
+        # Note: In SCALPER mode, 'pct_change_1h' actually holds the 15m change due to data_fetcher logic.
+        btc_volatility = abs(btc_context.get('pct_change_1h', 0))
+        if btc_volatility < 0.2:
+             logging.info(f"😴 Market Sleepy (BTC Move {btc_volatility}%), skipping Scan to save credits.")
+             return MarketAnalysisResponse(
+                timestamp=datetime.utcnow(),
+                btc_context=btc_context,
+                opportunities_screened=0,
+                valid_signals=[],
+                execution_time_seconds=0
+             )
+
         # Step 3: Analyze each opportunity
         valid_signals = []
 
@@ -206,7 +223,7 @@ async def analyze_market(request: MarketAnalysisRequest):
                 chart_df = target_data.get(chart_timeframe, target_data.get('data_1h', {})).get('df')
                 
                 if chart_df is None:
-                    print(f"⚠️ No chart data available for {symbol}")
+                    logging.warning(f"⚠️ No chart data available for {symbol}")
                     continue
 
                 # Generate chart image
@@ -224,7 +241,7 @@ async def analyze_market(request: MarketAnalysisRequest):
                         target_data.get('data_15m', target_data.get('data_1h', {})) if mode == "SCALPER" else target_data.get('data_1h', {}),
                         request.balance,
                         symbol,
-                        mode  # Pass mode to AI handler
+                        mode
                     )
                 )
 
@@ -232,7 +249,7 @@ async def analyze_market(request: MarketAnalysisRequest):
                     asyncio.to_thread(
                         ai_handler.analyze_vision,
                         chart_buffer,
-                        mode  # Pass mode to vision analysis
+                        mode
                     )
                 )
 
@@ -244,8 +261,7 @@ async def analyze_market(request: MarketAnalysisRequest):
 
                 # Only log signals that are NOT wait/skip to keep logs clean
                 if combined.get('recommendation') == 'EXECUTE':
-                     current_time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                     print(f"🚀 SIGNAL FOUND: {symbol} {combined.get('final_signal')} (Conf: {combined.get('combined_confidence')}%)")
+                     logging.info(f"🚀 SIGNAL FOUND: {symbol} {combined.get('final_signal')} (Conf: {combined.get('combined_confidence')}%)")
 
                 # Check if signal meets criteria
                 if combined['recommendation'] == 'EXECUTE':
@@ -265,7 +281,7 @@ async def analyze_market(request: MarketAnalysisRequest):
 
             except Exception as e:
                 # Log error but continue with other symbols
-                print(f"Error analyzing {symbol}: {str(e)}")
+                logging.error(f"Error analyzing {symbol}: {str(e)}")
                 continue
 
         # Calculate execution time

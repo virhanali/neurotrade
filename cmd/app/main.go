@@ -214,7 +214,7 @@ func main() {
 	// Initialize HTTP handlers
 	authHandler := httpdelivery.NewAuthHandler(userRepo)
 	userHandler := httpdelivery.NewUserHandler(userRepo, positionRepo, tradingService)
-	adminHandler := httpdelivery.NewAdminHandler(db, marketScanScheduler, signalRepo, settingsRepo, templates)
+	adminHandler := httpdelivery.NewAdminHandler(db, marketScanScheduler, signalRepo, positionRepo, settingsRepo, templates)
 
 	// Initialize web handler (Phase 5 - HTML pages)
 	webHandler := httpdelivery.NewWebHandler(templates, userRepo, positionRepo, db, priceService)

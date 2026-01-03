@@ -2,21 +2,14 @@ package http
 
 import (
 	"net/http"
+	"neurotrade/internal/delivery/http/dto"
 
 	"github.com/labstack/echo/v4"
 )
 
-// Response represents a standardized API response
-type Response struct {
-	Status  string      `json:"status"`
-	Message string      `json:"message,omitempty"`
-	Data    interface{} `json:"data,omitempty"`
-	Error   interface{} `json:"error,omitempty"`
-}
-
 // SuccessResponse sends a success response
 func SuccessResponse(c echo.Context, data interface{}) error {
-	return c.JSON(http.StatusOK, Response{
+	return c.JSON(http.StatusOK, dto.APIResponse{
 		Status: "success",
 		Data:   data,
 	})
@@ -24,7 +17,7 @@ func SuccessResponse(c echo.Context, data interface{}) error {
 
 // SuccessMessageResponse sends a success response with a message
 func SuccessMessageResponse(c echo.Context, message string, data interface{}) error {
-	return c.JSON(http.StatusOK, Response{
+	return c.JSON(http.StatusOK, dto.APIResponse{
 		Status:  "success",
 		Message: message,
 		Data:    data,
@@ -33,7 +26,7 @@ func SuccessMessageResponse(c echo.Context, message string, data interface{}) er
 
 // CreatedResponse sends a 201 Created response
 func CreatedResponse(c echo.Context, data interface{}) error {
-	return c.JSON(http.StatusCreated, Response{
+	return c.JSON(http.StatusCreated, dto.APIResponse{
 		Status: "success",
 		Data:   data,
 	})
@@ -41,7 +34,7 @@ func CreatedResponse(c echo.Context, data interface{}) error {
 
 // ErrorResponse sends an error response
 func ErrorResponse(c echo.Context, statusCode int, message string, err interface{}) error {
-	return c.JSON(statusCode, Response{
+	return c.JSON(statusCode, dto.APIResponse{
 		Status:  "error",
 		Message: message,
 		Error:   err,

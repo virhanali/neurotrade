@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 
+	"neurotrade/internal/delivery/http/dto"
 	"neurotrade/internal/domain"
 	"neurotrade/internal/middleware"
 )
@@ -16,24 +17,14 @@ import (
 type UserHandler struct {
 	userRepo       domain.UserRepository
 	positionRepo   domain.PaperPositionRepository
-	tradingService interface {
-		CloseAllPositions(ctx context.Context, userID string) error
-		ClosePosition(ctx context.Context, positionID uuid.UUID, userID uuid.UUID, isAdmin bool) error
-		ApprovePosition(ctx context.Context, positionID uuid.UUID, userID uuid.UUID) error
-		DeclinePosition(ctx context.Context, positionID uuid.UUID, userID uuid.UUID) error
-	}
+	tradingService domain.TradingService
 }
 
 // NewUserHandler creates a new UserHandler
 func NewUserHandler(
 	userRepo domain.UserRepository,
 	positionRepo domain.PaperPositionRepository,
-	tradingService interface {
-		CloseAllPositions(ctx context.Context, userID string) error
-		ClosePosition(ctx context.Context, positionID uuid.UUID, userID uuid.UUID, isAdmin bool) error
-		ApprovePosition(ctx context.Context, positionID uuid.UUID, userID uuid.UUID) error
-		DeclinePosition(ctx context.Context, positionID uuid.UUID, userID uuid.UUID) error
-	},
+	tradingService domain.TradingService,
 ) *UserHandler {
 	return &UserHandler{
 		userRepo:       userRepo,
@@ -58,18 +49,13 @@ func (h *UserHandler) GetMe(c echo.Context) error {
 		return InternalServerErrorResponse(c, "Failed to get user details", err)
 	}
 
-	return SuccessResponse(c, UserOutput{
+	return SuccessResponse(c, dto.UserOutput{
 		ID:           user.ID.String(),
 		Username:     user.Username,
 		Role:         user.Role,
 		Mode:         user.Mode,
 		PaperBalance: user.PaperBalance,
 	})
-}
-
-// ToggleModeRequest represents the toggle mode request
-type ToggleModeRequest struct {
-	Mode string `json:"mode"` // "PAPER" or "REAL"
 }
 
 // ToggleMode switches user mode between PAPER and REAL
@@ -80,7 +66,7 @@ func (h *UserHandler) ToggleMode(c echo.Context) error {
 		return UnauthorizedResponse(c, "User not authenticated")
 	}
 
-	var req ToggleModeRequest
+	var req dto.ToggleModeRequest
 	if err := c.Bind(&req); err != nil {
 		return BadRequestResponse(c, "Invalid request payload")
 	}
@@ -111,22 +97,6 @@ func (h *UserHandler) ToggleMode(c echo.Context) error {
 	})
 }
 
-// PositionOutput represents a position in API responses
-type PositionOutput struct {
-	ID         string   `json:"id"`
-	Symbol     string   `json:"symbol"`
-	Side       string   `json:"side"`
-	EntryPrice float64  `json:"entry_price"`
-	SLPrice    float64  `json:"sl_price"`
-	TPPrice    float64  `json:"tp_price"`
-	Size       float64  `json:"size"`
-	ExitPrice  *float64 `json:"exit_price,omitempty"`
-	PnL        *float64 `json:"pnl,omitempty"`
-	Status     string   `json:"status"`
-	CreatedAt  string   `json:"created_at"`
-	ClosedAt   *string  `json:"closed_at,omitempty"`
-}
-
 // GetPositions returns user's active positions
 // GET /api/user/positions
 func (h *UserHandler) GetPositions(c echo.Context) error {
@@ -152,14 +122,14 @@ func (h *UserHandler) GetPositions(c echo.Context) error {
 		}
 
 		// Convert to output format
-		output := make([]PositionOutput, 0, len(positions))
+		output := make([]dto.PositionOutput, 0, len(positions))
 		for _, pos := range positions {
 			closedAt := ""
 			if pos.ClosedAt != nil {
 				closedAt = pos.ClosedAt.Format(time.RFC3339)
 			}
 
-			output = append(output, PositionOutput{
+			output = append(output, dto.PositionOutput{
 				ID:         pos.ID.String(),
 				Symbol:     pos.Symbol,
 				Side:       pos.Side,
@@ -203,7 +173,7 @@ func (h *UserHandler) PanicButton(c echo.Context) error {
 	defer cancel()
 
 	// Close all positions
-	if err := h.tradingService.CloseAllPositions(ctx, userID.String()); err != nil {
+	if err := h.tradingService.CloseAllPositions(ctx, userID); err != nil {
 		return InternalServerErrorResponse(c, "Failed to close all positions", err)
 	}
 

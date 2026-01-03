@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"context"
 	"time"
 
 	"github.com/google/uuid"
@@ -34,3 +35,23 @@ const (
 	ModePaper = "PAPER"
 	ModeReal  = "REAL"
 )
+
+// UserRepository defines the interface for user data operations
+type UserRepository interface {
+	// Create creates a new user
+	Create(ctx context.Context, user *User) error
+
+	// GetByID retrieves a user by ID
+	GetByID(ctx context.Context, id uuid.UUID) (*User, error)
+
+	// GetByUsername retrieves a user by username
+	GetByUsername(ctx context.Context, username string) (*User, error)
+
+	// UpdateBalance updates user's balance
+	UpdateBalance(ctx context.Context, userID uuid.UUID, balance float64, mode string) error
+	// GetAll retrieves all users
+	GetAll(ctx context.Context) ([]*User, error)
+
+	// UpdateAutoTradeStatus updates the auto-trade flag for a user
+	UpdateAutoTradeStatus(ctx context.Context, userID uuid.UUID, enabled bool) error
+}
