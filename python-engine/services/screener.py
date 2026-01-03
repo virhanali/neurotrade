@@ -7,7 +7,8 @@ import ccxt
 import logging
 import pandas as pd
 import ta
-from typing import List, Dict
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import List, Dict, Optional
 from config import settings
 
 
@@ -90,41 +91,40 @@ class MarketScreener:
 
             # Sort by volatility and take Top Candidates (Deep Scan)
             # We fetch 6x the final limit, but CAP it at 60 to prevent loop timeout (15s limit)
-            # 60 coins * 2 requests (15m+4h) = 120 API calls. Python sync can handle ~5-10/sec = ~12-15s.
-            # This is the maximum safe operational capacity for single-threaded sync logic.
+            # With parallel processing, 60 coins can be scanned in ~3-5 seconds.
             scan_limit = min(settings.TOP_COINS_LIMIT * 6, 60)
             
             opportunities.sort(key=lambda x: x['volatility'], reverse=True)
             candidates = opportunities[:scan_limit]
             
-            final_list = []
+            logging.info(f"🔍 Deep Scanning {len(candidates)} candidates (PARALLEL MTF + Volume) for Top {settings.TOP_COINS_LIMIT}...")
             
-            logging.info(f"🔍 Deep Scanning {len(candidates)} candidates (MTF + Volume Analysis) for Top {settings.TOP_COINS_LIMIT}...")
-            
-            for cand in candidates:
+            # Define analysis function for parallel execution
+            def analyze_candidate(cand: Dict) -> Optional[Dict]:
+                """Analyze a single candidate - runs in thread"""
                 symbol = cand['symbol']
                 try:
                     # 1. Fetch 15m Data (Tactical)
                     ohlcv_15m = self.exchange.fetch_ohlcv(symbol, timeframe='15m', limit=50)
-                    if not ohlcv_15m or len(ohlcv_15m) < 50: continue
+                    if not ohlcv_15m or len(ohlcv_15m) < 50: 
+                        return None
                     df_15m = pd.DataFrame(ohlcv_15m, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
                     
                     # 2. Fetch 4h Data (Strategic Trend)
                     ohlcv_4h = self.exchange.fetch_ohlcv(symbol, timeframe='4h', limit=200)
-                    if not ohlcv_4h or len(ohlcv_4h) < 200: continue
+                    if not ohlcv_4h or len(ohlcv_4h) < 200: 
+                        return None
                     df_4h = pd.DataFrame(ohlcv_4h, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
 
                     # --- Tech Analysis ---
 
                     # A. Volume Anomaly (15m)
-                    # Is current volume > 1.2x average of last 20 candles?
                     avg_vol = df_15m['volume'].rolling(window=20).mean().iloc[-1]
                     cur_vol = df_15m['volume'].iloc[-1]
                     vol_ratio = cur_vol / avg_vol if avg_vol > 0 else 0
                     
                     if vol_ratio < 1.2:
-                        # Skip low volume coins (Dead market)
-                        continue
+                        return None
 
                     # B. Trend Filter (4H EMA 200)
                     ema_200_4h = ta.trend.ema_indicator(df_4h['close'], window=200).iloc[-1]
@@ -136,33 +136,42 @@ class MarketScreener:
                     rsi_val = ta.momentum.rsi(df_15m['close'], window=14).iloc[-1]
                     
                     # D. Confluence Logic
-                    # ONLY allow Longs in Uptrend, Shorts in Downtrend
                     score = 0
                     
                     if major_trend == "BULL":
-                        # Only interested if Oversold (Dip Buying)
                         if rsi_val < 45: 
-                            score = (50 - rsi_val) + (vol_ratio * 5) # Higher score for deeper dips + active volume
-                    
+                            score = (50 - rsi_val) + (vol_ratio * 5)
                     elif major_trend == "BEAR":
-                        # Only interested if Overbought (Shorting Rips)
                         if rsi_val > 55:
                             score = (rsi_val - 50) + (vol_ratio * 5)
 
-                    # Strict Filter: RSI must typically be outside 40-60 unless volume is huge
+                    # Strict Filter
                     if 40 <= rsi_val <= 60 and vol_ratio < 3.0:
-                        continue
+                        return None
                         
                     if score > 0:
-                        cand['score'] = score
-                        cand['rsi'] = rsi_val
-                        cand['trend'] = major_trend
-                        cand['vol_ratio'] = vol_ratio
-                        final_list.append(cand)
+                        result = cand.copy()
+                        result['score'] = score
+                        result['rsi'] = rsi_val
+                        result['trend'] = major_trend
+                        result['vol_ratio'] = vol_ratio
+                        return result
+                    
+                    return None
                     
                 except Exception as e:
                     logging.error(f"⚠️ Screener error for {symbol}: {e}")
-                    continue
+                    return None
+            
+            # Execute parallel analysis (12 threads = optimal for 16 vCPU, leaves 4 for other services)
+            final_list = []
+            with ThreadPoolExecutor(max_workers=12) as executor:
+                futures = {executor.submit(analyze_candidate, cand): cand for cand in candidates}
+                
+                for future in as_completed(futures):
+                    result = future.result()
+                    if result is not None:
+                        final_list.append(result)
             
             # Sort by Confluence Score
             final_list.sort(key=lambda x: x['score'], reverse=True)
