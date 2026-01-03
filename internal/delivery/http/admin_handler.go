@@ -364,7 +364,7 @@ func (h *AdminHandler) GetLatestScanResults(c echo.Context) error {
 			}
 
 			pnlBadge = fmt.Sprintf(`
-				<div class="mt-1 flex items-center space-x-1">
+				<div class="mt-1 flex items-center justify-end space-x-1">
 					<span class="inline-block %s border-2 border-black px-2 py-0.5 text-xs font-bold shadow-[1px_1px_0px_0px_#000]">
 						%s
 					</span>
