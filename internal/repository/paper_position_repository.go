@@ -272,3 +272,37 @@ func (r *PaperPositionRepositoryImpl) GetPnLBySignalIDs(ctx context.Context, sig
 
 	return pnlMap, nil
 }
+
+// GetClosedPositionsHistory retrieves closed positions for chart data
+func (r *PaperPositionRepositoryImpl) GetClosedPositionsHistory(ctx context.Context, userID uuid.UUID, limit int) ([]domain.PnLHistoryEntry, error) {
+	query := `
+		SELECT closed_at, COALESCE(pnl, 0)
+		FROM paper_positions
+		WHERE user_id = $1 
+		AND status IN ('CLOSED_WIN', 'CLOSED_LOSS', 'CLOSED_MANUAL')
+		AND closed_at IS NOT NULL
+		ORDER BY closed_at ASC
+		LIMIT $2
+	`
+
+	rows, err := r.db.Query(ctx, query, userID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query history: %w", err)
+	}
+	defer rows.Close()
+
+	var history []domain.PnLHistoryEntry
+	for rows.Next() {
+		var entry domain.PnLHistoryEntry
+		if err := rows.Scan(&entry.ClosedAt, &entry.PnL); err != nil {
+			return nil, fmt.Errorf("failed to scan history entry: %w", err)
+		}
+		history = append(history, entry)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating history rows: %w", err)
+	}
+
+	return history, nil
+}

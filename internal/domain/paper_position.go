@@ -63,6 +63,15 @@ type PaperPositionRepository interface {
 
 	// GetPnLBySignalIDs retrieves PnL values for a list of signal IDs
 	GetPnLBySignalIDs(ctx context.Context, signalIDs []uuid.UUID) (map[uuid.UUID]float64, error)
+
+	// GetClosedPositionsHistory retrieves closed positions for chart data
+	GetClosedPositionsHistory(ctx context.Context, userID uuid.UUID, limit int) ([]PnLHistoryEntry, error)
+}
+
+// PnLHistoryEntry represents a data point for PnL charting
+type PnLHistoryEntry struct {
+	ClosedAt time.Time
+	PnL      float64
 }
 
 // IsLong checks if the position is a LONG position

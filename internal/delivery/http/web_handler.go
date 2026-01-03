@@ -448,11 +448,18 @@ func (h *WebHandler) getSystemStats(c echo.Context) (map[string]interface{}, err
 		winRate = (float64(wins) / float64(totalClosed)) * 100
 	}
 
+	// Calculate Total PnL
+	var totalPnL float64
+	// Sum PnL for closed positions
+	h.db.QueryRow(ctx, "SELECT COALESCE(SUM(pnl), 0) FROM paper_positions WHERE pnl IS NOT NULL").Scan(&totalPnL)
+
 	return map[string]interface{}{
-		"TotalUsers":      totalUsers,
-		"TotalSignals":    0, // TODO: Add signal count
-		"ActivePositions": activePositions,
-		"WinRate":         winRate,
+		"total_users":      totalUsers,
+		"total_signals":    0,
+		"active_positions": activePositions,
+		"win_rate":         winRate,
+		"total_pnl":        totalPnL,
+		"WinRate":          winRate, // Keep both casings for compatibility
 	}, nil
 }
 

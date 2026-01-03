@@ -293,3 +293,39 @@ func (h *UserHandler) DeclinePosition(c echo.Context) error {
 	// HTMX response: remove the row from the pending table
 	return c.String(http.StatusOK, "")
 }
+
+// GetAnalyticsPnL returns PnL history for charting
+// GET /api/analytics/pnl
+func (h *UserHandler) GetAnalyticsPnL(c echo.Context) error {
+	userID, err := middleware.GetUserID(c)
+	if err != nil {
+		return UnauthorizedResponse(c, "User not authenticated")
+	}
+
+	ctx := c.Request().Context()
+
+	// Get last 50 closed positions
+	history, err := h.positionRepo.GetClosedPositionsHistory(ctx, userID, 50)
+	if err != nil {
+		return InternalServerErrorResponse(c, "Failed to fetch PnL history", err)
+	}
+
+	// Process data for Chart.js
+	var labels []string
+	var data []float64
+	cumulative := 0.0
+
+	// Because history is ordered ASC, we can just accumulate
+	for _, entry := range history {
+		// Format label: "Jan 02 15:04"
+		labels = append(labels, entry.ClosedAt.Format("Jan 02 15:04"))
+
+		cumulative += entry.PnL
+		data = append(data, cumulative)
+	}
+
+	return SuccessResponse(c, map[string]interface{}{
+		"labels": labels,
+		"data":   data,
+	})
+}

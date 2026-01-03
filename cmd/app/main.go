@@ -68,6 +68,24 @@ func main() {
 		log.Fatalf("Failed to run database migrations: %v", err)
 	}
 
+	// === SELF-HEALING: Fix Signal Status ===
+	// Ensure signals linked to positions are marked as EXECUTED
+	_, err = db.Exec(ctx, `
+		UPDATE signals 
+		SET status = 'EXECUTED' 
+		WHERE id IN (
+			SELECT signal_id 
+			FROM paper_positions 
+			WHERE signal_id IS NOT NULL
+		) 
+		AND status = 'PENDING'
+	`)
+	if err != nil {
+		log.Printf("⚠️ Self-healing failed: %v", err)
+	} else {
+		log.Println("✓ Self-healing: Synced signal statuses")
+	}
+
 	// Initialize repositories
 	signalRepo := repository.NewSignalRepository(db)
 	userRepo := repository.NewUserRepository(db)

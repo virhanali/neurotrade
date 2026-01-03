@@ -296,6 +296,13 @@ func (ts *TradingService) createPaperPositionForUser(ctx context.Context, user *
 	log.Printf("🎯 Auto-created Paper Position for %s: %s | Size: %.6f",
 		user.Username, position.Symbol, position.Size)
 
+	// Update signal status to EXECUTED
+	if signal.ID != uuid.Nil {
+		if err := ts.signalRepo.UpdateStatus(ctx, signal.ID, domain.StatusExecuted); err != nil {
+			log.Printf("WARNING: Failed to update signal status: %v", err)
+		}
+	}
+
 	return nil
 }
 
@@ -449,6 +456,14 @@ func (ts *TradingService) ApprovePosition(ctx context.Context, positionID uuid.U
 	}
 
 	log.Printf("✅ Position Approved: %s %s", position.Symbol, position.Side)
+
+	// Update associated signal status to EXECUTED
+	if position.SignalID != nil {
+		if err := ts.signalRepo.UpdateStatus(ctx, *position.SignalID, domain.StatusExecuted); err != nil {
+			log.Printf("WARNING: Failed to update signal status on approval: %v", err)
+		}
+	}
+
 	return nil
 }
 
@@ -480,5 +495,13 @@ func (ts *TradingService) DeclinePosition(ctx context.Context, positionID uuid.U
 	}
 
 	log.Printf("❌ Position Declined: %s %s", position.Symbol, position.Side)
+
+	// Update associated signal status to REJECTED
+	if position.SignalID != nil {
+		if err := ts.signalRepo.UpdateStatus(ctx, *position.SignalID, domain.StatusRejected); err != nil {
+			log.Printf("WARNING: Failed to update signal status on decline: %v", err)
+		}
+	}
+
 	return nil
 }

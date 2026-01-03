@@ -370,11 +370,96 @@
                                     <option>Last 7 Days</option>
                                 </select>
                             </div>
-                            <div
-                                class="h-64 flex flex-col items-center justify-center text-slate-400 dark:text-slate-600 bg-slate-50/50 dark:bg-slate-800/20 rounded-lg border border-dashed border-slate-200 dark:border-slate-700">
-                                <i class="ri-bar-chart-groupped-line text-4xl mb-2 opacity-50"></i>
-                                <p class="text-sm font-medium">Chart data will appear after first 24h of trading</p>
+                            <div id="chart-container" class="h-64 relative w-full">
+                                <!-- Canvas for Chart.js -->
+                                <canvas id="performanceChart"></canvas>
                             </div>
+
+                            <script>
+                                document.addEventListener('DOMContentLoaded', function () {
+                                    const ctx = document.getElementById('performanceChart').getContext('2d');
+
+                                    // Fetch PnL History
+                                    fetch('/api/user/analytics/pnl')
+                                        .then(response => response.json())
+                                        .then(res => {
+                                            if (res.data && res.data.labels && res.data.labels.length > 0) {
+                                                const isDark = document.documentElement.classList.contains('dark');
+                                                const gridColor = isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)';
+                                                const textColor = isDark ? '#94a3b8' : '#64748b';
+
+                                                new Chart(ctx, {
+                                                    type: 'line',
+                                                    data: {
+                                                        labels: res.data.labels,
+                                                        datasets: [{
+                                                            label: 'Cumulative PnL',
+                                                            data: res.data.data,
+                                                            borderColor: '#10b981', // Emerald 500
+                                                            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                                                            borderWidth: 2,
+                                                            tension: 0.4, // Smooth curve
+                                                            fill: true,
+                                                            pointRadius: 3,
+                                                            pointHoverRadius: 5,
+                                                            pointBackgroundColor: '#10b981'
+                                                        }]
+                                                    },
+                                                    options: {
+                                                        responsive: true,
+                                                        maintainAspectRatio: false,
+                                                        plugins: {
+                                                            legend: { display: false },
+                                                            tooltip: {
+                                                                mode: 'index',
+                                                                intersect: false,
+                                                                backgroundColor: isDark ? '#1e293b' : '#ffffff',
+                                                                titleColor: isDark ? '#ffffff' : '#0f172a',
+                                                                bodyColor: isDark ? '#cbd5e1' : '#334155',
+                                                                borderColor: isDark ? '#334155' : '#e2e8f0',
+                                                                borderWidth: 1,
+                                                                callbacks: {
+                                                                    label: function (context) {
+                                                                        return ' PnL: $' + context.parsed.y.toFixed(2);
+                                                                    }
+                                                                }
+                                                            }
+                                                        },
+                                                        scales: {
+                                                            x: {
+                                                                display: false, // Hide numeric labels for cleaner look
+                                                                grid: { display: false }
+                                                            },
+                                                            y: {
+                                                                grid: { color: gridColor },
+                                                                ticks: {
+                                                                    color: textColor,
+                                                                    callback: function (value) { return '$' + value; },
+                                                                    font: { family: "'Inter', sans-serif", size: 10 }
+                                                                },
+                                                                border: { display: false }
+                                                            }
+                                                        },
+                                                        interaction: {
+                                                            mode: 'nearest',
+                                                            axis: 'x',
+                                                            intersect: false
+                                                        }
+                                                    }
+                                                });
+                                            } else {
+                                                // Show Empty State if no data
+                                                document.getElementById('chart-container').innerHTML = `
+                                                    <div class="h-full flex flex-col items-center justify-center text-slate-400 dark:text-slate-600 bg-slate-50/50 dark:bg-slate-800/20 rounded-lg border border-dashed border-slate-200 dark:border-slate-700">
+                                                        <i class="ri-bar-chart-groupped-line text-4xl mb-2 opacity-50"></i>
+                                                        <p class="text-sm font-medium">Chart data will appear after first close trade</p>
+                                                    </div>
+                                                `;
+                                            }
+                                        })
+                                        .catch(err => console.error("Failed to load chart data:", err));
+                                });
+                            </script>
                         </div>
 
                         <!-- Active Positions Table -->
@@ -439,14 +524,21 @@
                             class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col max-h-[600px]">
                             <div
                                 class="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center sticky top-0 bg-white dark:bg-slate-900 z-10">
-                                <h3 class="text-lg font-semibold text-slate-900 dark:text-white">AI Signals</h3>
-                                <div class="flex gap-2">
+                                <div class="flex items-center gap-3">
+                                    <h3 class="text-lg font-semibold text-slate-900 dark:text-white">AI Signals</h3>
                                     <span class="flex h-2 w-2 relative">
                                         <span
                                             class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                                         <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
                                     </span>
                                 </div>
+                                <select id="signalFilter" onchange="filterSignals(this.value)"
+                                    class="bg-slate-50 dark:bg-slate-800 border-none text-[10px] font-medium uppercase tracking-wide rounded text-slate-600 dark:text-slate-400 py-1 pl-2 pr-6 focus:ring-0 cursor-pointer h-7">
+                                    <option value="ALL">All</option>
+                                    <option value="RUNNING">Running</option>
+                                    <option value="WIN">Wins</option>
+                                    <option value="LOSS">Losses</option>
+                                </select>
                             </div>
 
                             <!-- CONTENT AREA -->
@@ -663,11 +755,36 @@
             });
         }
 
+        // Signal Filtering Logic
+        function filterSignals(filter) {
+            const items = document.querySelectorAll('.signal-item');
+            let hasVisible = false;
+            items.forEach(item => {
+                const status = item.dataset.status; // RUNNING, WIN, LOSS
+                if (filter === 'ALL') {
+                    item.style.display = '';
+                    hasVisible = true;
+                } else {
+                    if (status === filter) {
+                        item.style.display = '';
+                        hasVisible = true;
+                    } else {
+                        item.style.display = 'none';
+                    }
+                }
+            });
+        }
+
         // HTMX event listeners
         document.body.addEventListener('htmx:afterSwap', function (evt) {
             // Check if the swap was for positions table
             if (evt.detail.target && evt.detail.target.tagName === 'TBODY') {
                 trackChanges(evt.detail.target);
+            }
+            // Re-apply filter when signal list updates
+            if (evt.detail.target.id === 'scan-results') {
+                const filter = document.getElementById('signalFilter').value;
+                filterSignals(filter);
             }
         });
     </script>

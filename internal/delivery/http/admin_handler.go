@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"sort"
 	"strconv"
 	"time"
 
@@ -402,6 +403,18 @@ func (h *AdminHandler) GetLatestScanResults(c echo.Context) error {
 			PnlDollar:       pnlDollar,
 		})
 	}
+
+	// Sort: Running signals first, then Finished.
+	// Within groups, original time order (DESC) is preserved by Stable sort.
+	sort.SliceStable(viewModels, func(i, j int) bool {
+		if viewModels[i].IsRunning && !viewModels[j].IsRunning {
+			return true
+		}
+		if !viewModels[i].IsRunning && viewModels[j].IsRunning {
+			return false
+		}
+		return false
+	})
 
 	// Render using the "signal_list" template defined in signal_list.html
 	c.Response().Header().Set(echo.HeaderContentType, echo.MIMETextHTML)
