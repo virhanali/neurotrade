@@ -258,24 +258,32 @@ func main() {
 	// Start HTTP server
 	addr := fmt.Sprintf(":%s", cfg.Server.Port)
 	log.Println("========================================")
-	log.Printf("🚀 NeuroTrade Go App starting on %s", addr)
+	log.Printf("🚀 NeuroTrade v2.5 (Aggressive Scalper) starting on %s", addr)
 	log.Printf("📊 Environment: %s", cfg.Server.Env)
 	log.Printf("💰 Default Balance: $%.2f USDT", cfg.Trading.DefaultBalance)
 	log.Printf("📈 Min Confidence: %d%%", cfg.Trading.MinConfidence)
-	log.Printf("🎯 Trading Mode: %s (15-min intervals)", tradingMode)
+	if tradingMode == "SCALPER" {
+		log.Printf("🎯 Trading Mode: %s (2-min intervals)", tradingMode)
+	} else {
+		log.Printf("🎯 Trading Mode: %s (60-min intervals)", tradingMode)
+	}
 	log.Println("========================================")
+	log.Println("AVAILABLE ROUTES:")
+	log.Println("  [Auth]")
+	log.Println("  - POST /api/auth/register")
 	log.Println("  - POST /api/auth/login")
 	log.Println("  - POST /api/auth/logout")
-	log.Println("  - POST /api/auth/register")
-	log.Println("  - GET  /api/user/me (protected)")
-	log.Println("  - POST /api/user/mode/toggle (protected)")
-	log.Println("  - GET  /api/user/positions (protected)")
-	log.Println("  - POST /api/user/panic-button (protected)")
-	log.Println("  - GET  /api/admin/strategies (admin)")
-	log.Println("  - PUT  /api/admin/strategies/active (admin)")
-	log.Println("  - GET  /api/admin/system/health (admin)")
-	log.Println("  - GET  /api/admin/statistics (admin)")
-	log.Println("  - POST /api/admin/market-scan/trigger (admin)")
+
+	log.Println("  [User]")
+	log.Println("  - GET  /api/user/me")
+	log.Println("  - GET  /api/user/positions")
+	log.Println("  - POST /api/user/mode/toggle")
+	log.Println("  - POST /api/user/panic-button")
+
+	log.Println("  [Admin/System]")
+	log.Println("  - POST /api/admin/market-scan/trigger")
+	log.Println("  - GET  /api/admin/system/health")
+	log.Println("  - GET  /api/admin/statistics")
 	log.Println("========================================")
 
 	// Run server in goroutine
