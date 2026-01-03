@@ -133,15 +133,16 @@ class MarketScreener:
 
                     # --- Tech Analysis ---
 
-                    # A. Volume Anomaly (15m)
+                    # A. Volume Filter (15m) - LOOSENED for more quantity
+                    # Only skip if volume is significantly BELOW average (dead market)
                     avg_vol = df_15m['volume'].rolling(window=20).mean().iloc[-1]
                     cur_vol = df_15m['volume'].iloc[-1]
                     vol_ratio = cur_vol / avg_vol if avg_vol > 0 else 0
                     
-                    if vol_ratio < 1.2:
+                    if vol_ratio < 0.8:  # Was 1.2, now only skip if < 0.8 (very low)
                         return None
 
-                    # B. Trend Filter (4H EMA 200)
+                    # B. Trend Filter (4H EMA 200) - Keep for direction
                     ema_200_4h = ta.trend.ema_indicator(df_4h['close'], window=200).iloc[-1]
                     current_price = df_15m['close'].iloc[-1]
                     
@@ -150,19 +151,22 @@ class MarketScreener:
                     # C. RSI (15m)
                     rsi_val = ta.momentum.rsi(df_15m['close'], window=14).iloc[-1]
                     
-                    # D. Confluence Logic
+                    # D. Confluence Logic - LOOSENED RSI zones
                     score = 0
                     
                     if major_trend == "BULL":
-                        if rsi_val < 45: 
-                            score = (50 - rsi_val) + (vol_ratio * 5)
+                        if rsi_val < 50:  # Was 45, now accept up to 50 (wider)
+                            score = (55 - rsi_val) + (vol_ratio * 3)
                     elif major_trend == "BEAR":
-                        if rsi_val > 55:
-                            score = (rsi_val - 50) + (vol_ratio * 5)
+                        if rsi_val > 50:  # Was 55, now accept down to 50 (wider)
+                            score = (rsi_val - 45) + (vol_ratio * 3)
 
-                    # Strict Filter
-                    if 40 <= rsi_val <= 60 and vol_ratio < 3.0:
-                        return None
+                    # REMOVED strict RSI zone filter - let AI decide quality
+                    # Previously: if 40 <= rsi_val <= 60 and vol_ratio < 3.0: return None
+                    
+                    # Give minimum score if trend-aligned (let AI evaluate)
+                    if score == 0 and vol_ratio >= 1.0:
+                        score = 1 + (vol_ratio * 2)  # Base score for decent volume
                         
                     if score > 0:
                         result = cand.copy()
