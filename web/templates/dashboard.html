@@ -156,7 +156,8 @@
             animation: flash-red 0.6s ease-out;
         }
 
-        .pnl-cell {
+        .pnl-cell,
+        .price-cell {
             transition: all 0.2s ease;
             border-radius: 0.375rem;
         }
@@ -602,39 +603,49 @@
             }, 3000);
         }
 
-        // PnL Flash Tracking
+        // Price & PnL Flash Tracking
         const pnlCache = new Map();
+        const priceCache = new Map();
 
-        function trackPnLChanges(container) {
+        function trackChanges(container) {
             const rows = container.querySelectorAll('tr[data-symbol]');
 
             rows.forEach(row => {
                 const symbol = row.dataset.symbol;
+
+                // Track PnL changes
                 const pnlCell = row.querySelector('.pnl-cell');
-                if (!pnlCell) return;
+                if (pnlCell) {
+                    const pnlText = pnlCell.querySelector('.pnl-value')?.textContent || '';
+                    const currentPnl = parseFloat(pnlText.replace(/[^-\d.]/g, '')) || 0;
 
-                const pnlText = pnlCell.querySelector('.pnl-value')?.textContent || '';
-                const currentPnl = parseFloat(pnlText.replace(/[^-\d.]/g, '')) || 0;
-
-                if (pnlCache.has(symbol)) {
-                    const prevPnl = pnlCache.get(symbol);
-                    if (currentPnl !== prevPnl) {
-                        // Remove existing animation classes
-                        pnlCell.classList.remove('flash-profit', 'flash-loss');
-
-                        // Force reflow to restart animation
-                        void pnlCell.offsetWidth;
-
-                        // Add appropriate flash class
-                        if (currentPnl > prevPnl) {
-                            pnlCell.classList.add('flash-profit');
-                        } else {
-                            pnlCell.classList.add('flash-loss');
+                    if (pnlCache.has(symbol)) {
+                        const prevPnl = pnlCache.get(symbol);
+                        if (currentPnl !== prevPnl) {
+                            pnlCell.classList.remove('flash-profit', 'flash-loss');
+                            void pnlCell.offsetWidth;
+                            pnlCell.classList.add(currentPnl > prevPnl ? 'flash-profit' : 'flash-loss');
                         }
                     }
+                    pnlCache.set(symbol, currentPnl);
                 }
 
-                pnlCache.set(symbol, currentPnl);
+                // Track Price changes
+                const priceCell = row.querySelector('.price-cell');
+                if (priceCell) {
+                    const priceText = priceCell.querySelector('.price-value')?.textContent || '';
+                    const currentPrice = parseFloat(priceText.replace(/[^-\d.]/g, '')) || 0;
+
+                    if (priceCache.has(symbol)) {
+                        const prevPrice = priceCache.get(symbol);
+                        if (currentPrice !== prevPrice) {
+                            priceCell.classList.remove('flash-profit', 'flash-loss');
+                            void priceCell.offsetWidth;
+                            priceCell.classList.add(currentPrice > prevPrice ? 'flash-profit' : 'flash-loss');
+                        }
+                    }
+                    priceCache.set(symbol, currentPrice);
+                }
             });
         }
 
@@ -642,7 +653,7 @@
         document.body.addEventListener('htmx:afterSwap', function (evt) {
             // Check if the swap was for positions table
             if (evt.detail.target && evt.detail.target.tagName === 'TBODY') {
-                trackPnLChanges(evt.detail.target);
+                trackChanges(evt.detail.target);
             }
         });
     </script>

@@ -307,6 +307,22 @@ func (h *WebHandler) HandlePositionsHTML(c echo.Context) error {
 			sideBadgeClass = "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400"
 		}
 
+		// Adaptive decimal formatting based on price magnitude
+		formatPrice := func(price float64) string {
+			if price >= 1.0 {
+				return fmt.Sprintf("$%.4f", price)
+			} else if price >= 0.01 {
+				return fmt.Sprintf("$%.5f", price)
+			} else {
+				return fmt.Sprintf("$%.6f", price)
+			}
+		}
+
+		entryPriceStr := formatPrice(pos.EntryPrice)
+		currentPriceStr := formatPrice(currentPrice)
+		tpPriceStr := formatPrice(pos.TPPrice)
+		slPriceStr := formatPrice(pos.SLPrice)
+
 		html += fmt.Sprintf(`
 			<tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors border-b border-slate-50 dark:border-slate-800/50 last:border-0" data-symbol="%s">
 				<td class="py-3 px-4">
@@ -317,11 +333,11 @@ func (h *WebHandler) HandlePositionsHTML(c echo.Context) error {
 						%s
 					</span>
 				</td>
-				<td class="py-3 px-4 text-sm text-slate-600 dark:text-slate-300 font-mono">$%.4f</td>
-				<td class="py-3 px-4 text-sm text-slate-600 dark:text-slate-300 font-mono">$%.4f</td>
+				<td class="py-3 px-4 text-sm text-slate-600 dark:text-slate-300 font-mono">%s</td>
+				<td class="py-3 px-4 price-cell text-sm text-slate-600 dark:text-slate-300 font-mono"><span class="price-value">%s</span></td>
 				<td class="py-3 px-4 text-xs font-mono text-slate-400">
-					TP: <span class="text-emerald-500">$%.4f</span><br>
-					SL: <span class="text-rose-500">$%.4f</span>
+					TP: <span class="text-emerald-500">%s</span><br>
+					SL: <span class="text-rose-500">%s</span>
 				</td>
 				<td class="py-3 px-4 pnl-cell">
 					<div class="flex flex-col">
@@ -331,10 +347,7 @@ func (h *WebHandler) HandlePositionsHTML(c echo.Context) error {
 				</td>
 				<td class="py-3 px-4 text-right">
 					<button
-						hx-post="/api/user/positions/%s/close"
-						hx-confirm="Are you sure you want to CLOSE this position?"
-						hx-target="closest tr"
-						hx-swap="outerHTML"
+						onclick="showConfirmModal('Close Position', 'Are you sure you want to close %s position? This action cannot be undone.', () => htmx.ajax('POST', '/api/user/positions/%s/close', {target: this.closest('tr'), swap: 'outerHTML'}), 'danger')"
 						class="text-xs font-medium bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 px-3 py-1.5 rounded hover:bg-rose-50 hover:border-rose-200 hover:text-rose-600 dark:hover:bg-rose-900/20 dark:hover:border-rose-800 dark:hover:text-rose-400 transition-all"
 					>
 						Close
@@ -345,13 +358,14 @@ func (h *WebHandler) HandlePositionsHTML(c echo.Context) error {
 			pos.Symbol, // data-symbol
 			pos.Symbol,
 			sideBadgeClass, pos.Side,
-			pos.EntryPrice,
-			currentPrice,
-			pos.TPPrice,
-			pos.SLPrice,
+			entryPriceStr,
+			currentPriceStr,
+			tpPriceStr,
+			slPriceStr,
 			pnlClass, pnlSign, pnlValue,
 			pnlClass, pnlSign, pnlPercent,
-			pos.ID, // For closing
+			pos.Symbol, // For modal message
+			pos.ID,     // For close API
 		)
 	}
 
