@@ -105,9 +105,9 @@ class MarketScreener:
                     })
 
             # Sort by volatility and take Top Candidates (Deep Scan)
-            # CAP at 100 to stay safely under Binance rate limit (1200 req/min)
-            # 100 coins * 2 req * 4 scans/min = 800 req/min (safe buffer)
-            scan_limit = min(settings.TOP_COINS_LIMIT * 8, 100)
+            # CAP at 80 to stay safely under Binance rate limits (per-second + per-minute)
+            # 80 coins * 2 req = 160 requests per scan, spread over 8 threads = ~20 req/sec
+            scan_limit = min(settings.TOP_COINS_LIMIT * 6, 80)
             
             opportunities.sort(key=lambda x: x['volatility'], reverse=True)
             candidates = opportunities[:scan_limit]
@@ -178,9 +178,10 @@ class MarketScreener:
                     logging.error(f"[WARN] Screener error for {symbol}: {e}")
                     return None
             
-            # Execute parallel analysis (12 threads = optimal for 16 vCPU, leaves 4 for other services)
+            # Execute parallel analysis (10 threads = optimal balance for speed vs rate limit)
+            # 10 threads × 2 req = 20 req/sec burst (safe under CloudFront limit)
             final_list = []
-            with ThreadPoolExecutor(max_workers=12) as executor:
+            with ThreadPoolExecutor(max_workers=10) as executor:
                 futures = {executor.submit(analyze_candidate, cand): cand for cand in candidates}
                 
                 for future in as_completed(futures):
