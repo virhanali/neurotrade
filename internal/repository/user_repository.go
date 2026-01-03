@@ -25,9 +25,9 @@ func (r *UserRepositoryImpl) Create(ctx context.Context, user *domain.User) erro
 	query := `
 		INSERT INTO users (
 			id, username, password_hash, role,
-			paper_balance, mode, is_auto_trade_enabled, fixed_order_size, created_at
+			paper_balance, mode, is_auto_trade_enabled, fixed_order_size, leverage, created_at
 		) VALUES (
-			$1, $2, $3, $4, $5, $6, $7, $8, $9
+			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10
 		)
 	`
 
@@ -40,6 +40,7 @@ func (r *UserRepositoryImpl) Create(ctx context.Context, user *domain.User) erro
 		user.Mode,
 		user.IsAutoTradeEnabled,
 		user.FixedOrderSize,
+		user.Leverage,
 		user.CreatedAt,
 	)
 
@@ -54,7 +55,7 @@ func (r *UserRepositoryImpl) Create(ctx context.Context, user *domain.User) erro
 func (r *UserRepositoryImpl) GetByID(ctx context.Context, id uuid.UUID) (*domain.User, error) {
 	query := `
 		SELECT id, username, password_hash, role,
-		       paper_balance, real_balance_cache, mode, is_auto_trade_enabled, fixed_order_size, created_at, updated_at
+		       paper_balance, real_balance_cache, mode, is_auto_trade_enabled, fixed_order_size, leverage, created_at, updated_at
 		FROM users
 		WHERE id = $1
 	`
@@ -70,6 +71,7 @@ func (r *UserRepositoryImpl) GetByID(ctx context.Context, id uuid.UUID) (*domain
 		&user.Mode,
 		&user.IsAutoTradeEnabled,
 		&user.FixedOrderSize,
+		&user.Leverage,
 		&user.CreatedAt,
 		&user.UpdatedAt,
 	)
@@ -85,7 +87,7 @@ func (r *UserRepositoryImpl) GetByID(ctx context.Context, id uuid.UUID) (*domain
 func (r *UserRepositoryImpl) GetByUsername(ctx context.Context, username string) (*domain.User, error) {
 	query := `
 		SELECT id, username, password_hash, role,
-		       paper_balance, real_balance_cache, mode, is_auto_trade_enabled, fixed_order_size, created_at, updated_at
+		       paper_balance, real_balance_cache, mode, is_auto_trade_enabled, fixed_order_size, leverage, created_at, updated_at
 		FROM users
 		WHERE username = $1
 	`
@@ -101,6 +103,7 @@ func (r *UserRepositoryImpl) GetByUsername(ctx context.Context, username string)
 		&user.Mode,
 		&user.IsAutoTradeEnabled,
 		&user.FixedOrderSize,
+		&user.Leverage,
 		&user.CreatedAt,
 		&user.UpdatedAt,
 	)
@@ -133,7 +136,7 @@ func (r *UserRepositoryImpl) UpdateBalance(ctx context.Context, userID uuid.UUID
 func (r *UserRepositoryImpl) GetAll(ctx context.Context) ([]*domain.User, error) {
 	query := `
 		SELECT id, username, password_hash, role,
-		       paper_balance, real_balance_cache, mode, is_auto_trade_enabled, fixed_order_size, created_at, updated_at
+		       paper_balance, real_balance_cache, mode, is_auto_trade_enabled, fixed_order_size, leverage, created_at, updated_at
 		FROM users
 		ORDER BY created_at ASC
 	`
@@ -157,6 +160,7 @@ func (r *UserRepositoryImpl) GetAll(ctx context.Context) ([]*domain.User, error)
 			&user.Mode,
 			&user.IsAutoTradeEnabled,
 			&user.FixedOrderSize,
+			&user.Leverage,
 			&user.CreatedAt,
 			&user.UpdatedAt,
 		)

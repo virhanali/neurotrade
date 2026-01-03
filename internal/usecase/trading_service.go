@@ -259,7 +259,12 @@ func (ts *TradingService) createPaperPositionForUser(ctx context.Context, user *
 		entrySizeUSDT = 30.0
 	}
 
-	positionSize := entrySizeUSDT / signal.EntryPrice
+	// Apply Leverage from DB (User Setting)
+	leverage := user.Leverage
+	if leverage <= 0 {
+		leverage = 20.0 // Default fallback
+	}
+	positionSize := (entrySizeUSDT * leverage) / signal.EntryPrice
 
 	// Determine initial status based on Auto-Trade setting
 	initialStatus := domain.StatusPositionPendingApproval
