@@ -49,8 +49,6 @@ services:
       - "host.docker.internal:host-gateway"
     expose:
       - "${GO_APP_PORT}"
-    ports:
-      - "${GO_APP_PORT}:${GO_APP_PORT}"
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:${GO_APP_PORT}/health" ]
       interval: 180s
