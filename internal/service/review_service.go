@@ -4,14 +4,26 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
+	"strconv"
 
 	"neurotrade/internal/domain"
 )
 
-const (
-	// Review thresholds
-	ReviewWinThresholdPercent  = 0.5  // 0.5% profit = WIN
-	ReviewLossThresholdPercent = -0.5 // -0.5% loss = LOSS
+// getReviewThreshold gets the WIN_LOSS_THRESHOLD_PCT from env or returns default
+func getReviewThreshold() float64 {
+	if value := os.Getenv("WIN_LOSS_THRESHOLD_PCT"); value != "" {
+		if floatVal, err := strconv.ParseFloat(value, 64); err == nil {
+			return floatVal
+		}
+	}
+	return 0.5 // default 0.5%
+}
+
+// Review thresholds (loaded from environment)
+var (
+	ReviewWinThresholdPercent  = getReviewThreshold()  // e.g., 0.5% profit = WIN
+	ReviewLossThresholdPercent = -getReviewThreshold() // e.g., -0.5% loss = LOSS
 )
 
 // NotificationService defines the interface for sending notifications
@@ -51,7 +63,7 @@ func (s *ReviewService) ReviewPastSignals(ctx context.Context, olderThanMinutes 
 	}
 
 	if len(signals) == 0 {
-		log.Println("✓ No pending signals to review")
+		log.Println("[OK] No pending signals to review")
 		return nil
 	}
 

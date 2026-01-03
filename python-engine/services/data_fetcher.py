@@ -16,10 +16,25 @@ class DataFetcher:
     """Fetches and processes market data from Binance Futures"""
 
     def __init__(self):
-        """Initialize CCXT Binance Futures client (public endpoints only)"""
+        """Initialize CCXT Binance Futures client with increased connection pool"""
+        import requests
+        from requests.adapters import HTTPAdapter
+        from urllib3.util.retry import Retry
+        
+        # Create session with larger connection pool for parallel requests
+        session = requests.Session()
+        adapter = HTTPAdapter(
+            pool_connections=20,
+            pool_maxsize=20,
+            max_retries=Retry(total=3, backoff_factor=0.5)
+        )
+        session.mount('https://', adapter)
+        session.mount('http://', adapter)
+        
         self.exchange = ccxt.binance({
             'enableRateLimit': True,
-            'options': {'defaultType': 'future'}
+            'options': {'defaultType': 'future'},
+            'session': session
         })
     
     def validate_symbol(self, symbol: str) -> bool:

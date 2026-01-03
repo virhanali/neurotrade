@@ -50,7 +50,7 @@ func main() {
 	for i := 0; i < maxRetries; i++ {
 		db, err = infra.NewDatabase(ctx, cfg.Database.URL)
 		if err == nil {
-			log.Println("✓ Database connected successfully")
+			log.Println("[OK] Database connected successfully")
 			break
 		}
 
@@ -83,7 +83,7 @@ func main() {
 	if err != nil {
 		log.Printf("[WARN] Self-healing failed: %v", err)
 	} else {
-		log.Println("✓ Self-healing: Synced signal statuses")
+		log.Println("[OK] Self-healing: Synced signal statuses")
 	}
 
 	// Initialize repositories
@@ -97,7 +97,7 @@ func main() {
 	telegramChatID := os.Getenv("TELEGRAM_CHAT_ID")
 	notificationService := telegram.NewNotificationService(telegramBotToken, telegramChatID)
 	if telegramBotToken != "" && telegramChatID != "" {
-		log.Println("✓ Telegram notifications enabled")
+		log.Println("[OK] Telegram notifications enabled")
 	} else {
 		log.Println("[WARN]  Telegram notifications disabled (set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID to enable)")
 	}
@@ -112,7 +112,7 @@ func main() {
 			log.Printf("WARNING: Python Engine is not available: %v", err)
 			log.Println("Scheduler will continue, but market scans will fail until Python Engine is running")
 		} else {
-			log.Println("✓ Python Engine is healthy")
+			log.Println("[OK] Python Engine is healthy")
 		}
 	}
 
@@ -139,7 +139,7 @@ func main() {
 		tradingMode = "SCALPER" // Default mode
 		log.Printf("[WARN] Trading mode not found in DB, using default: %s", tradingMode)
 	} else {
-		log.Printf("✓ Trading mode loaded from database: %s", tradingMode)
+		log.Printf("[OK] Trading mode loaded from database: %s", tradingMode)
 	}
 
 	// Initialize market scan scheduler
@@ -204,7 +204,7 @@ func main() {
 	cronScheduler.Start()
 	defer cronScheduler.Stop()
 
-	log.Println("✓ Phase 3 services initialized:")
+	log.Println("[OK] Phase 3 services initialized:")
 	log.Println("  - [GUARD] Bodyguard: Every 10 seconds (*/10 * * * * *) [FAST SL/TP]")
 	log.Println("  - Virtual Broker: Every 1 minute (0 */1 * * * *)")
 	log.Println("  - Review Service: Minute 5 of every hour (0 5 * * * *)")
@@ -224,7 +224,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to load templates: %v", err)
 	}
-	log.Println("✓ HTML templates loaded")
+	log.Println("[OK] HTML templates loaded")
 
 	// Serve static files
 	e.Static("/static", "web/static")
@@ -326,5 +326,5 @@ func main() {
 		log.Fatalf("Server forced to shutdown: %v", err)
 	}
 
-	log.Println("✓ Server exited gracefully")
+	log.Println("[OK] Server exited gracefully")
 }

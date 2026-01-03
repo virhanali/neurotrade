@@ -53,8 +53,8 @@ func (s *Scheduler) Start() error {
 
 	// Start the cron scheduler
 	s.cron.Start()
-	log.Println("✓ Scheduler started successfully")
-	log.Printf("✓ Market scan scheduled every 15 seconds (*/15 * * * * *) [Mode: %s]", s.mode)
+	log.Println("[OK] Scheduler started successfully")
+	log.Printf("[OK] Market scan scheduled every 15 seconds (*/15 * * * * *) [Mode: %s]", s.mode)
 
 	return nil
 }
@@ -63,7 +63,7 @@ func (s *Scheduler) Start() error {
 func (s *Scheduler) Stop() {
 	log.Println("Stopping scheduler...")
 	s.cron.Stop()
-	log.Println("✓ Scheduler stopped")
+	log.Println("[OK] Scheduler stopped")
 }
 
 // RunNow triggers an immediate market scan (useful for testing)
@@ -76,7 +76,7 @@ func (s *Scheduler) RunNow() error {
 // SetMode updates the trading mode
 func (s *Scheduler) SetMode(mode string) {
 	s.mode = mode
-	log.Printf("✓ Scheduler mode updated to: %s", mode)
+	log.Printf("[OK] Scheduler mode updated to: %s", mode)
 }
 
 // GetMode returns the current trading mode

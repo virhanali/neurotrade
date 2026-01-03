@@ -3,11 +3,23 @@ package service
 import (
 	"context"
 	"log"
+	"os"
+	"strconv"
 	"strings"
 	"time"
 
 	"neurotrade/internal/domain"
 )
+
+// getEnvFloat gets an environment variable as float64 or returns a default value
+func getEnvFloat(key string, defaultValue float64) float64 {
+	if value := os.Getenv(key); value != "" {
+		if floatVal, err := strconv.ParseFloat(value, 64); err == nil {
+			return floatVal
+		}
+	}
+	return defaultValue
+}
 
 // BodyguardService provides fast position monitoring (10-second interval)
 // This is the "safety net" that checks SL/TP more frequently than the 1-minute Virtual Broker
@@ -184,16 +196,16 @@ func (s *BodyguardService) GetBulkPrices(ctx context.Context, symbols []string) 
 
 // applyTrailingStop updates SL dynamically to lock in profits
 func (s *BodyguardService) applyTrailingStop(ctx context.Context, pos *domain.PaperPosition, currentPrice float64) {
-	// 1. Activation Check: Must be in Profit > 1.0% (Aggressive Scalping)
-	activationThreshold := 1.0
+	// 1. Activation Check: Must be in Profit > configured % (default 1.0%)
+	activationThreshold := getEnvFloat("TRAILING_ACTIVATE_PCT", 1.0)
 	pnlPct := pos.CalculatePnLPercent(currentPrice)
 
 	if pnlPct < activationThreshold {
 		return
 	}
 
-	// 2. Trailing Distance: 0.5% from Current Price
-	trailingDistancePct := 0.5
+	// 2. Trailing Distance: configured % from Current Price (default 0.5%)
+	trailingDistancePct := getEnvFloat("TRAILING_DISTANCE_PCT", 0.5)
 
 	var newSL float64
 	updated := false

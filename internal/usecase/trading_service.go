@@ -145,7 +145,7 @@ func (ts *TradingService) ProcessMarketScan(ctx context.Context, balance float64
 		}
 
 		// Log success
-		log.Printf("✓ Saved High Confidence Signal: %s | %s | Confidence: %d%% | Entry: %.4f | SL: %.4f | TP: %.4f",
+		log.Printf("[OK] Saved High Confidence Signal: %s | %s | Confidence: %d%% | Entry: %.4f | SL: %.4f | TP: %.4f",
 			signal.Symbol,
 			signal.Type,
 			signal.Confidence,
@@ -235,6 +235,33 @@ func (ts *TradingService) createPaperPositionForUser(ctx context.Context, user *
 
 	if signal.EntryPrice <= 0 {
 		return fmt.Errorf("invalid entry price: %.4f", signal.EntryPrice)
+	}
+
+	// === BALANCE PROTECTION ===
+	// Check if user has sufficient balance before creating position
+	requiredMargin := user.FixedOrderSize
+	if requiredMargin <= 0 {
+		requiredMargin = tradeParams.PositionSizeUSDT
+	}
+	if requiredMargin <= 0 {
+		requiredMargin = 30.0 // Default fallback
+	}
+
+	switch user.Mode {
+	case "PAPER":
+		// Paper trading: Check paper balance
+		if user.PaperBalance < requiredMargin {
+			log.Printf("[WARN] Insufficient PAPER balance for %s: Balance=%.2f, Required=%.2f. Skipping order.",
+				user.Username, user.PaperBalance, requiredMargin)
+			return fmt.Errorf("insufficient paper balance: have %.2f, need %.2f", user.PaperBalance, requiredMargin)
+		}
+	case "REAL":
+		// Real trading: Check real balance (cached from Binance)
+		if user.RealBalanceCache != nil && *user.RealBalanceCache < requiredMargin {
+			log.Printf("[WARN] Insufficient REAL balance for %s: Balance=%.2f, Required=%.2f. Blocking order.",
+				user.Username, *user.RealBalanceCache, requiredMargin)
+			return fmt.Errorf("insufficient real balance: have %.2f, need %.2f", *user.RealBalanceCache, requiredMargin)
+		}
 	}
 
 	// Determine position side based on signal type
@@ -396,7 +423,7 @@ func (ts *TradingService) ClosePosition(ctx context.Context, positionID uuid.UUI
 		}
 	}
 
-	log.Printf("✓ Manually Closed position %s %s | PnL: %.2f USDT", position.Symbol, position.Side, pnl)
+	log.Printf("[OK] Manually Closed position %s %s | PnL: %.2f USDT", position.Symbol, position.Side, pnl)
 	return nil
 }
 

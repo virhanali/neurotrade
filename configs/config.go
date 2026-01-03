@@ -37,8 +37,11 @@ type PythonEngineConfig struct {
 
 // TradingConfig holds trading-related configuration
 type TradingConfig struct {
-	DefaultBalance float64
-	MinConfidence  int
+	DefaultBalance      float64
+	MinConfidence       int
+	TrailingDistancePct float64 // Distance to trail SL (e.g., 0.5 = 0.5%)
+	WinLossThresholdPct float64 // Threshold for WIN/LOSS determination (e.g., 0.5 = 0.5%)
+	TrailingActivatePct float64 // Profit % to activate trailing stop (e.g., 1.0 = 1%)
 }
 
 // Load loads configuration from environment variables
@@ -58,8 +61,11 @@ func Load() *Config {
 			URL: getEnv("PYTHON_ENGINE_URL", "http://localhost:8000"),
 		},
 		Trading: TradingConfig{
-			DefaultBalance: getEnvFloat("DEFAULT_BALANCE", 1000.0),
-			MinConfidence:  getEnvInt("MIN_CONFIDENCE", 65),
+			DefaultBalance:      getEnvFloat("DEFAULT_BALANCE", 1000.0),
+			MinConfidence:       getEnvInt("MIN_CONFIDENCE", 65),
+			TrailingDistancePct: getEnvFloat("TRAILING_DISTANCE_PCT", 0.5),
+			WinLossThresholdPct: getEnvFloat("WIN_LOSS_THRESHOLD_PCT", 0.5),
+			TrailingActivatePct: getEnvFloat("TRAILING_ACTIVATE_PCT", 1.0),
 		},
 	}
 }

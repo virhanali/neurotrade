@@ -43,6 +43,6 @@ func NewDatabase(ctx context.Context, databaseURL string) (*pgxpool.Pool, error)
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
-	log.Println("✓ Database connected successfully")
+	log.Println("[OK] Database connected successfully")
 	return pool, nil
 }

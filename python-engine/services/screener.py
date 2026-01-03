@@ -105,9 +105,9 @@ class MarketScreener:
                     })
 
             # Sort by volatility and take Top Candidates (Deep Scan)
-            # We fetch 6x the final limit, but CAP it at 90 for powerful VPS (16 cores)
-            # With 12 parallel threads, 90 coins can be scanned in ~4 seconds.
-            scan_limit = min(settings.TOP_COINS_LIMIT * 6, 90)
+            # CAP at 100 to stay safely under Binance rate limit (1200 req/min)
+            # 100 coins * 2 req * 4 scans/min = 800 req/min (safe buffer)
+            scan_limit = min(settings.TOP_COINS_LIMIT * 8, 100)
             
             opportunities.sort(key=lambda x: x['volatility'], reverse=True)
             candidates = opportunities[:scan_limit]

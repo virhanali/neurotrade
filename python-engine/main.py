@@ -227,7 +227,7 @@ async def analyze_market(request: MarketAnalysisRequest):
 
         # Step 3: Analyze each opportunity IN PARALLEL
         # Use Semaphore to limit concurrent AI calls (prevent API rate limit)
-        semaphore = asyncio.Semaphore(4)  # Max 4 coins analyzed simultaneously
+        semaphore = asyncio.Semaphore(6)  # Max 6 coins analyzed simultaneously (16-core VPS)
         
         async def analyze_single_symbol(symbol: str) -> Optional[SignalResult]:
             """Analyze a single symbol - runs concurrently"""
