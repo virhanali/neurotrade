@@ -244,8 +244,45 @@ func (b *BotController) StartPolling() {
 		return
 	}
 
+	// Set bot commands in Telegram UI
+	b.setCommands()
+
 	b.isPolling = true
 	go b.pollLoop()
+}
+
+// setCommands registers commands in Telegram bot menu (UI)
+func (b *BotController) setCommands() {
+	type botCommand struct {
+		Command     string `json:"command"`
+		Description string `json:"description"`
+	}
+
+	type setCommandsPayload struct {
+		Commands []botCommand `json:"commands"`
+	}
+
+	payload := setCommandsPayload{
+		Commands: []botCommand{
+			{Command: "status", Description: "Check bot status"},
+			{Command: "balance", Description: "Check current balance"},
+			{Command: "stats", Description: "View trading statistics"},
+			{Command: "positions", Description: "View open positions"},
+			{Command: "help", Description: "Show available commands"},
+		},
+	}
+
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		return
+	}
+
+	url := fmt.Sprintf("https://api.telegram.org/bot%s/setMyCommands", b.service.botToken)
+	resp, err := b.service.httpClient.Post(url, "application/json", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
 }
 
 // StopPolling stops the polling loop
