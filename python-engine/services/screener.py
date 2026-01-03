@@ -23,18 +23,16 @@ class MarketScreener:
 
     def get_top_opportunities(self) -> List[str]:
         """
-        Screen market for top trading opportunities
-
-        Filter Criteria:
-        1. 24h Quote Volume > $50,000,000 (Liquid coins)
-        2. 1h Price Change > 1.5% (Volatile coins)
-
-        Returns:
-            List of top 5 symbol names sorted by volatility
+        Screen market for top trading opportunities [PRO MODE]
+        
+        New Logic (Resource Heavy):
+        1. Fetch Top 30 Volatile Candidates
+        2. MTF Analysis: Check 15m AND 4H Trends
+        3. Volume Spike Detection
+        4. Strict RSI + Trend Confluence
         """
         try:
             # Try to get data from WebSocket first (Fastest)
-            # Late import to avoid circular dependency
             from services.price_stream import price_stream
             
             raw_tickers = {}
@@ -45,7 +43,6 @@ class MarketScreener:
                 source = "WEBSOCKET"
                 logging.info(f"📊 Using WebSocket data for screening ({len(raw_tickers)} tickers)")
             else:
-                # Fallback to REST API
                 if not self.exchange.markets:
                     self.exchange.load_markets()
                 raw_tickers = self.exchange.fetch_tickers()
@@ -55,28 +52,15 @@ class MarketScreener:
             opportunities = []
 
             for symbol, ticker in raw_tickers.items():
-                
-                # Handling different formats (WS dict vs CCXT dict)
-                # WS Keys: symbol, price, quoteVolume, percentage
-                # CCXT Keys: symbol, quoteVolume, percentage...
-                
-                # 1. Normalize Symbol
-                # WS symbols assume no slash (BTCUSDT), CCXT usually has slash (BTC/USDT)
-                # But our WS parser stores 'symbol' as is from stream (e.g. BTCUSDT)
-                
-                # Check if it is a USDT pair
                 is_usdt = False
                 clean_symbol = ""
                 
                 if source == "WEBSOCKET":
-                     # WS format: "BTCUSDT"
                      if symbol.endswith("USDT"):
                          is_usdt = True
-                         # Insert slash for consistency with system format: BTC/USDT
                          base = symbol[:-4]
                          clean_symbol = f"{base}/USDT"
                 else:
-                    # CCXT format: "BTC/USDT:USDT" or "BTC/USDT"
                     if symbol.endswith("/USDT:USDT"):
                         is_usdt = True
                         clean_symbol = symbol.replace(":USDT", "")
@@ -84,86 +68,109 @@ class MarketScreener:
                 if not is_usdt:
                     continue
 
-                # 2. Extract Data
                 quote_volume = ticker.get('quoteVolume', 0)
                 percentage_change = ticker.get('percentage', 0)
 
-                # Apply filters
                 if quote_volume is None or percentage_change is None:
                     continue
-
-                # 3. Check STATUS (Only needed for REST, WS implies active)
-                if source == "REST":
-                    # Check if symbol is TRADING using cached markets
-                    # Note: WS stream only sends active tickers usually, but REST sends all
-                    if symbol in self.exchange.markets:
-                        market = self.exchange.markets[symbol]
-                        status = market.get('info', {}).get('status', 'UNKNOWN')
-                        if status != 'TRADING':
-                            continue
                 
-                # Filter by volume and volatility
+                # Check STATUS (active trading only)
+                if source == "REST" and symbol in self.exchange.markets:
+                    status = self.exchange.markets[symbol].get('info', {}).get('status', 'UNKNOWN')
+                    if status != 'TRADING':
+                        continue
+                
+                # Initial pre-filter
                 if quote_volume >= settings.MIN_VOLUME_USDT and abs(percentage_change) >= settings.MIN_VOLATILITY_1H:
                     opportunities.append({
                         'symbol': clean_symbol,
                         'volume': quote_volume,
                         'volatility': abs(percentage_change),
-                        'change': percentage_change,
                     })
 
-
-
-            # Sort by volatility (highest first) to get Candidates
-            opportunities.sort(key=lambda x: x['volatility'], reverse=True)
+            # Sort by volatility and take Top Candidates (Deep Scan)
+            # We fetch 6x the final limit, but CAP it at 60 to prevent loop timeout (15s limit)
+            # 60 coins * 2 requests (15m+4h) = 120 API calls. Python sync can handle ~5-10/sec = ~12-15s.
+            # This is the maximum safe operational capacity for single-threaded sync logic.
+            scan_limit = min(settings.TOP_COINS_LIMIT * 6, 60)
             
-            # Take top 10 candidates for RSI check (Pre-filter)
-            candidates = opportunities[:10]
+            opportunities.sort(key=lambda x: x['volatility'], reverse=True)
+            candidates = opportunities[:scan_limit]
+            
             final_list = []
             
-            logging.info(f"🔍 Analyzing RSI for top {len(candidates)} volatile coins...")
+            logging.info(f"🔍 Deep Scanning {len(candidates)} candidates (MTF + Volume Analysis) for Top {settings.TOP_COINS_LIMIT}...")
             
             for cand in candidates:
                 symbol = cand['symbol']
                 try:
-                    # Fetch small amount of candles for RSI (Fast)
-                    ohlcv = self.exchange.fetch_ohlcv(symbol, timeframe='15m', limit=50)
-                    if not ohlcv or len(ohlcv) < 50:
+                    # 1. Fetch 15m Data (Tactical)
+                    ohlcv_15m = self.exchange.fetch_ohlcv(symbol, timeframe='15m', limit=50)
+                    if not ohlcv_15m or len(ohlcv_15m) < 50: continue
+                    df_15m = pd.DataFrame(ohlcv_15m, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+                    
+                    # 2. Fetch 4h Data (Strategic Trend)
+                    ohlcv_4h = self.exchange.fetch_ohlcv(symbol, timeframe='4h', limit=200)
+                    if not ohlcv_4h or len(ohlcv_4h) < 200: continue
+                    df_4h = pd.DataFrame(ohlcv_4h, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+
+                    # --- Tech Analysis ---
+
+                    # A. Volume Anomaly (15m)
+                    # Is current volume > 1.2x average of last 20 candles?
+                    avg_vol = df_15m['volume'].rolling(window=20).mean().iloc[-1]
+                    cur_vol = df_15m['volume'].iloc[-1]
+                    vol_ratio = cur_vol / avg_vol if avg_vol > 0 else 0
+                    
+                    if vol_ratio < 1.2:
+                        # Skip low volume coins (Dead market)
+                        continue
+
+                    # B. Trend Filter (4H EMA 200)
+                    ema_200_4h = ta.trend.ema_indicator(df_4h['close'], window=200).iloc[-1]
+                    current_price = df_15m['close'].iloc[-1]
+                    
+                    major_trend = "BULL" if current_price > ema_200_4h else "BEAR"
+
+                    # C. RSI (15m)
+                    rsi_val = ta.momentum.rsi(df_15m['close'], window=14).iloc[-1]
+                    
+                    # D. Confluence Logic
+                    # ONLY allow Longs in Uptrend, Shorts in Downtrend
+                    score = 0
+                    
+                    if major_trend == "BULL":
+                        # Only interested if Oversold (Dip Buying)
+                        if rsi_val < 45: 
+                            score = (50 - rsi_val) + (vol_ratio * 5) # Higher score for deeper dips + active volume
+                    
+                    elif major_trend == "BEAR":
+                        # Only interested if Overbought (Shorting Rips)
+                        if rsi_val > 55:
+                            score = (rsi_val - 50) + (vol_ratio * 5)
+
+                    # Strict Filter: RSI must typically be outside 40-60 unless volume is huge
+                    if 40 <= rsi_val <= 60 and vol_ratio < 3.0:
                         continue
                         
-                    df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-                    
-                    # Calculate RSI
-                    rsi_series = ta.momentum.rsi(df['close'], window=14)
-                    current_rsi = rsi_series.iloc[-1]
-                    
-                    cand['rsi'] = current_rsi
-                    
-                    # Logika Score: Prioritaskan RSI Ekstrem (<30 atau >70)
-                    # Score = Jarak dari 50 (Neutral)
-                    # RSI 30 -> Score 20. RSI 80 -> Score 30.
-                    cand['rsi_score'] = abs(current_rsi - 50)
-                    
-                    # Strict Filter: Only allow signals with momentum (RSI < 40 or > 60)
-                    if 40 <= current_rsi <= 60:
-                        continue
-                        
-                    final_list.append(cand)
+                    if score > 0:
+                        cand['score'] = score
+                        cand['rsi'] = rsi_val
+                        cand['trend'] = major_trend
+                        cand['vol_ratio'] = vol_ratio
+                        final_list.append(cand)
                     
                 except Exception as e:
-                    logging.error(f"⚠️ Failed to calc RSI for {symbol}: {e}")
+                    logging.error(f"⚠️ Screener error for {symbol}: {e}")
                     continue
             
-            # Sort by RSI Score (Most Extreme First)
-            # Ini memastikan kita dapat koin yang benar-benar Overbought/Oversold
-            final_list.sort(key=lambda x: x['rsi_score'], reverse=True)
+            # Sort by Confluence Score
+            final_list.sort(key=lambda x: x['score'], reverse=True)
 
-            # Return top N symbols (Limit to 5 for AI Analysis safety)
-            # Even if we screen 50 coins, we only want AI to deep dive into the top 5
-            # 5 coins * 15s avg analysis = 75s (Safe for 2 min cron)
-            safe_limit = 5
-            top_symbols = [opp['symbol'] for opp in final_list[:safe_limit]]
+            # Return Top N symbols based on ENV setting
+            top_symbols = [opp['symbol'] for opp in final_list[:settings.TOP_COINS_LIMIT]]
             
-            logging.info(f"✅ Selected {len(top_symbols)} coins (from {len(candidates)} candidates) based on Volatility + RSI")
+            logging.info(f"✅ Selected {len(top_symbols)} coins (from {len(candidates)} scanned) | Limit: {settings.TOP_COINS_LIMIT}")
             return top_symbols
 
         except Exception as e:

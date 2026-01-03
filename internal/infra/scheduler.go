@@ -24,7 +24,7 @@ func NewScheduler(tradingService *usecase.TradingService, balance float64, mode 
 		mode = "SCALPER"
 	}
 	return &Scheduler{
-		cron:           cron.New(),
+		cron:           cron.New(cron.WithSeconds()),
 		tradingService: tradingService,
 		balance:        balance,
 		mode:           mode,
@@ -35,10 +35,10 @@ func NewScheduler(tradingService *usecase.TradingService, balance float64, mode 
 func (s *Scheduler) Start() error {
 	log.Printf("Starting scheduler... [Mode: %s]", s.mode)
 
-	// Schedule market scan every 2 minutes for SCALPER mode (*/2 * * * *)
-	// AGGRESSIVE MODE: High frequency scanning to catch momentum early
-	// Screener efficienty (WebSocket) makes this safe to run frequently
-	_, err := s.cron.AddFunc("*/2 * * * *", func() {
+	// Schedule market scan every 15 seconds for SCALPER mode (*/15 * * * * *)
+	// ULTRA AGGRESSIVE MODE: Captures pumps immediately.
+	// Safe because overlap is prevented by Mutex in trading_service.
+	_, err := s.cron.AddFunc("*/15 * * * * *", func() {
 		ctx := context.Background()
 		log.Printf("⏰ Cron Triggered: Starting scheduled market scan [Mode: %s]...", s.mode)
 
@@ -54,7 +54,7 @@ func (s *Scheduler) Start() error {
 	// Start the cron scheduler
 	s.cron.Start()
 	log.Println("✓ Scheduler started successfully")
-	log.Printf("✓ Market scan scheduled every 2 minutes (*/2 * * * *) [Mode: %s]", s.mode)
+	log.Printf("✓ Market scan scheduled every 15 seconds (*/15 * * * * *) [Mode: %s]", s.mode)
 
 	return nil
 }

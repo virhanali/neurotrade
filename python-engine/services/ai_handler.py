@@ -23,26 +23,28 @@ def get_system_prompt(mode: str = "INVESTOR") -> str:
         System prompt string for the Logic LLM
     """
     if mode == "SCALPER":
-        return """ROLE: You are an Elite Crypto Scalper AI specializing in the M15 Timeframe.
-OBJECTIVE: Find high-probability entries based on MEAN REVERSION and MOMENTUM within 15-minute candles.
+        return """ROLE: Elite Algo-Trading Execution Unit (M15 Specialist).
+CONTEXT: This candidate has ALREADY PASSED strict technical filters:
+1. High Volatility & Volume Spike detected.
+2. 4H Trend Alignment confirmed (Screener Logic).
+3. RSI is in "Action Zone" (Oversold/Overbought).
 
-CORE STRATEGY (THE "PING-PONG" PROTOCOL):
-1. MARKET CONDITION CHECK (CRITICAL):
-   - Check Bitcoin (BTC) Change % first.
-   - IF BTC < -1.5% (Bearish): ONLY look for SHORT signals on Altcoins. Ignore Longs.
-   - IF BTC > +1.5% (Bullish): ONLY look for LONG signals. Ignore Shorts.
-   - IF BTC is Flat (-1.5% to +1.5%): ENABLE "Ping-Pong" Mode (Buy Support, Sell Resistance).
+YOUR MISSION: Validate the M15 Swing Setup and generate PRECISE execution parameters.
 
-2. ENTRY TRIGGERS (M15):
-   - BUY Signal: Price touches Lower Bollinger Band AND RSI < 35 AND Bullish Divergence.
-   - SELL Signal: Price touches Upper Bollinger Band AND RSI > 65 AND Bearish Divergence.
-   - VOLATILITY FILTER: If Bollinger Bands are extremely tight (Squeeze), WAIT for expansion.
+STRATEGY (M15 MOMENTUM SWING):
+1. CONFIRMATION TRIGGERS:
+   - LONG: Price rejection at Support/Lower Band + Bullish Candle Close.
+   - SHORT: Price rejection at Resistance/Upper Band + Bearish Candle Close.
+   - IGNORE if candle body is tiny (Doji) in the middle of nowhere (Choppy).
 
-3. DYNAMIC LEVERAGE & RISK:
-   - Calculate Leverage based on ATR (Volatility).
-   - IF ATR is High (Volatile): Set Leverage 5x - 10x.
-   - IF ATR is Low (Stable): Set Leverage 15x - 20x.
-   - STOP LOSS: Must be placed at the recent Swing Low/High (not a fixed %).
+2. EXECUTION PARAMETERS:
+   - ENTRY: Limit Order at Current Price or slightly better.
+   - STOP LOSS: TIGHT. Just below Swing Low (Long) or above Swing High (Short). Max 1-2% distance.
+   - TAKE PROFIT: Minimum 1.5R. Target the opposite Bollinger Band or Swing liquidity.
+
+3. DYNAMIC LEVERAGE:
+   - High Conviction + Tight Stop = Higher Leverage (10x-20x).
+   - Low Volatility / Wide Stop = Lower Leverage (5x-10x).
 
 OUTPUT FORMAT (JSON ONLY):
 The final response content MUST be a valid raw JSON object. Do not use markdown blocks.
@@ -50,7 +52,7 @@ The final response content MUST be a valid raw JSON object. Do not use markdown 
   "symbol": "string",
   "signal": "LONG" | "SHORT" | "WAIT",
   "confidence": 0-100,
-  "reasoning": "string explaining the setup",
+  "reasoning": "Quick validation of M15 trigger...",
   "trade_params": {
     "entry_price": float,
     "stop_loss": float,
@@ -103,32 +105,31 @@ def get_vision_prompt(mode: str = "INVESTOR") -> str:
         Vision prompt string for chart analysis
     """
     if mode == "SCALPER":
-        return """ACT AS: Senior Technical Analyst reading an M15 Scalping Chart.
-TASK: Analyze the attached chart image for IMMEDIATE price reversals.
+        return """ACT AS: Elite Technical Chart Pattern Scanner.
+CONTEXT: Technical Screener indicates price is in a KEY ACTION ZONE (Oversold/Overbought) with Momentum.
+TASK: VERIFY if the CANDLESTICK PATTERNS at the rightmost edge confirm a reversal.
 
-LOOK FOR:
-1. Wick Rejections at key Support/Resistance.
-2. Engulfing patterns indicating momentum shift.
-3. Double Top/Bottom formations.
-4. Bollinger Band touches with RSI confirmation.
+LOOK FOR (VISUAL CONFIRMATION):
+1. **REJECTION WICKS (Pinbars)**: Long shadows rejecting lower/upper prices.
+2. **MOMENTUM SHIFT (Engulfing)**: A strong opposite color candle swallowing the previous one.
+3. **STRUCTURE**: Is price bouncing off a visible Support/Resistance line?
 
 DECISION LOGIC:
-- Long lower wick at support -> VOTE BULLISH.
-- Long upper wick at resistance -> VOTE BEARISH.
-- Choppy/Overlapping candles -> VOTE NEUTRAL.
-- BB squeeze (tight bands) -> CAUTION, wait for breakout.
+- Strong Reversal Candle (Hammer/Shooting Star) -> VOTE BULLISH/BEARISH.
+- Big Red Candle with NO Wick (Falling Knife) -> VOTE NEUTRAL (Wait).
+- Indecisive Dojis in a row -> VOTE NEUTRAL (Review later).
 
 OUTPUT FORMAT (JSON):
 {
     "verdict": "BULLISH/BEARISH/NEUTRAL",
     "confidence": <0-100>,
     "setup_valid": "VALID_SETUP" or "INVALID_CHOPPY",
-    "patterns_detected": ["list", "of", "patterns"],
+    "patterns_detected": ["Hammer", "Engulfing", "Support Bounce"],
     "key_levels": {
         "support": <price or null>,
         "resistance": <price or null>
     },
-    "analysis": "brief explanation focusing on M15 reversal signals"
+    "analysis": "Visual confirmation of reversal..."
 }"""
     else:  # INVESTOR mode
         return """Analyze this candlestick chart. Identify key patterns and technical signals.
