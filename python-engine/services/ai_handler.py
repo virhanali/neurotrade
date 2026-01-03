@@ -336,7 +336,7 @@ Analyze this data and provide a trading decision in JSON format."""
 
             # Call OpenRouter Vision API (using Google Gemini 2.0 Flash Lite via OpenRouter)
             response = self.vision_client.chat.completions.create(
-                model="google/gemini-2.5-flash-lite-preview-09-2025",  # Vision-capable model
+                model="google/gemini-2.0-flash-lite-001",  # Cost-effective Vision model
                 messages=[
                     {
                         "role": "user",
