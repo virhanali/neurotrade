@@ -181,7 +181,7 @@ func (pb *PythonBridge) GetWebSocketPrices(ctx context.Context, symbols []string
 	}
 
 	if !pricesResp.Connected {
-		log.Println("⚠️ Warning: Python WebSocket is disconnected")
+		log.Println("[WARN] Warning: Python WebSocket is disconnected")
 	}
 
 	return pricesResp.Prices, nil

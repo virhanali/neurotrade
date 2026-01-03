@@ -42,7 +42,7 @@ func NewReviewService(
 
 // ReviewPastSignals reviews signals created more than specified minutes ago
 func (s *ReviewService) ReviewPastSignals(ctx context.Context, olderThanMinutes int) error {
-	log.Printf("📊 Review Service: Reviewing signals older than %d minutes...", olderThanMinutes)
+	log.Printf("[INFO] Review Service: Reviewing signals older than %d minutes...", olderThanMinutes)
 
 	// Get pending signals older than threshold
 	signals, err := s.signalRepo.GetPendingSignals(ctx, olderThanMinutes)
@@ -94,7 +94,7 @@ func (s *ReviewService) ReviewPastSignals(ctx context.Context, olderThanMinutes 
 			continue
 		}
 
-		log.Printf("✅ Signal Reviewed: %s %s | Entry=%.2f Current=%.2f | PnL=%.2f%% | Result=%s",
+		log.Printf("[OK] Signal Reviewed: %s %s | Entry=%.2f Current=%.2f | PnL=%.2f%% | Result=%s",
 			signal.Symbol, signal.Type, signal.EntryPrice, currentPrice, floatingPnLPercent, result)
 
 		// Send Telegram notification for WIN/LOSS (not for FLOATING)

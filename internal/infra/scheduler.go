@@ -40,7 +40,7 @@ func (s *Scheduler) Start() error {
 	// Safe because overlap is prevented by Mutex in trading_service.
 	_, err := s.cron.AddFunc("*/15 * * * * *", func() {
 		ctx := context.Background()
-		log.Printf("⏰ Cron Triggered: Starting scheduled market scan [Mode: %s]...", s.mode)
+		log.Printf("[CRON] Cron Triggered: Starting scheduled market scan [Mode: %s]...", s.mode)
 
 		if err := s.tradingService.ProcessMarketScan(ctx, s.balance, s.mode); err != nil {
 			log.Printf("ERROR: Scheduled market scan failed: %v", err)
@@ -69,7 +69,7 @@ func (s *Scheduler) Stop() {
 // RunNow triggers an immediate market scan (useful for testing)
 func (s *Scheduler) RunNow() error {
 	ctx := context.Background()
-	log.Printf("🚀 Manual Trigger: Starting immediate market scan [Mode: %s]...", s.mode)
+	log.Printf("[SIGNAL] Manual Trigger: Starting immediate market scan [Mode: %s]...", s.mode)
 	return s.tradingService.ProcessMarketScan(ctx, s.balance, s.mode)
 }
 

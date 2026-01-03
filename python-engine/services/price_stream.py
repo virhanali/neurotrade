@@ -44,7 +44,7 @@ class PriceStreamService:
         
         self._running = True
         self._task = asyncio.create_task(self._run_forever())
-        logger.info("🔌 Price stream started")
+        logger.info("[WS] Price stream started")
     
     async def stop(self):
         """Stop the WebSocket connection"""
@@ -57,7 +57,7 @@ class PriceStreamService:
                 await self._task
             except asyncio.CancelledError:
                 pass
-        logger.info("🔌 Price stream stopped")
+        logger.info("[WS] Price stream stopped")
     
     async def _run_forever(self):
         """Main loop with auto-reconnection"""
@@ -95,7 +95,7 @@ class PriceStreamService:
             max_size=10 * 1024 * 1024,  # 10MB max message size
         ) as ws:
             self._ws = ws
-            logger.info("✅ WebSocket connected")
+            logger.info("[OK] WebSocket connected")
             
             try:
                 async for message in ws:

@@ -18,6 +18,13 @@ from services.charter import ChartGenerator
 from services.ai_handler import AIHandler
 from services.price_stream import price_stream
 
+# Configure logging with timestamp
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s | %(levelname)s | %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+
 
 
 app = FastAPI(
@@ -47,14 +54,14 @@ ai_handler = AIHandler()
 async def startup_event():
     """Start WebSocket price stream on app startup"""
     await price_stream.start()
-    print("🔌 WebSocket price stream started")
+    print("[WS] WebSocket price stream started")
 
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """Stop WebSocket price stream on app shutdown"""
     await price_stream.stop()
-    print("🔌 WebSocket price stream stopped")
+    print("[WS] WebSocket price stream stopped")
 
 
 # ============================================
@@ -181,7 +188,7 @@ async def analyze_market(request: MarketAnalysisRequest):
     start_time = datetime.utcnow()
     mode = request.mode.upper() if request.mode else "SCALPER"
     
-    print(f"\n🎯 Market Analysis Started [Mode: {mode}]")
+    print(f"\n[TARGET] Market Analysis Started [Mode: {mode}]")
 
     try:
         # Step 1: Get top opportunities
@@ -191,7 +198,15 @@ async def analyze_market(request: MarketAnalysisRequest):
             top_symbols = screener.get_top_opportunities()
 
         if not top_symbols:
-            raise HTTPException(status_code=404, detail="No trading opportunities found")
+            # No opportunities found - this is normal, not an error
+            logging.info("[EMPTY] No trading opportunities passed filters (market too quiet)")
+            return MarketAnalysisResponse(
+                timestamp=datetime.utcnow(),
+                btc_context={},
+                opportunities_screened=0,
+                valid_signals=[],
+                execution_time_seconds=0
+            )
 
         # Step 2: Fetch BTC context (mode-aware)
         btc_context = data_fetcher.fetch_btc_context(mode=mode)
@@ -210,79 +225,80 @@ async def analyze_market(request: MarketAnalysisRequest):
                 execution_time_seconds=0
              )
 
-        # Step 3: Analyze each opportunity
-        valid_signals = []
-
-        for symbol in top_symbols:
-            try:
-                # Fetch target data (mode-aware: SCALPER uses 15m, INVESTOR uses 1h/4h)
-                target_data = data_fetcher.fetch_target_data(symbol, mode=mode)
-
-                # Get the appropriate timeframe data for chart generation
-                chart_timeframe = 'data_15m' if mode == "SCALPER" else 'data_1h'
-                chart_df = target_data.get(chart_timeframe, target_data.get('data_1h', {})).get('df')
-                
-                if chart_df is None:
-                    logging.warning(f"⚠️ No chart data available for {symbol}")
-                    continue
-
-                # Generate chart image
-                chart_buffer = charter.generate_chart_image(
-                    df=chart_df,
-                    symbol=symbol
-                )
-
-                # Run AI analysis concurrently with mode-aware prompts
-                logic_task = asyncio.create_task(
-                    asyncio.to_thread(
-                        ai_handler.analyze_logic,
-                        btc_context,
-                        target_data.get('data_4h', target_data.get('data_1h', {})),
-                        target_data.get('data_15m', target_data.get('data_1h', {})) if mode == "SCALPER" else target_data.get('data_1h', {}),
-                        request.balance,
-                        symbol,
-                        mode
+        # Step 3: Analyze each opportunity IN PARALLEL
+        # Use Semaphore to limit concurrent AI calls (prevent API rate limit)
+        semaphore = asyncio.Semaphore(4)  # Max 4 coins analyzed simultaneously
+        
+        async def analyze_single_symbol(symbol: str) -> Optional[SignalResult]:
+            """Analyze a single symbol - runs concurrently"""
+            async with semaphore:
+                try:
+                    # Fetch target data
+                    target_data = await asyncio.to_thread(
+                        data_fetcher.fetch_target_data, symbol, mode
                     )
-                )
 
-                vision_task = asyncio.create_task(
-                    asyncio.to_thread(
-                        ai_handler.analyze_vision,
-                        chart_buffer,
-                        mode
+                    # Get chart data
+                    chart_timeframe = 'data_15m' if mode == "SCALPER" else 'data_1h'
+                    chart_df = target_data.get(chart_timeframe, target_data.get('data_1h', {})).get('df')
+                    
+                    if chart_df is None:
+                        logging.warning(f"[WARN] No chart data available for {symbol}")
+                        return None
+
+                    # Generate chart image
+                    chart_buffer = await asyncio.to_thread(
+                        charter.generate_chart_image, chart_df, symbol
                     )
-                )
 
-                # Wait for both to complete
-                logic_result, vision_result = await asyncio.gather(logic_task, vision_task)
-
-                # Combine results
-                combined = ai_handler.combine_analysis(logic_result, vision_result)
-
-                # Only log signals that are NOT wait/skip to keep logs clean
-                if combined.get('recommendation') == 'EXECUTE':
-                     logging.info(f"🚀 SIGNAL FOUND: {symbol} {combined.get('final_signal')} (Conf: {combined.get('combined_confidence')}%)")
-
-                # Check if signal meets criteria
-                if combined['recommendation'] == 'EXECUTE':
-                    trade_params = logic_result.get('trade_params')
-
-                    signal = SignalResult(
-                        symbol=symbol,
-                        final_signal=combined['final_signal'],
-                        combined_confidence=combined['combined_confidence'],
-                        agreement=combined['agreement'],
-                        recommendation=combined['recommendation'],
-                        logic_reasoning=logic_result.get('reasoning', ''),
-                        vision_analysis=vision_result.get('analysis', ''),
-                        trade_params=TradeParams(**trade_params) if trade_params else None
+                    # Run AI analysis concurrently (DeepSeek + Gemini)
+                    logic_task = asyncio.create_task(
+                        asyncio.to_thread(
+                            ai_handler.analyze_logic,
+                            btc_context,
+                            target_data.get('data_4h', target_data.get('data_1h', {})),
+                            target_data.get('data_15m', target_data.get('data_1h', {})) if mode == "SCALPER" else target_data.get('data_1h', {}),
+                            request.balance,
+                            symbol,
+                            mode
+                        )
                     )
-                    valid_signals.append(signal)
 
-            except Exception as e:
-                # Log error but continue with other symbols
-                logging.error(f"Error analyzing {symbol}: {str(e)}")
-                continue
+                    vision_task = asyncio.create_task(
+                        asyncio.to_thread(
+                            ai_handler.analyze_vision,
+                            chart_buffer,
+                            mode
+                        )
+                    )
+
+                    logic_result, vision_result = await asyncio.gather(logic_task, vision_task)
+
+                    # Combine results
+                    combined = ai_handler.combine_analysis(logic_result, vision_result)
+
+                    if combined.get('recommendation') == 'EXECUTE':
+                        logging.info(f"[SIGNAL] SIGNAL FOUND: {symbol} {combined.get('final_signal')} (Conf: {combined.get('combined_confidence')}%)")
+                        trade_params = logic_result.get('trade_params')
+                        return SignalResult(
+                            symbol=symbol,
+                            final_signal=combined['final_signal'],
+                            combined_confidence=combined['combined_confidence'],
+                            agreement=combined['agreement'],
+                            recommendation=combined['recommendation'],
+                            logic_reasoning=logic_result.get('reasoning', ''),
+                            vision_analysis=vision_result.get('analysis', ''),
+                            trade_params=TradeParams(**trade_params) if trade_params else None
+                        )
+                    return None
+
+                except Exception as e:
+                    logging.error(f"Error analyzing {symbol}: {str(e)}")
+                    return None
+        
+        # Run all symbol analyses in parallel
+        results = await asyncio.gather(*[analyze_single_symbol(s) for s in top_symbols])
+        valid_signals = [r for r in results if r is not None]
 
         # Calculate execution time
         end_time = datetime.utcnow()

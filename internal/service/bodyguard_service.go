@@ -70,11 +70,11 @@ func (s *BodyguardService) CheckPositionsFast(ctx context.Context) error {
 	// 2. Fallback to REST API if WebSocket fails
 	if err != nil || len(prices) == 0 {
 		if err != nil {
-			log.Printf("⚠️ Bodyguard: WebSocket price fetch failed (fallback to REST): %v", err)
+			log.Printf("[WARN] Bodyguard: WebSocket price fetch failed (fallback to REST): %v", err)
 		}
 		prices, err = s.priceService.FetchRealTimePrices(ctx, symbols)
 		if err != nil {
-			log.Printf("⚠️ Bodyguard: REST price fetch failed: %v", err)
+			log.Printf("[WARN] Bodyguard: REST price fetch failed: %v", err)
 			return nil
 		}
 	}
@@ -97,11 +97,11 @@ func (s *BodyguardService) CheckPositionsFast(ctx context.Context) error {
 		if shouldClose {
 			err := s.closePosition(ctx, pos, currentPrice, status)
 			if err != nil {
-				log.Printf("⚠️ Bodyguard: Failed to close %s: %v", pos.Symbol, err)
+				log.Printf("[WARN] Bodyguard: Failed to close %s: %v", pos.Symbol, err)
 				continue
 			}
 			closedCount++
-			log.Printf("🛡️ Bodyguard: Closed %s via %s @ $%.4f", pos.Symbol, status, currentPrice)
+			log.Printf("[GUARD] Bodyguard: Closed %s via %s @ $%.4f", pos.Symbol, status, currentPrice)
 		} else {
 			// Try to apply Trailing Stop if profit is good
 			s.applyTrailingStop(ctx, pos, currentPrice)
@@ -109,7 +109,7 @@ func (s *BodyguardService) CheckPositionsFast(ctx context.Context) error {
 	}
 
 	if closedCount > 0 {
-		log.Printf("🛡️ Bodyguard: Closed %d position(s)", closedCount)
+		log.Printf("[GUARD] Bodyguard: Closed %d position(s)", closedCount)
 	}
 
 	return nil
@@ -141,7 +141,7 @@ func (s *BodyguardService) closePosition(ctx context.Context, pos *domain.PaperP
 	if err == nil {
 		newBalance := user.PaperBalance + pnl
 		if err := s.userRepo.UpdateBalance(ctx, user.ID, newBalance, domain.ModePaper); err != nil {
-			log.Printf("⚠️ Failed to update user balance: %v", err)
+			log.Printf("[WARN] Failed to update user balance: %v", err)
 		}
 	}
 
@@ -156,7 +156,7 @@ func (s *BodyguardService) closePosition(ctx context.Context, pos *domain.PaperP
 		pnlPercent := pos.CalculatePnLPercent(exitPrice)
 
 		if err := s.signalRepo.UpdateReviewStatus(ctx, *pos.SignalID, result, &pnlPercent); err != nil {
-			log.Printf("⚠️ Failed to update signal status: %v", err)
+			log.Printf("[WARN] Failed to update signal status: %v", err)
 		}
 	}
 
@@ -169,7 +169,7 @@ func (s *BodyguardService) closePosition(ctx context.Context, pos *domain.PaperP
 			}
 			sig.ReviewResult = &result
 			if err := s.notifService.SendReview(*sig, &pnl); err != nil {
-				log.Printf("⚠️ Failed to send notification: %v", err)
+				log.Printf("[WARN] Failed to send notification: %v", err)
 			}
 		}
 	}
@@ -221,9 +221,9 @@ func (s *BodyguardService) applyTrailingStop(ctx context.Context, pos *domain.Pa
 		pos.SLPrice = newSL
 		// Update SL in DB
 		if err := s.positionRepo.Update(ctx, pos); err != nil {
-			log.Printf("⚠️ Failed to update Trailing Stop for %s: %v", pos.Symbol, err)
+			log.Printf("[WARN] Failed to update Trailing Stop for %s: %v", pos.Symbol, err)
 		} else {
-			log.Printf("⛓️ Trailing Stop Updated for %s: New SL %.4f (Price %.4f, PnL %.2f%%)",
+			log.Printf("[TRAIL] Trailing Stop Updated for %s: New SL %.4f (Price %.4f, PnL %.2f%%)",
 				pos.Symbol, pos.SLPrice, currentPrice, pnlPct)
 		}
 	}

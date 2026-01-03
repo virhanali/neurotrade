@@ -57,12 +57,12 @@ class MarketScreener:
             if price_stream.is_connected and len(price_stream.get_all_tickers()) > 100:
                 raw_tickers = price_stream.get_all_tickers()
                 source = "WEBSOCKET"
-                logging.info(f"📊 Using WebSocket data for screening ({len(raw_tickers)} tickers)")
+                logging.info(f"[INFO] Using WebSocket data for screening ({len(raw_tickers)} tickers)")
             else:
                 if not self.exchange.markets:
                     self.exchange.load_markets()
                 raw_tickers = self.exchange.fetch_tickers()
-                logging.warning("⚠️ Using REST API for screening (WebSocket not ready)")
+                logging.warning("[WARN] Using REST API for screening (WebSocket not ready)")
 
             # Filter USDT futures pairs
             opportunities = []
@@ -112,7 +112,7 @@ class MarketScreener:
             opportunities.sort(key=lambda x: x['volatility'], reverse=True)
             candidates = opportunities[:scan_limit]
             
-            logging.info(f"🔍 Deep Scanning {len(candidates)} candidates (PARALLEL MTF + Volume) for Top {settings.TOP_COINS_LIMIT}...")
+            logging.info(f"[SCAN] Deep Scanning {len(candidates)} candidates (PARALLEL MTF + Volume) for Top {settings.TOP_COINS_LIMIT}...")
             
             # Define analysis function for parallel execution
             def analyze_candidate(cand: Dict) -> Optional[Dict]:
@@ -175,7 +175,7 @@ class MarketScreener:
                     return None
                     
                 except Exception as e:
-                    logging.error(f"⚠️ Screener error for {symbol}: {e}")
+                    logging.error(f"[WARN] Screener error for {symbol}: {e}")
                     return None
             
             # Execute parallel analysis (12 threads = optimal for 16 vCPU, leaves 4 for other services)
@@ -194,7 +194,7 @@ class MarketScreener:
             # Return Top N symbols based on ENV setting
             top_symbols = [opp['symbol'] for opp in final_list[:settings.TOP_COINS_LIMIT]]
             
-            logging.info(f"✅ Selected {len(top_symbols)} coins (from {len(candidates)} scanned) | Limit: {settings.TOP_COINS_LIMIT}")
+            logging.info(f"[OK] Selected {len(top_symbols)} coins (from {len(candidates)} scanned) | Limit: {settings.TOP_COINS_LIMIT}")
             return top_symbols
 
         except Exception as e:

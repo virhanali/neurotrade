@@ -71,7 +71,7 @@ func (s *VirtualBrokerService) CheckPositions(ctx context.Context) error {
 	if err != nil {
 		// If it's just missing prices for some symbols, we warn but continue with the ones we found
 		if strings.Contains(err.Error(), "missing prices") {
-			log.Printf("⚠️  Partial Price Fetch: %v", err)
+			log.Printf("[WARN]  Partial Price Fetch: %v", err)
 		} else {
 			return fmt.Errorf("failed to fetch real-time prices: %w", err)
 		}
@@ -159,7 +159,7 @@ func (s *VirtualBrokerService) CheckPositions(ctx context.Context) error {
 		}
 		// ------------------------------------------
 
-		log.Printf("✅ Position CLOSED: %s %s | Entry=%.2f Exit=%.2f | PnL=%.2f USDT | Status=%s",
+		log.Printf("[OK] Position CLOSED: %s %s | Entry=%.2f Exit=%.2f | PnL=%.2f USDT | Status=%s",
 			position.Symbol, position.Side, position.EntryPrice, currentPrice, netPnL, status)
 		log.Printf("   User balance updated: %.2f → %.2f USDT", user.PaperBalance, newBalance)
 	}

@@ -179,7 +179,7 @@ func (h *UserHandler) PanicButton(c echo.Context) error {
 
 	html := `
 		<div class="p-4 bg-white border-2 border-black text-black font-bold shadow-[4px_4px_0px_0px_#000] mt-4">
-			✅ All positions closed successfully
+			[OK] All positions closed successfully
 		</div>
 	`
 	return c.HTML(http.StatusOK, html)

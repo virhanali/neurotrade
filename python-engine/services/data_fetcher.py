@@ -39,7 +39,7 @@ class DataFetcher:
             
             # Check if symbol exists
             if symbol not in self.exchange.markets:
-                print(f"⚠️  Symbol {symbol} not found in markets")
+                print(f"[WARN]  Symbol {symbol} not found in markets")
                 return False
             
             # Get market info
@@ -49,13 +49,13 @@ class DataFetcher:
             status = market.get('info', {}).get('status', 'UNKNOWN')
             
             if status != 'TRADING':
-                print(f"⚠️  Symbol {symbol} status is {status} (not TRADING)")
+                print(f"[WARN]  Symbol {symbol} status is {status} (not TRADING)")
                 return False
             
             return True
             
         except Exception as e:
-            print(f"❌ Error validating symbol {symbol}: {str(e)}")
+            print(f"[ERROR] Error validating symbol {symbol}: {str(e)}")
             return False
 
 

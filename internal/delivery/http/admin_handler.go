@@ -110,7 +110,7 @@ func (h *AdminHandler) SetActiveStrategy(c echo.Context) error {
 		if err != nil {
 			return c.HTML(http.StatusBadRequest, `
 				<div class="p-4 bg-[#ff6b6b] border-2 border-black text-white font-bold shadow-[4px_4px_0px_0px_#000]">
-					❌ Invalid preset_id format
+					[ERROR] Invalid preset_id format
 				</div>
 			`)
 		}
@@ -120,7 +120,7 @@ func (h *AdminHandler) SetActiveStrategy(c echo.Context) error {
 		if err := c.Bind(&req); err != nil {
 			return c.HTML(http.StatusBadRequest, `
 				<div class="p-4 bg-[#ff6b6b] border-2 border-black text-white font-bold shadow-[4px_4px_0px_0px_#000]">
-					❌ Invalid request payload
+					[ERROR] Invalid request payload
 				</div>
 			`)
 		}
@@ -130,7 +130,7 @@ func (h *AdminHandler) SetActiveStrategy(c echo.Context) error {
 	if presetID <= 0 {
 		return c.HTML(http.StatusBadRequest, `
 			<div class="p-4 bg-[#ff6b6b] border-2 border-black text-white font-bold shadow-[4px_4px_0px_0px_#000]">
-				❌ Invalid preset_id
+				[ERROR] Invalid preset_id
 			</div>
 		`)
 	}
@@ -169,7 +169,7 @@ func (h *AdminHandler) SetActiveStrategy(c echo.Context) error {
 
 	html := `
 		<div class="p-4 bg-[#51cf66] border-2 border-black text-black font-bold shadow-[4px_4px_0px_0px_#000]">
-			✅ Strategy updated successfully
+			[OK] Strategy updated successfully
 		</div>
 	`
 	return c.HTML(http.StatusOK, html)
@@ -275,7 +275,7 @@ func (h *AdminHandler) TriggerMarketScan(c echo.Context) error {
 	if h.scheduler == nil {
 		return c.HTML(http.StatusInternalServerError, `
 			<div class="p-4 bg-[#ff6b6b] border-2 border-black text-white font-bold shadow-[4px_4px_0px_0px_#000]">
-				❌ Scheduler not available
+				[ERROR] Scheduler not available
 			</div>
 		`)
 	}
@@ -295,7 +295,7 @@ func (h *AdminHandler) TriggerMarketScan(c echo.Context) error {
 	html := fmt.Sprintf(`
 		<div class="space-y-3">
 			<div class="p-4 bg-[#51cf66] border-2 border-black text-black font-bold shadow-[4px_4px_0px_0px_#000]">
-				✅ Triggered
+				[OK] Triggered
 			</div>
 			<div class="p-3 bg-white border-2 border-black text-black font-medium shadow-[2px_2px_0px_0px_#000] text-sm">
 				Triggered at: %s

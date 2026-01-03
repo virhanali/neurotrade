@@ -59,7 +59,7 @@ func (ts *TradingService) ProcessMarketScan(ctx context.Context, balance float64
 	ts.scanMu.Lock()
 	if ts.isScanning {
 		ts.scanMu.Unlock()
-		log.Println("⚠️ Market scan skipped: Previous scan still running")
+		log.Println("[WARN] Market scan skipped: Previous scan still running")
 		return nil
 	}
 	ts.isScanning = true
@@ -293,7 +293,7 @@ func (ts *TradingService) createPaperPositionForUser(ctx context.Context, user *
 		return fmt.Errorf("failed to save paper position: %w", err)
 	}
 
-	log.Printf("🎯 Auto-created Paper Position for %s: %s | Size: %.6f",
+	log.Printf("[TARGET] Auto-created Paper Position for %s: %s | Size: %.6f",
 		user.Username, position.Symbol, position.Size)
 
 	// Update signal status to EXECUTED
@@ -455,7 +455,7 @@ func (ts *TradingService) ApprovePosition(ctx context.Context, positionID uuid.U
 		return fmt.Errorf("failed to approve position: %w", err)
 	}
 
-	log.Printf("✅ Position Approved: %s %s", position.Symbol, position.Side)
+	log.Printf("[OK] Position Approved: %s %s", position.Symbol, position.Side)
 
 	// Update associated signal status to EXECUTED
 	if position.SignalID != nil {
@@ -494,7 +494,7 @@ func (ts *TradingService) DeclinePosition(ctx context.Context, positionID uuid.U
 		return fmt.Errorf("failed to decline position: %w", err)
 	}
 
-	log.Printf("❌ Position Declined: %s %s", position.Symbol, position.Side)
+	log.Printf("[ERROR] Position Declined: %s %s", position.Symbol, position.Side)
 
 	// Update associated signal status to REJECTED
 	if position.SignalID != nil {

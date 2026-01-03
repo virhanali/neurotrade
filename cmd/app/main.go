@@ -81,7 +81,7 @@ func main() {
 		AND status = 'PENDING'
 	`)
 	if err != nil {
-		log.Printf("⚠️ Self-healing failed: %v", err)
+		log.Printf("[WARN] Self-healing failed: %v", err)
 	} else {
 		log.Println("✓ Self-healing: Synced signal statuses")
 	}
@@ -99,7 +99,7 @@ func main() {
 	if telegramBotToken != "" && telegramChatID != "" {
 		log.Println("✓ Telegram notifications enabled")
 	} else {
-		log.Println("⚠️  Telegram notifications disabled (set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID to enable)")
+		log.Println("[WARN]  Telegram notifications disabled (set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID to enable)")
 	}
 
 	// Initialize AI service (Python Bridge)
@@ -137,7 +137,7 @@ func main() {
 	tradingMode, err := settingsRepo.GetTradingMode(ctx)
 	if err != nil {
 		tradingMode = "SCALPER" // Default mode
-		log.Printf("⚠️ Trading mode not found in DB, using default: %s", tradingMode)
+		log.Printf("[WARN] Trading mode not found in DB, using default: %s", tradingMode)
 	} else {
 		log.Printf("✓ Trading mode loaded from database: %s", tradingMode)
 	}
@@ -190,9 +190,9 @@ func main() {
 		log.Println("🏥 Running scheduled health check...")
 		if bridge, ok := aiService.(*adapter.PythonBridge); ok {
 			if err := bridge.HealthCheck(context.Background()); err != nil {
-				log.Printf("⚠️ HEALTH CHECK FAILED: Python Engine is not available: %v", err)
+				log.Printf("[WARN] HEALTH CHECK FAILED: Python Engine is not available: %v", err)
 			} else {
-				log.Println("✅ Health check passed: Python Engine is healthy")
+				log.Println("[OK] Health check passed: Python Engine is healthy")
 			}
 		}
 	})
@@ -205,7 +205,7 @@ func main() {
 	defer cronScheduler.Stop()
 
 	log.Println("✓ Phase 3 services initialized:")
-	log.Println("  - 🛡️ Bodyguard: Every 10 seconds (*/10 * * * * *) [FAST SL/TP]")
+	log.Println("  - [GUARD] Bodyguard: Every 10 seconds (*/10 * * * * *) [FAST SL/TP]")
 	log.Println("  - Virtual Broker: Every 1 minute (0 */1 * * * *)")
 	log.Println("  - Review Service: Minute 5 of every hour (0 5 * * * *)")
 	log.Println("  - Health Check: Every 6 hours (0 0 */6 * * *)")
@@ -276,14 +276,14 @@ func main() {
 	// Start HTTP server
 	addr := fmt.Sprintf(":%s", cfg.Server.Port)
 	log.Println("========================================")
-	log.Printf("🚀 NeuroTrade v2.5 (Aggressive Scalper) starting on %s", addr)
-	log.Printf("📊 Environment: %s", cfg.Server.Env)
+	log.Printf("[SIGNAL] NeuroTrade v2.5 (Aggressive Scalper) starting on %s", addr)
+	log.Printf("[INFO] Environment: %s", cfg.Server.Env)
 	log.Printf("💰 Default Balance: $%.2f USDT", cfg.Trading.DefaultBalance)
 	log.Printf("📈 Min Confidence: %d%%", cfg.Trading.MinConfidence)
 	if tradingMode == "SCALPER" {
-		log.Printf("🎯 Trading Mode: %s (2-min intervals)", tradingMode)
+		log.Printf("[TARGET] Trading Mode: %s (2-min intervals)", tradingMode)
 	} else {
-		log.Printf("🎯 Trading Mode: %s (60-min intervals)", tradingMode)
+		log.Printf("[TARGET] Trading Mode: %s (60-min intervals)", tradingMode)
 	}
 	log.Println("========================================")
 	log.Println("AVAILABLE ROUTES:")
