@@ -351,15 +351,22 @@ func (h *AdminHandler) GetLatestScanResults(c echo.Context) error {
 				pnlVal = *signal.ReviewPnL // This is price move % (unleveraged)
 			}
 
-			// Simulation: Leverage 20x, Margin $30
-			leverage := 20.0
-			margin := 30.0
+			// Fetch user config for accurate PnL estimation
+			var userMargin, userLeverage float64
 
-			roe := pnlVal * leverage
-			pnlDollar := (margin * leverage) * (pnlVal / 100.0)
+			// Strict: Get settings from the first user (System Admin/Owner)
+			// If fails, variables remain default (0.0)
+			h.db.QueryRow(context.Background(), "SELECT fixed_order_size, leverage FROM users ORDER BY created_at ASC LIMIT 1").Scan(&userMargin, &userLeverage)
 
+			// Calculate ROE % and Dollar Amount based on User Config
+			// Formula: Dollar = (% Move / 100) * (Margin * Leverage)
+			totalPositionValue := userMargin * userLeverage
+			roe := pnlVal * userLeverage
+			pnlDollar := (pnlVal / 100.0) * totalPositionValue
+
+			// Determine color based on Result
 			resColor := "bg-[#ff6b6b] text-white" // Loss Red by default
-			if res == "WIN" || roe > 0 {
+			if res == "WIN" || pnlDollar > 0 {
 				resColor = "bg-[#51cf66] text-black" // Profit Green
 			}
 
