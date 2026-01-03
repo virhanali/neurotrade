@@ -11,6 +11,7 @@ from datetime import datetime
 
 import websockets
 from websockets.exceptions import ConnectionClosed
+from config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +24,7 @@ class PriceStreamService:
     
     # Binance Futures WebSocket endpoint for all tickers (Full Ticker)
     # !ticker@arr provides Price, Volume, and Change% needed for both Bodyguard and Screener
-    WS_URL = "wss://fstream.binance.com/ws/!ticker@arr"
+    WS_URL = settings.BINANCE_WS_URL
     
     def __init__(self):
         # prices: symbol -> price (for Bodyguard)

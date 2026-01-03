@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     # Exchange API (Optional - only for real trading)
     BINANCE_API_KEY: str = os.getenv("BINANCE_API_KEY", "")
     BINANCE_API_SECRET: str = os.getenv("BINANCE_API_SECRET", "")
+    BINANCE_WS_URL: str = os.getenv("BINANCE_WS_URL", "wss://fstream.binance.com/ws/!ticker@arr")
 
     # Database
     DATABASE_URL: str = os.getenv("DATABASE_URL", "")
