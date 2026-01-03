@@ -15,6 +15,7 @@ from services.data_fetcher import DataFetcher
 from services.screener import MarketScreener
 from services.charter import ChartGenerator
 from services.ai_handler import AIHandler
+from services.price_stream import price_stream
 
 app = FastAPI(
     title="NeuroTrade AI Engine",
@@ -36,6 +37,21 @@ data_fetcher = DataFetcher()
 screener = MarketScreener()
 charter = ChartGenerator()
 ai_handler = AIHandler()
+
+
+# Startup/Shutdown events for WebSocket
+@app.on_event("startup")
+async def startup_event():
+    """Start WebSocket price stream on app startup"""
+    await price_stream.start()
+    print("🔌 WebSocket price stream started")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Stop WebSocket price stream on app shutdown"""
+    await price_stream.stop()
+    print("🔌 WebSocket price stream stopped")
 
 
 # ============================================
@@ -117,6 +133,32 @@ async def get_screener_summary():
         return summary
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/prices")
+async def get_prices(symbols: Optional[str] = None):
+    """
+    Get real-time prices from WebSocket cache.
+    
+    Args:
+        symbols: Optional comma-separated list of symbols (e.g., "BTCUSDT,ETHUSDT")
+                 If not provided, returns all prices.
+    
+    Returns:
+        Dict with prices and metadata
+    """
+    if symbols:
+        symbol_list = [s.strip().upper() for s in symbols.split(",")]
+        prices = price_stream.get_prices(symbol_list)
+    else:
+        prices = price_stream.get_all_prices()
+    
+    return {
+        "prices": prices,
+        "count": len(prices),
+        "connected": price_stream.is_connected,
+        "last_update": price_stream.last_update.isoformat() if price_stream.last_update else None,
+    }
 
 
 @app.post("/analyze/market", response_model=MarketAnalysisResponse)

@@ -17,6 +17,7 @@ type BodyguardService struct {
 	priceService *MarketPriceService
 	signalRepo   domain.SignalRepository
 	notifService NotificationService // Use same interface as VirtualBroker
+	aiService    domain.AIService    // Python Bridge for WebSocket prices
 }
 
 // NewBodyguardService creates a new BodyguardService
@@ -26,6 +27,7 @@ func NewBodyguardService(
 	priceService *MarketPriceService,
 	signalRepo domain.SignalRepository,
 	notifService NotificationService,
+	aiService domain.AIService,
 ) *BodyguardService {
 	return &BodyguardService{
 		positionRepo: positionRepo,
@@ -33,6 +35,7 @@ func NewBodyguardService(
 		priceService: priceService,
 		signalRepo:   signalRepo,
 		notifService: notifService,
+		aiService:    aiService,
 	}
 }
 
@@ -60,12 +63,20 @@ func (s *BodyguardService) CheckPositionsFast(ctx context.Context) error {
 		symbols = append(symbols, symbol)
 	}
 
-	// Bulk fetch all prices in ONE API call (rate limit safe)
-	prices, err := s.priceService.FetchRealTimePrices(ctx, symbols)
-	if err != nil {
-		// Log but don't fail - we can try again in 10 seconds
-		log.Printf("⚠️ Bodyguard: Failed to fetch prices: %v", err)
-		return nil
+	// 1. Try WebSocket prices first (Fastest)
+	var prices map[string]float64
+	prices, err = s.aiService.GetWebSocketPrices(ctx, symbols)
+
+	// 2. Fallback to REST API if WebSocket fails
+	if err != nil || len(prices) == 0 {
+		if err != nil {
+			log.Printf("⚠️ Bodyguard: WebSocket price fetch failed (fallback to REST): %v", err)
+		}
+		prices, err = s.priceService.FetchRealTimePrices(ctx, symbols)
+		if err != nil {
+			log.Printf("⚠️ Bodyguard: REST price fetch failed: %v", err)
+			return nil
+		}
 	}
 
 	// Check each position against fetched prices

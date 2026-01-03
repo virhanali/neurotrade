@@ -8,6 +8,7 @@ import pandas as pd
 from io import BytesIO
 from typing import Optional
 import matplotlib.pyplot as plt
+import gc
 
 
 class ChartGenerator:
@@ -87,12 +88,15 @@ class ChartGenerator:
             fig.savefig(buffer, format='png', dpi=100, bbox_inches='tight', facecolor='#1e222d')
             buffer.seek(0)
 
-            # Close figure to free memory
+            # Close figure and clear memory aggressively
             plt.close(fig)
+            plt.close('all')
+            gc.collect()
 
             return buffer
 
         except Exception as e:
+            plt.close('all')
             raise Exception(f"Failed to generate chart for {symbol}: {str(e)}")
 
     def generate_comparison_chart(self, df_4h: pd.DataFrame, df_1h: pd.DataFrame, symbol: str) -> BytesIO:
@@ -143,8 +147,11 @@ class ChartGenerator:
             buffer.seek(0)
 
             plt.close(fig)
+            plt.close('all')
+            gc.collect()
 
             return buffer
 
         except Exception as e:
+            plt.close('all')
             raise Exception(f"Failed to generate comparison chart for {symbol}: {str(e)}")

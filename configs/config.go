@@ -59,7 +59,7 @@ func Load() *Config {
 		},
 		Trading: TradingConfig{
 			DefaultBalance: getEnvFloat("DEFAULT_BALANCE", 1000.0),
-			MinConfidence:  getEnvInt("MIN_CONFIDENCE", 75),
+			MinConfidence:  getEnvInt("MIN_CONFIDENCE", 65),
 		},
 	}
 }

@@ -102,7 +102,7 @@ func main() {
 	priceService := service.NewMarketPriceService()
 	virtualBroker := service.NewVirtualBrokerService(positionRepo, userRepo, priceService, signalRepo, notificationService)
 	reviewService := service.NewReviewService(signalRepo, priceService, notificationService)
-	bodyguard := service.NewBodyguardService(positionRepo, userRepo, priceService, signalRepo, notificationService)
+	bodyguard := service.NewBodyguardService(positionRepo, userRepo, priceService, signalRepo, notificationService, aiService)
 
 	// Initialize trading service
 	tradingService := usecase.NewTradingService(

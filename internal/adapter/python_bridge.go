@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -143,4 +144,45 @@ func (pb *PythonBridge) HealthCheck(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// GetWebSocketPrices fetches real-time prices from Python's WebSocket cache
+func (pb *PythonBridge) GetWebSocketPrices(ctx context.Context, symbols []string) (map[string]float64, error) {
+	// Construct URL with symbols parameter
+	url := fmt.Sprintf("%s/prices", pb.baseURL)
+	if len(symbols) > 0 {
+		params := "?symbols=" + strings.Join(symbols, ",")
+		url += params
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create prices request: %w", err)
+	}
+
+	resp, err := pb.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch prices from Python engine: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Python engine prices failed with status: %d", resp.StatusCode)
+	}
+
+	// Response structure
+	var pricesResp struct {
+		Prices    map[string]float64 `json:"prices"`
+		Connected bool               `json:"connected"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&pricesResp); err != nil {
+		return nil, fmt.Errorf("failed to decode prices response: %w", err)
+	}
+
+	if !pricesResp.Connected {
+		log.Println("⚠️ Warning: Python WebSocket is disconnected")
+	}
+
+	return pricesResp.Prices, nil
 }
