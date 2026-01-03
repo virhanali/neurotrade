@@ -1,0 +1,49 @@
+{{define "signal_list"}}
+<div class="space-y-3">
+    {{range .}}
+    <div
+        class="bg-white dark:bg-slate-800 rounded-xl px-4 py-3 border border-slate-100 dark:border-slate-800 shadow-sm hover:shadow-md hover:border-slate-300 dark:hover:border-slate-600 transition-all group relative overflow-hidden">
+
+        <!-- Row 1: Header (Symbol/Side ... Conf/Time) -->
+        <div class="flex justify-between items-center mb-3">
+            <!-- Left: Symbol + Side -->
+            <div class="flex items-center gap-2 overflow-hidden mr-2">
+                <span class="font-bold text-sm text-slate-900 dark:text-white truncate max-w-[100px]"
+                    title="{{.Symbol}}">{{.Symbol}}</span>
+                <span
+                    class="text-[9px] font-extrabold px-1.5 py-0.5 rounded-[4px] uppercase tracking-wider {{.SideBg}} whitespace-nowrap">{{.Type}}</span>
+            </div>
+
+            <!-- Right: Confidence + Time (Inline) -->
+            <div class="flex items-center gap-2 shrink-0">
+                <span
+                    class="text-[9px] font-bold {{.ConfidenceColor}} bg-slate-50 dark:bg-slate-900/50 px-1.5 py-0.5 rounded border border-slate-100 dark:border-slate-800 whitespace-nowrap">
+                    {{.Confidence}}%
+                </span>
+                <span class="text-[10px] text-slate-400 font-mono whitespace-nowrap opacity-80">{{.Timestamp}}</span>
+            </div>
+        </div>
+
+        <!-- Row 2: Result Badge (Aligned Left) -->
+        <div class="w-full flex justify-start">
+            {{if .IsRunning}}
+            <div
+                class="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-700/50 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 px-2.5 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wide">
+                <div class="w-1.5 h-1.5 rounded-full bg-slate-400 animate-pulse"></div>
+                Running
+            </div>
+            {{else}}
+            <div
+                class="inline-flex items-center {{.ResColor}} border px-1.5 py-1 rounded-md text-[10px] uppercase font-bold tracking-wide leading-none font-mono whitespace-nowrap">
+                <span class="w-[38px] text-center shrink-0">{{.Res}}</span>
+                <span class="w-px h-2.5 bg-current opacity-20 mx-1 shrink-0"></span>
+                <span class="w-[48px] text-right truncate shrink-0">{{printf "%.2f" .PnlVal}}%</span>
+                <span class="w-px h-2.5 bg-current opacity-20 mx-1 shrink-0"></span>
+                <span class="w-[48px] text-right truncate shrink-0">${{printf "%.2f" .PnlDollar}}</span>
+            </div>
+            {{end}}
+        </div>
+    </div>
+    {{end}}
+</div>
+{{end}}

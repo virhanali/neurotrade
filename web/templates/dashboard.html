@@ -1,458 +1,480 @@
 {{define "dashboard"}}
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="light">
+
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard - NeuroTrade</title>
+    <title>NeuroTrade | AI Quantitative System</title>
+
+    <!-- Dependencies -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap"
-        rel="stylesheet">
-    <!-- SweetAlert2 for nice alerts instead of native confirm -->
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <!-- Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- Tailwind Config for Dark Mode & Colors -->
     <script>
         tailwind.config = {
+            darkMode: 'class',
             theme: {
                 extend: {
                     fontFamily: {
-                        'grotesk': ['Space Grotesk', 'sans-serif'],
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        slate: {
+                            850: '#1e293b', // Custom dark surface
+                            900: '#0f172a',
+                            950: '#020617', // Custom dark bg
+                        }
                     }
                 }
             }
         }
     </script>
+
+    <!-- Dark Mode Logic -->
+    <script>
+        // Check local storage or system preference
+        if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+
+        function toggleTheme() {
+            if (document.documentElement.classList.contains('dark')) {
+                document.documentElement.classList.remove('dark');
+                localStorage.theme = 'light';
+            } else {
+                document.documentElement.classList.add('dark');
+                localStorage.theme = 'dark';
+            }
+        }
+    </script>
+
     <style>
-        * {
-            font-family: 'Space Grotesk', sans-serif;
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+        body {
+            font-family: 'Inter', sans-serif;
         }
 
-        .neo-btn {
-            transition: all 0.1s ease;
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
         }
 
-        .neo-btn:hover {
-            transform: translate(2px, 2px);
-            box-shadow: none;
+        ::-webkit-scrollbar-track {
+            background: transparent;
         }
 
-        .neo-btn:active {
-            transform: translate(4px, 4px);
-            box-shadow: none;
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
         }
 
-        .neo-card {
-            transition: all 0.1s ease;
+        .dark ::-webkit-scrollbar-thumb {
+            background: #334155;
         }
 
-        .swal2-container {
-            z-index: 9999 !important;
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+
+        /* HTMX Indicator - Skeleton styles */
+        .htmx-indicator {
+            display: none;
+            opacity: 0;
+            transition: opacity 200ms ease-in;
+        }
+
+        .htmx-request .htmx-indicator {
+            display: inline;
+            opacity: 1;
+        }
+
+        .htmx-request.htmx-indicator {
+            display: inline;
+            opacity: 1;
+        }
+
+        /* Skeleton Animation */
+        .skeleton {
+            background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+        }
+
+        .dark .skeleton {
+            background: linear-gradient(90deg, #1e293b 25%, #334155 50%, #1e293b 75%);
+        }
+
+        @keyframes shimmer {
+            0% {
+                background-position: 200% 0;
+            }
+
+            100% {
+                background-position: -200% 0;
+            }
         }
     </style>
 </head>
 
-<body class="bg-[#f4f4f0] min-h-screen">
-    <!-- Top Navbar (Sticky) -->
-    <nav class="sticky top-0 z-50 bg-white border-b-2 border-black shadow-[0px_4px_0px_0px_#000]">
-        <div class="max-w-7xl mx-auto px-6 py-4">
-            <div class="flex items-center justify-between">
-                <!-- Left: Logo -->
-                <div class="flex items-center space-x-4">
-                    <div class="bg-black border-2 border-black px-6 py-2 shadow-[4px_4px_0px_0px_#000]">
-                        <h1 class="text-2xl font-bold text-white">⚡ NeuroTrade</h1>
-                    </div>
-                    <div class="hidden md:block">
-                        <p class="text-sm font-medium text-gray-600">Welcome back,</p>
-                        <p class="text-lg font-bold text-black">{{.User.Username}}</p>
-                    </div>
-                </div>
+<body class="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 transition-colors duration-200">
 
-                <!-- Right: Balance, Mode, Logout -->
-                <div class="flex items-center space-x-4">
-                    <!-- Balance Badge -->
-                    <div class="bg-[#d4ff00] border-2 border-black px-6 py-3 shadow-[4px_4px_0px_0px_#000]">
-                        <p class="text-xs font-semibold text-black uppercase tracking-wide">Balance</p>
-                        <p class="text-2xl font-bold text-black">${{printf "%.2f" .User.PaperBalance}}</p>
-                    </div>
-
-                    <!-- Auto-Trade Toggle -->
-                    <div
-                        class="flex items-center space-x-2 bg-white border-2 border-black px-4 py-3 shadow-[4px_4px_0px_0px_#000]">
-                        <span class="text-sm font-bold text-black uppercase">AUTO-TRADE</span>
-                        <label class="relative inline-flex items-center cursor-pointer">
-                            <input type="checkbox" name="enabled" value="true" class="sr-only peer"
-                                hx-post="/api/user/settings/autotrade" hx-swap="none" {{if
-                                .User.IsAutoTradeEnabled}}checked{{end}}>
-                            <div
-                                class="w-11 h-6 bg-gray-200 peer-focus:outline-none border-2 border-black rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-black after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#51cf66]">
-                            </div>
-                        </label>
-                    </div>
-
-                    <!-- Mode Toggle -->
-                    <button hx-post="/api/user/mode/toggle" hx-swap="none" class="neo-btn px-6 py-3 border-2 border-black font-bold uppercase tracking-wide shadow-[4px_4px_0px_0px_#000]
-                        {{if eq .User.Mode " PAPER"}} bg-[#ffd43b] text-black {{else}} bg-[#51cf66] text-black
-                        {{end}}">
-                        {{if eq .User.Mode "PAPER"}}📄 PAPER{{else}}💰 REAL{{end}}
-                    </button>
-
-                    <!-- Logout -->
-                    <form method="POST" action="/api/auth/logout" onsubmit="confirmLogout(event)">
-                        <button type="submit"
-                            class="neo-btn px-4 py-3 bg-white border-2 border-black text-black font-semibold shadow-[4px_4px_0px_0px_#000] hover:bg-gray-100">
-                            🚪 Logout
-                        </button>
-                    </form>
-                </div>
-            </div>
+    <!-- Mobile Header -->
+    <div
+        class="lg:hidden flex items-center justify-between p-4 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800">
+        <div class="flex items-center gap-2">
+            <i class="ri-brain-line text-emerald-500 text-xl"></i>
+            <span class="font-bold text-lg">NeuroTrade</span>
         </div>
-    </nav>
-
-    <!-- Main Content -->
-    <div class="max-w-7xl mx-auto px-6 py-8">
-        <!-- Row 1: Critical Controls -->
-        <div class="grid grid-cols-12 gap-6 mb-6">
-            <!-- Panic Button (Span 4) - Admin Only -->
-            {{if .IsAdmin}}
-            <div class="col-span-12 md:col-span-4">
-                <div class="neo-card bg-[#ff6b6b] border-2 border-black p-6 shadow-[8px_8px_0px_0px_#000] h-full">
-                    <h2 class="text-2xl font-bold text-white mb-4">⚠️ EMERGENCY</h2>
-                    <button hx-post="/api/user/panic-button"
-                        hx-confirm="🚨 DANGER: Are you sure you want to FORCE CLOSE ALL positions immediately? This cannot be undone."
-                        hx-target="#panic-response"
-                        class="neo-btn w-full bg-black border-2 border-black text-white font-bold py-4 px-6 text-lg shadow-[4px_4px_0px_0px_#fff] hover:shadow-none uppercase tracking-wide">
-                        🚨 STOP ALL
-                    </button>
-                    <div id="panic-response" class="mt-4"></div>
-                </div>
-            </div>
-            {{end}}
-
-            <!-- Strategy Config (Span 8) / Dashboard Banner (Span 12 for User) -->
-            {{if .IsAdmin}}
-            <div class="col-span-12 md:col-span-8">
-                <div class="neo-card bg-white border-2 border-black p-6 shadow-[8px_8px_0px_0px_#000] h-full">
-                    <h2 class="text-2xl font-bold text-black mb-4">🎯 Strategy Configuration</h2>
-                    <form hx-put="/api/admin/strategies/active" hx-target="#strategy-response"
-                        hx-confirm="Are you sure you want to change the active strategy?">
-                        <!-- ... form content ... -->
-                        <label for="strategy" class="block text-sm font-bold text-black uppercase tracking-wide mb-2">
-                            Active Strategy Prompt:
-                        </label>
-                        <select id="strategy" name="preset_id"
-                            class="w-full px-4 py-3 bg-white border-2 border-black text-black font-medium shadow-[4px_4px_0px_0px_#000] focus:outline-none focus:ring-0 mb-4">
-                            {{range .Strategies}}
-                            <option value="{{.ID}}" {{if .IsActive}}selected{{end}}>
-                                {{.Name}}
-                            </option>
-                            {{end}}
-                        </select>
-                        <button type="submit"
-                            class="neo-btn w-full bg-[#4dabf7] border-2 border-black text-black font-bold py-3 px-4 shadow-[4px_4px_0px_0px_#000] uppercase tracking-wide">
-                            💾 Update Strategy
-                        </button>
-                    </form>
-                    <div id="strategy-response" class="mt-4"></div>
-                </div>
-            </div>
-            {{else}}
-            <!-- Non-admin: Full width Trading Dashboard Banner -->
-            <div class="col-span-12">
-                <div
-                    class="neo-card bg-[#4dabf7] border-2 border-black p-6 shadow-[8px_8px_0px_0px_#000] h-full flex items-center justify-center">
-                    <div class="text-center">
-                        <h2 class="text-3xl font-bold text-black mb-2">📊 Trading Dashboard</h2>
-                        <p class="text-lg font-medium text-black">Monitor your positions below</p>
-                    </div>
-                </div>
-            </div>
-            {{end}}
-        </div>
-
-        <!-- Row 1.5: Pending Approvals (If any) -->
-        {{if .PendingPositions}}
-        <div class="mb-6">
-            <div class="neo-card bg-[#fff9db] border-2 border-black shadow-[8px_8px_0px_0px_#000]">
-                <!-- Header -->
-                <div class="bg-black border-b-2 border-black px-6 py-4 flex items-center justify-between">
-                    <h2 class="text-2xl font-bold text-white">⏳ Waiting for Approval</h2>
-                    <div class="bg-[#ffd43b] text-black px-3 py-1 font-bold text-sm border border-white">
-                        Action Required
-                    </div>
-                </div>
-
-                <!-- Table -->
-                <div class="overflow-x-auto">
-                    <table class="w-full">
-                        <thead>
-                            <tr class="bg-black text-white border-b-2 border-black">
-                                <th class="py-4 px-6 text-left text-sm font-bold uppercase tracking-wide">Symbol</th>
-                                <th class="py-4 px-6 text-left text-sm font-bold uppercase tracking-wide">Side</th>
-                                <th class="py-4 px-6 text-left text-sm font-bold uppercase tracking-wide">Entry</th>
-                                <th class="py-4 px-6 text-left text-sm font-bold uppercase tracking-wide">Stop Loss</th>
-                                <th class="py-4 px-6 text-left text-sm font-bold uppercase tracking-wide">Take Profit
-                                </th>
-                                <th class="py-4 px-6 text-left text-sm font-bold uppercase tracking-wide">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y-2 divide-black">
-                            {{range .PendingPositions}}
-                            <tr class="hover:bg-[#fff3bf] transition-colors">
-                                <td class="py-4 px-6 font-bold text-black">{{.Symbol}}</td>
-                                <td class="py-4 px-6">
-                                    <span
-                                        class="inline-block border-2 border-black px-3 py-1 font-bold text-sm shadow-[2px_2px_0px_0px_#000] {{if eq .Side "SHORT"}}bg-[#ff6b6b] text-white{{else}}bg-[#51cf66] text-black{{end}}">
-                                        {{.Side}}
-                                    </span>
-                                </td>
-                                <td class="py-4 px-6 font-medium text-black">${{printf "%.4f" .EntryPrice}}</td>
-                                <td class="py-4 px-6 font-medium text-black">${{printf "%.4f" .SLPrice}}</td>
-                                <td class="py-4 px-6 font-medium text-black">${{printf "%.4f" .TPPrice}}</td>
-                                <td class="py-4 px-6 flex space-x-2">
-                                    <button hx-post="/api/user/positions/{{.ID}}/approve" hx-target="closest tr"
-                                        hx-swap="outerHTML"
-                                        class="bg-[#51cf66] border-2 border-black text-black font-bold px-4 py-2 shadow-[2px_2px_0px_0px_#000] hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-none transition-all text-sm uppercase">
-                                        ✅ Approve
-                                    </button>
-                                    <button hx-post="/api/user/positions/{{.ID}}/decline" hx-target="closest tr"
-                                        hx-swap="outerHTML" hx-confirm="Decline this signal?"
-                                        class="bg-[#ff6b6b] border-2 border-black text-white font-bold px-4 py-2 shadow-[2px_2px_0px_0px_#000] hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-none transition-all text-sm uppercase">
-                                        ❌ Decline
-                                    </button>
-                                </td>
-                            </tr>
-                            {{end}}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-        {{end}}
-
-        <!-- Row 2: Active Positions -->
-        <div class="mb-6">
-            <div class="neo-card bg-white border-2 border-black shadow-[8px_8px_0px_0px_#000]">
-                <!-- Header -->
-                <div class="bg-black border-b-2 border-black px-6 py-4 flex items-center justify-between">
-                    <h2 class="text-2xl font-bold text-white">📊 Active Positions</h2>
-                    <div class="flex items-center space-x-2">
-                        <div class="w-3 h-3 bg-[#51cf66] rounded-full animate-pulse border-2 border-white"></div>
-                        <span class="text-sm font-semibold text-white uppercase tracking-wide">Realtime Sync
-                            (10s)</span>
-                    </div>
-                </div>
-
-                <!-- Table -->
-                <div class="overflow-x-auto">
-                    <table class="w-full">
-                        <thead>
-                            <tr class="bg-black text-white border-b-2 border-black">
-                                <th class="py-4 px-6 text-left text-sm font-bold uppercase tracking-wide">Symbol</th>
-                                <th class="py-4 px-6 text-left text-sm font-bold uppercase tracking-wide">Side</th>
-                                <th class="py-4 px-6 text-left text-sm font-bold uppercase tracking-wide">Entry</th>
-                                <th class="py-4 px-6 text-left text-sm font-bold uppercase tracking-wide">Current</th>
-                                <th class="py-4 px-6 text-left text-sm font-bold uppercase tracking-wide">Stop Loss</th>
-                                <th class="py-4 px-6 text-left text-sm font-bold uppercase tracking-wide">Take Profit
-                                </th>
-                                <th class="py-4 px-6 text-left text-sm font-bold uppercase tracking-wide">PnL</th>
-                                <th class="py-4 px-6 text-left text-sm font-bold uppercase tracking-wide">Action</th>
-                            </tr>
-                        </thead>
-                        <tbody hx-get="/api/user/positions/html" hx-trigger="load, every 10s" hx-swap="innerHTML"
-                            class="divide-y-2 divide-black">
-                            <!-- HTMX will load positions here -->
-                            <tr>
-                                <td colspan="8" class="py-12 text-center">
-                                    <div
-                                        class="inline-block animate-pulse bg-black text-white px-6 py-3 border-2 border-black font-bold">
-                                        Loading positions...
-                                    </div>
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-
-        <!-- Row 3: KPI Stats (Admin Only) -->
-        {{if .IsAdmin}}
-        <div class="grid grid-cols-12 gap-6">
-            <!-- Total Users -->
-            <div class="col-span-12 sm:col-span-6 lg:col-span-3">
-                <div class="neo-card bg-white border-2 border-black p-6 shadow-[6px_6px_0px_0px_#000]">
-                    <p class="text-sm font-bold text-gray-600 uppercase tracking-wide mb-2">Total Users</p>
-                    <p class="text-4xl font-bold text-black">{{.Stats.TotalUsers}}</p>
-                </div>
-            </div>
-
-            <!-- Total Signals -->
-            <div class="col-span-12 sm:col-span-6 lg:col-span-3">
-                <div class="neo-card bg-white border-2 border-black p-6 shadow-[6px_6px_0px_0px_#000]">
-                    <p class="text-sm font-bold text-gray-600 uppercase tracking-wide mb-2">Total Signals</p>
-                    <p class="text-4xl font-bold text-black">{{.Stats.TotalSignals}}</p>
-                </div>
-            </div>
-
-            <!-- Active Positions -->
-            <div class="col-span-12 sm:col-span-6 lg:col-span-3">
-                <div class="neo-card bg-[#ffd43b] border-2 border-black p-6 shadow-[6px_6px_0px_0px_#000]">
-                    <p class="text-sm font-bold text-black uppercase tracking-wide mb-2">Active Positions</p>
-                    <p class="text-4xl font-bold text-black">{{.Stats.ActivePositions}}</p>
-                </div>
-            </div>
-
-            <!-- Win Rate -->
-            <div class="col-span-12 sm:col-span-6 lg:col-span-3">
-                <div class="neo-card bg-[#51cf66] border-2 border-black p-6 shadow-[6px_6px_0px_0px_#000]">
-                    <p class="text-sm font-bold text-black uppercase tracking-wide mb-2">Win Rate</p>
-                    <p class="text-4xl font-bold text-black">{{printf "%.1f" .Stats.WinRate}}%</p>
-                </div>
-            </div>
-        </div>
-
-        <!-- Admin Controls Row -->
-        <div class="grid grid-cols-12 gap-6 mt-6">
-            <!-- Market Scan -->
-            <div class="col-span-12">
-                <div class="neo-card bg-white border-2 border-black p-6 shadow-[6px_6px_0px_0px_#000]">
-                    <!-- Header with Trigger Button -->
-                    <div class="flex items-center justify-between mb-4 pb-4 border-b-2 border-black">
-                        <h3 class="text-xl font-bold text-black">🔄 Market Scan</h3>
-                        <button hx-post="/api/admin/market-scan/trigger" hx-target="#scan-response"
-                            hx-confirm="Start a manual market scan? This might take up to a minute."
-                            class="neo-btn bg-[#ff6b6b] border-2 border-black text-white font-bold py-2 px-6 shadow-[4px_4px_0px_0px_#000] uppercase tracking-wide text-sm">
-                            🚀 Trigger Now
-                        </button>
-                    </div>
-
-                    <!-- Trigger Response -->
-                    <div id="scan-response" class="mb-4"></div>
-
-                    <!-- Latest Signals -->
-                    <div>
-                        <div class="flex items-center justify-between mb-3">
-                            <h4 class="text-sm font-bold text-black uppercase tracking-wide">Latest Signals</h4>
-                            <span class="text-xs text-gray-600">Auto-refresh 10s</span>
-                        </div>
-                        <div id="scan-results" hx-get="/api/admin/market-scan/results" hx-trigger="load, every 10s"
-                            hx-swap="innerHTML" class="max-h-[300px] overflow-y-auto">
-                            <div
-                                class="p-3 bg-gray-100 border-2 border-black text-black text-sm font-medium shadow-[2px_2px_0px_0px_#000] animate-pulse">
-                                Loading signals...
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Trading Mode Section -->
-        <div class="grid grid-cols-12 gap-6 mt-6">
-            <!-- Trading Mode Switcher -->
-            <div class="col-span-12 md:col-span-6">
-                <div class="neo-card bg-white border-2 border-black p-6 shadow-[6px_6px_0px_0px_#000]">
-                    <h3 class="text-xl font-bold text-black mb-4">🎯 Trading Mode</h3>
-                    <form hx-put="/api/admin/trading-mode" hx-target="#mode-response"
-                        hx-confirm="Change trading mode? This will affect how the AI analyzes markets.">
-                        <div class="grid grid-cols-2 gap-4 mb-4">
-                            <!-- SCALPER Option -->
-                            <label class="cursor-pointer">
-                                <input type="radio" name="mode" value="SCALPER" class="hidden peer" id="mode-scalper"
-                                    {{if eq .TradingMode "SCALPER" }}checked{{end}}>
-                                <div
-                                    class="peer-checked:bg-[#d4ff00] peer-checked:border-black border-2 border-gray-300 p-4 shadow-[4px_4px_0px_0px_#ccc] peer-checked:shadow-[4px_4px_0px_0px_#000] transition-all">
-                                    <div class="text-center">
-                                        <p class="text-2xl mb-1">⚡</p>
-                                        <p class="font-bold text-black uppercase">SCALPER</p>
-                                        <p class="text-xs text-gray-600 mt-1">M15 Ping-Pong</p>
-                                    </div>
-                                </div>
-                            </label>
-                            <!-- INVESTOR Option -->
-                            <label class="cursor-pointer">
-                                <input type="radio" name="mode" value="INVESTOR" class="hidden peer" id="mode-investor"
-                                    {{if eq .TradingMode "INVESTOR" }}checked{{end}}>
-                                <div
-                                    class="peer-checked:bg-[#4dabf7] peer-checked:border-black border-2 border-gray-300 p-4 shadow-[4px_4px_0px_0px_#ccc] peer-checked:shadow-[4px_4px_0px_0px_#000] transition-all">
-                                    <div class="text-center">
-                                        <p class="text-2xl mb-1">📈</p>
-                                        <p class="font-bold text-black uppercase">INVESTOR</p>
-                                        <p class="text-xs text-gray-600 mt-1">H1 Trend Following</p>
-                                    </div>
-                                </div>
-                            </label>
-                        </div>
-                        <button type="submit"
-                            class="neo-btn w-full bg-black border-2 border-black text-white font-bold py-3 px-4 shadow-[4px_4px_0px_0px_#666] uppercase tracking-wide">
-                            💾 Save Mode
-                        </button>
-                    </form>
-                    <div id="mode-response" class="mt-4"></div>
-                </div>
-            </div>
-        </div>
-        {{end}}
+        <button onclick="document.getElementById('sidebar').classList.toggle('-translate-x-full')"
+            class="p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg">
+            <i class="ri-menu-line text-xl"></i>
+        </button>
     </div>
 
+    <div class="flex h-screen overflow-hidden">
+
+        <!-- Sidebar Navigation -->
+        <aside id="sidebar"
+            class="fixed inset-y-0 left-0 z-50 w-64 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 transform -translate-x-full lg:translate-x-0 lg:static lg:inset-auto transition-transform duration-300 flex flex-col">
+            <!-- Brand -->
+            <div class="h-16 flex items-center px-6 border-b border-slate-100 dark:border-slate-800">
+                <i class="ri-brain-fill text-emerald-500 text-2xl mr-2"></i>
+                <span class="font-bold text-xl tracking-tight">NeuroTrade <span
+                        class="text-xs text-slate-400 font-normal">v2.5</span></span>
+            </div>
+
+            <!-- Nav Links -->
+            <nav class="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
+                <a href="#"
+                    class="flex items-center px-3 py-2.5 bg-slate-100 dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 font-medium rounded-lg group">
+                    <i class="ri-dashboard-3-line mr-3 text-lg"></i>
+                    Dashboard
+                </a>
+                <a href="#"
+                    class="flex items-center px-3 py-2.5 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100 font-medium rounded-lg transition-colors group">
+                    <i class="ri-pulse-line mr-3 text-lg group-hover:text-emerald-500"></i>
+                    Live Positions
+                </a>
+                <a href="#"
+                    class="flex items-center px-3 py-2.5 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100 font-medium rounded-lg transition-colors group">
+                    <i class="ri-history-line mr-3 text-lg group-hover:text-emerald-500"></i>
+                    Trade History
+                </a>
+                <a href="#"
+                    class="flex items-center px-3 py-2.5 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100 font-medium rounded-lg transition-colors group">
+                    <i class="ri-settings-4-line mr-3 text-lg group-hover:text-emerald-500"></i>
+                    Settings (DB)
+                </a>
+            </nav>
+
+            <!-- User Profile & Theme -->
+            <div class="p-4 border-t border-slate-200 dark:border-slate-800">
+                <div class="flex items-center justify-between mb-4">
+                    <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Appearance</span>
+                    <button onclick="toggleTheme()"
+                        class="p-1.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-yellow-400 transition-colors">
+                        <i class="ri-sun-line dark:hidden"></i>
+                        <i class="ri-moon-line hidden dark:inline"></i>
+                    </button>
+                </div>
+                <div
+                    class="flex items-center p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
+                    <div
+                        class="w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-900 flex items-center justify-center text-emerald-600 dark:text-emerald-400 font-bold text-sm">
+                        {{if .User.Username}}{{slice .User.Username 0 1}}{{else}}A{{end}}
+                    </div>
+                    <div class="ml-3 overflow-hidden">
+                        <p class="text-sm font-medium text-slate-900 dark:text-white truncate">{{.User.Username}}</p>
+                        <p class="text-xs text-slate-500 dark:text-slate-400 capitalize">{{.User.Role}}</p>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="flex-1 overflow-y-auto h-full relative" id="main-content">
+            <!-- Toast Container -->
+            <div id="toast-container" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2"></div>
+
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+                <!-- Page Header & Actions -->
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+                    <div>
+                        <h1 class="text-2xl font-bold text-slate-900 dark:text-white">Market Overview</h1>
+                        <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">Aggressive Scalping • M15 Timeframe
+                        </p>
+                    </div>
+                    <div class="flex gap-2">
+                        <div hx-get="/api/admin/system/health" hx-trigger="load, every 60s" class="hidden sm:block">
+                            <!-- Health Status injected here -->
+                        </div>
+                        <button hx-post="/api/admin/market-scan/trigger" hx-swap="none"
+                            class="inline-flex items-center px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg shadow-sm transition-colors focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500">
+                            <i class="ri-radar-line mr-2"></i>
+                            Scan Now
+                            <!-- HTMX Indicator -->
+                            <svg class="htmx-indicator ml-2 w-4 h-4 text-white animate-spin"
+                                xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor"
+                                    stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor"
+                                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
+                                </path>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Stats Grid -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+
+                    <!-- Balance Card -->
+                    <div
+                        class="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden group hover:border-emerald-500/30 transition-colors">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <p class="text-sm font-medium text-slate-500 dark:text-slate-400">Total Equity</p>
+                                <h3 class="text-2xl font-bold text-slate-900 dark:text-white mt-1">${{printf "%.2f"
+                                    .User.PaperBalance}}</h3>
+                                <div
+                                    class="flex items-center mt-1 text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+                                    <i class="ri-arrow-up-line mr-1"></i>
+                                    <span>+0.00% Today</span>
+                                </div>
+                            </div>
+                            <div
+                                class="p-2 bg-slate-50 dark:bg-slate-800 rounded-lg text-slate-600 dark:text-slate-400 group-hover:text-emerald-500 transition-colors">
+                                <i class="ri-wallet-3-line text-xl"></i>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- PnL Card -->
+                    <div
+                        class="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <p class="text-sm font-medium text-slate-500 dark:text-slate-400">Total PnL</p>
+                                <h3 class="text-2xl font-bold text-slate-900 dark:text-white mt-1" id="total-pnl">
+                                    {{if .Stats}}{{if index .Stats "total_pnl"}}${{printf "%.2f" (index .Stats
+                                    "total_pnl")}}{{else}}$0.00{{end}}{{else}}$0.00{{end}}</h3>
+                            </div>
+                            <div
+                                class="p-2 bg-slate-50 dark:bg-slate-800 rounded-lg text-slate-600 dark:text-slate-400">
+                                <i class="ri-line-chart-line text-xl"></i>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Win Rate Card -->
+                    <div
+                        class="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <p class="text-sm font-medium text-slate-500 dark:text-slate-400">Win Rate</p>
+                                <h3 class="text-2xl font-bold text-slate-900 dark:text-white mt-1">--%</h3>
+                            </div>
+                            <div
+                                class="p-2 bg-slate-50 dark:bg-slate-800 rounded-lg text-slate-600 dark:text-slate-400">
+                                <i class="ri-trophy-line text-xl"></i>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Active Mode -->
+                    <div
+                        class="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden">
+                        <div hx-get="/api/admin/trading-mode" hx-trigger="load, every 60s" class="h-full">
+                            <!-- Loaded via HTMX -->
+                            <div class="skeleton h-full w-full rounded"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Main Content Layout -->
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+
+                    <!-- Left Column: Activity & Chart (2/3) -->
+                    <div class="lg:col-span-2 space-y-8">
+
+                        <!-- Empty State / Chart Placeholder -->
+                        <div
+                            class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm p-6">
+                            <div class="flex items-center justify-between mb-4">
+                                <h3 class="text-lg font-semibold text-slate-900 dark:text-white">Performance Analytics
+                                </h3>
+                                <select
+                                    class="bg-slate-50 dark:bg-slate-800 border-none text-xs rounded-md text-slate-600 dark:text-slate-300 py-1 pl-2 pr-6">
+                                    <option>Last 24 Hours</option>
+                                    <option>Last 7 Days</option>
+                                </select>
+                            </div>
+                            <div
+                                class="h-64 flex flex-col items-center justify-center text-slate-400 dark:text-slate-600 bg-slate-50/50 dark:bg-slate-800/20 rounded-lg border border-dashed border-slate-200 dark:border-slate-700">
+                                <i class="ri-bar-chart-groupped-line text-4xl mb-2 opacity-50"></i>
+                                <p class="text-sm font-medium">Chart data will appear after first 24h of trading</p>
+                            </div>
+                        </div>
+
+                        <!-- Active Positions Table -->
+                        <div
+                            class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+                            <div
+                                class="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center">
+                                <h3 class="text-lg font-semibold text-slate-900 dark:text-white">Active Positions</h3>
+                                <span
+                                    class="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 text-xs px-2 py-1 rounded-full font-medium">Live</span>
+                            </div>
+
+                            <div class="overflow-x-auto">
+                                <table class="min-w-full text-left">
+                                    <thead
+                                        class="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-800">
+                                        <tr>
+                                            <th
+                                                class="py-3 px-4 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                                                Symbol</th>
+                                            <th
+                                                class="py-3 px-4 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                                                Side</th>
+                                            <th
+                                                class="py-3 px-4 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                                                Entry</th>
+                                            <th
+                                                class="py-3 px-4 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                                                Current</th>
+                                            <th
+                                                class="py-3 px-4 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                                                TP/SL</th>
+                                            <th
+                                                class="py-3 px-4 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                                                PnL</th>
+                                            <th
+                                                class="py-3 px-4 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider text-right">
+                                                Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-slate-100 dark:divide-slate-800"
+                                        hx-get="/api/user/positions/html" hx-trigger="load, every 5s">
+                                        <!-- Loading State inside Table -->
+                                        <tr>
+                                            <td colspan="7" class="p-4 text-center text-sm text-slate-400">
+                                                <div class="flex items-center justify-center gap-2">
+                                                    <i class="ri-loader-4-line animate-spin"></i> Loading positions...
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right Column: Signals & Feed (1/3) -->
+                    <div class="space-y-8">
+
+                        <!-- Latest Signals -->
+                        <div
+                            class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col max-h-[600px]">
+                            <div
+                                class="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center sticky top-0 bg-white dark:bg-slate-900 z-10">
+                                <h3 class="text-lg font-semibold text-slate-900 dark:text-white">AI Signals</h3>
+                                <div class="flex gap-2">
+                                    <span class="flex h-2 w-2 relative">
+                                        <span
+                                            class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                        <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                                    </span>
+                                </div>
+                            </div>
+
+                            <!-- CONTENT AREA -->
+                            <div id="scan-results" class="overflow-y-auto p-2 space-y-2 flex-1 custom-scrollbar"
+                                hx-get="/api/admin/market-scan/results" hx-trigger="load, every 10s">
+
+                                <!-- SKELETON -->
+                                <div
+                                    class="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-100 dark:border-slate-700">
+                                    <div class="flex justify-between mb-2">
+                                        <div class="skeleton h-4 w-20 rounded"></div>
+                                        <div class="skeleton h-4 w-12 rounded"></div>
+                                    </div>
+                                    <div class="skeleton h-3 w-full rounded"></div>
+                                </div>
+                                <div
+                                    class="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-100 dark:border-slate-700">
+                                    <div class="flex justify-between mb-2">
+                                        <div class="skeleton h-4 w-20 rounded"></div>
+                                        <div class="skeleton h-4 w-12 rounded"></div>
+                                    </div>
+                                    <div class="skeleton h-3 w-full rounded"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- System Status Small -->
+                        <div
+                            class="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-4 border border-slate-200 dark:border-slate-700">
+                            <h4
+                                class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">
+                                System Health</h4>
+                            <div hx-get="/api/admin/system/health" hx-trigger="load, every 30s">
+                                <div class="skeleton h-4 w-full rounded"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- TOAST NOTIFICATION SCRIPT -->
     <script>
-        // Handle successful mode toggle
-        document.body.addEventListener('htmx:afterRequest', function (event) {
-            if (event.detail.pathInfo.requestPath === '/api/user/mode/toggle' && event.detail.successful) {
-                window.location.reload();
-            }
+        document.body.addEventListener('htmx:afterSwap', function (evt) {
+            // Check for HX-Trigger headers to show toasts
+            // This requires backend to send generic events or specific JSON
+            // For now, let's just listen to Scan Trigger events if possible, 
+            // otherwise use a simple function callable from HTML
         });
 
-        // Intercept htmx:confirm to use SweetAlert2
-        document.body.addEventListener('htmx:confirm', function (evt) {
-            if (!evt.detail.question) return; // If no confirmation text, let it proceed naturally
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
 
-            evt.preventDefault();
-            Swal.fire({
-                title: 'Are you sure?',
-                text: evt.detail.question,
-                icon: 'warning',
-                showCancelButton: true,
-                confirmButtonColor: '#000000', // Black for neo-brutalism
-                cancelButtonColor: '#ff6b6b',  // Red for cancel
-                confirmButtonText: 'Yes, proceed!',
-                cancelButtonText: 'Cancel',
-                customClass: {
-                    popup: 'border-2 border-black shadow-[8px_8px_0px_0px_#000] rounded-none',
-                    confirmButton: 'border-2 border-black shadow-[4px_4px_0px_0px_#000] rounded-none px-6 py-2 font-bold uppercase hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px] transition-all',
-                    cancelButton: 'border-2 border-black shadow-[4px_4px_0px_0px_#000] rounded-none px-6 py-2 font-bold uppercase hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px] transition-all'
-                }
-            }).then((result) => {
-                if (result.isConfirmed) {
-                    evt.detail.issueRequest(true); // Proceed with the request
-                }
-            });
-        });
+            let bgClass = type === 'success' ? 'bg-slate-900 dark:bg-slate-800 text-white' : 'bg-rose-600 text-white';
+            let icon = type === 'success' ? '<i class="ri-checkbox-circle-fill text-emerald-400 text-lg"></i>' : '<i class="ri-error-warning-fill text-white text-lg"></i>';
 
-        // Handle Logout Form separately (since it's not HTMX)
-        function confirmLogout(event) {
-            event.preventDefault();
-            Swal.fire({
-                title: 'Logout?',
-                text: "Are you sure you want to logout?",
-                icon: 'question',
-                showCancelButton: true,
-                confirmButtonColor: '#000000',
-                cancelButtonColor: '#ff6b6b',
-                confirmButtonText: 'Yes, Logout',
-                customClass: {
-                    popup: 'border-2 border-black shadow-[8px_8px_0px_0px_#000] rounded-none',
-                    confirmButton: 'border-2 border-black shadow-[4px_4px_0px_0px_#000] rounded-none px-6 py-2 font-bold uppercase hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px] transition-all',
-                    cancelButton: 'border-2 border-black shadow-[4px_4px_0px_0px_#000] rounded-none px-6 py-2 font-bold uppercase hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px] transition-all'
-                }
-            }).then((result) => {
-                if (result.isConfirmed) {
-                    event.target.submit();
-                }
+            toast.className = `flex items-center gap-3 px-4 py-3 rounded-lg shadow-lg transform transition-all duration-300 translate-y-2 opacity-0 ${bgClass}`;
+            toast.innerHTML = `
+                ${icon}
+                <span class="text-sm font-medium">${message}</span>
+            `;
+
+            container.appendChild(toast);
+
+            // Animate In
+            requestAnimationFrame(() => {
+                toast.classList.remove('translate-y-2', 'opacity-0');
             });
+
+            // Remove after 3s
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-2');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
         }
     </script>
 </body>

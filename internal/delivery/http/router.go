@@ -41,17 +41,14 @@ func SetupRoutes(e *echo.Echo, config *RouterConfig) {
 	e.Use(middleware.RequestID())
 	e.Use(middleware.Secure())
 
-	// Root route
-	e.GET("/", func(c echo.Context) error {
-		return SuccessResponse(c, map[string]interface{}{
-			"message": "Welcome to NeuroTrade AI",
-			"endpoints": map[string]string{
-				"auth":  "/api/auth/*",
-				"user":  "/api/user/*",
-				"admin": "/api/admin/*",
-			},
+	// Root route is handled by WebHandler (RegisterWebRoutes)
+	/*
+		e.GET("/", func(c echo.Context) error {
+			return SuccessResponse(c, map[string]interface{}{
+				"message": "Welcome to NeuroTrade AI",
+			})
 		})
-	})
+	*/
 
 	// Health check
 	e.GET("/health", func(c echo.Context) error {

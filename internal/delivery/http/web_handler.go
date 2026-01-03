@@ -9,6 +9,7 @@ import (
 	"neurotrade/internal/domain"
 	"neurotrade/internal/middleware"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v4"
@@ -44,23 +45,47 @@ func NewWebHandler(
 	}
 }
 
+// validateToken checks if the token is valid (using same logic as middleware)
+func (h *WebHandler) validateToken(tokenString string) bool {
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method")
+		}
+		return []byte(middleware.GetJWTSecret()), nil
+	})
+
+	return err == nil && token.Valid
+}
+
 // GET / - Redirect to dashboard if logged in, else login
 func (h *WebHandler) HandleIndex(c echo.Context) error {
 	// Check if user is authenticated via cookie
 	cookie, err := c.Cookie("token")
-	if err != nil || cookie.Value == "" {
-		return c.Redirect(http.StatusFound, "/login")
+	if err == nil && cookie.Value != "" {
+		// Verify token is valid before redirecting
+		if h.validateToken(cookie.Value) {
+			return c.Redirect(http.StatusFound, "/dashboard")
+		}
+		// Invalid token? Clear it to prevent loops
+		c.SetCookie(&http.Cookie{Name: "token", MaxAge: -1, Path: "/"})
 	}
 
-	return c.Redirect(http.StatusFound, "/dashboard")
+	return c.Redirect(http.StatusFound, "/login")
 }
 
 // GET /login - Render login page
 func (h *WebHandler) HandleLogin(c echo.Context) error {
-	// If already logged in, redirect to dashboard
+	// If already logged in AND no error param, redirect to dashboard
 	cookie, err := c.Cookie("token")
-	if err == nil && cookie.Value != "" {
-		return c.Redirect(http.StatusFound, "/dashboard")
+	errorParam := c.QueryParam("error")
+
+	if err == nil && cookie.Value != "" && errorParam == "" {
+		// Verify token is valid before redirecting
+		if h.validateToken(cookie.Value) {
+			return c.Redirect(http.StatusFound, "/dashboard")
+		}
+		// Invalid token? Clear it
+		c.SetCookie(&http.Cookie{Name: "token", MaxAge: -1, Path: "/"})
 	}
 
 	data := map[string]interface{}{
@@ -105,7 +130,7 @@ func (h *WebHandler) HandleLoginPost(c echo.Context) error {
 		Path:     "/",
 		HttpOnly: true,
 		Secure:   false, // Set to true in production with HTTPS
-		SameSite: http.SameSiteStrictMode,
+		SameSite: http.SameSiteLaxMode,
 		MaxAge:   86400, // 24 hours
 	}
 	c.SetCookie(cookie)
@@ -192,16 +217,14 @@ func (h *WebHandler) HandlePositionsHTML(c echo.Context) error {
 	if !ok {
 		return c.HTML(http.StatusUnauthorized, `
 			<tr>
-				<td colspan="8" class="py-8 text-center">
-					<div class="inline-block bg-[#ff6b6b] border-2 border-black text-white font-bold px-6 py-3 shadow-[4px_4px_0px_0px_#000]">
-						❌ Authentication required
-					</div>
+				<td colspan="7" class="p-4 text-center text-sm text-rose-500 bg-rose-50 dark:bg-rose-900/10 rounded-lg m-2">
+					<i class="ri-lock-line mr-1"></i> Authentication required
 				</td>
 			</tr>
 		`)
 	}
 
-	// Check if user is admin
+	// Check if user is admin (to see all positions)
 	isAdmin := false
 	if user, err := h.userRepo.GetByID(c.Request().Context(), userID); err == nil {
 		isAdmin = user.Role == domain.RoleAdmin
@@ -221,10 +244,8 @@ func (h *WebHandler) HandlePositionsHTML(c echo.Context) error {
 	if err != nil {
 		return c.HTML(http.StatusInternalServerError, `
 			<tr>
-				<td colspan="8" class="py-8 text-center">
-					<div class="inline-block bg-[#ff6b6b] border-2 border-black text-white font-bold px-6 py-3 shadow-[4px_4px_0px_0px_#000]">
-						❌ Error loading positions
-					</div>
+				<td colspan="7" class="p-4 text-center text-sm text-slate-500">
+					Error loading positions
 				</td>
 			</tr>
 		`)
@@ -241,10 +262,8 @@ func (h *WebHandler) HandlePositionsHTML(c echo.Context) error {
 	if len(positions) == 0 {
 		return c.HTML(http.StatusOK, `
 			<tr>
-				<td colspan="8" class="py-12 text-center">
-					<div class="inline-block bg-white border-2 border-black text-black font-bold px-6 py-3 shadow-[4px_4px_0px_0px_#000]">
-						No active positions
-					</div>
+				<td colspan="7" class="py-8 text-center text-slate-400 italic text-sm">
+					No active positions running
 				</td>
 			</tr>
 		`)
@@ -256,17 +275,14 @@ func (h *WebHandler) HandlePositionsHTML(c echo.Context) error {
 		// Get current price
 		currentPrice, err := h.marketPriceSvc.GetPrice(c.Request().Context(), pos.Symbol)
 		if err != nil {
-			currentPrice = pos.EntryPrice // Fallback to entry price
+			currentPrice = pos.EntryPrice // Fallback
 		}
 
 		// Calculate PnL
 		pnlPercent := 0.0
 		pnlValue := 0.0
-		pnlBgClass := "bg-gray-100"
-		pnlTextClass := "text-black"
-		pnlSign := ""
 
-		// Check Side (support both LONG/BUY and SHORT/SELL just in case)
+		// Check Side
 		if pos.Side == "LONG" || pos.Side == "BUY" {
 			pnlPercent = ((currentPrice - pos.EntryPrice) / pos.EntryPrice) * 100
 			pnlValue = (currentPrice - pos.EntryPrice) * pos.Size
@@ -276,64 +292,65 @@ func (h *WebHandler) HandlePositionsHTML(c echo.Context) error {
 			pnlValue = (pos.EntryPrice - currentPrice) * pos.Size
 		}
 
+		// Colors
+		pnlClass := "text-slate-500"
+		pnlSign := ""
 		if pnlPercent > 0 {
-			pnlBgClass = "bg-[#51cf66]"
-			pnlTextClass = "text-black"
+			pnlClass = "text-emerald-600 dark:text-emerald-400"
 			pnlSign = "+"
 		} else if pnlPercent < 0 {
-			pnlBgClass = "bg-[#ff6b6b]"
-			pnlTextClass = "text-white"
+			pnlClass = "text-rose-600 dark:text-rose-400"
 		}
 
-		sideBgClass := "bg-[#51cf66]"
-		sideTextClass := "text-black"
-		sideEmoji := "🟢"
+		sideBadgeClass := "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
 		if pos.Side == "SHORT" {
-			sideBgClass = "bg-[#ff6b6b]"
-			sideTextClass = "text-white"
-			sideEmoji = "🔴"
+			sideBadgeClass = "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400"
 		}
 
 		html += fmt.Sprintf(`
-			<tr class="hover:bg-gray-50 transition-colors">
-				<td class="py-4 px-6">
-					<span class="font-bold text-black text-lg">%s</span>
+			<tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors border-b border-slate-50 dark:border-slate-800/50 last:border-0">
+				<td class="py-3 px-4">
+					<div class="font-bold text-slate-900 dark:text-white">%s</div>
 				</td>
-				<td class="py-4 px-6">
-					<span class="inline-block %s %s border-2 border-black px-3 py-1 font-bold text-sm shadow-[2px_2px_0px_0px_#000]">
-						%s %s
+				<td class="py-3 px-4">
+					<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold %s">
+						%s
 					</span>
 				</td>
-				<td class="py-4 px-6 font-medium text-black">$%.4f</td>
-				<td class="py-4 px-6 font-medium text-black">$%.4f</td>
-				<td class="py-4 px-6 font-medium text-black">$%.4f</td>
-				<td class="py-4 px-6 font-medium text-black">$%.4f</td>
-				<td class="py-4 px-6">
-					<span class="inline-block %s %s border-2 border-black px-3 py-2 font-bold shadow-[2px_2px_0px_0px_#000]">
-						%s%.2f%% | $%.2f
-					</span>
+				<td class="py-3 px-4 text-sm text-slate-600 dark:text-slate-300 font-mono">$%.4f</td>
+				<td class="py-3 px-4 text-sm text-slate-600 dark:text-slate-300 font-mono">$%.4f</td>
+				<td class="py-3 px-4 text-xs font-mono text-slate-400">
+					TP: <span class="text-emerald-500">$%.4f</span><br>
+					SL: <span class="text-rose-500">$%.4f</span>
 				</td>
-				<td class="py-4 px-6">
+				<td class="py-3 px-4">
+					<div class="flex flex-col">
+						<span class="font-bold text-sm %s">%s$%.2f</span>
+						<span class="text-xs %s opacity-80">%s%.2f%%</span>
+					</div>
+				</td>
+				<td class="py-3 px-4 text-right">
 					<button
 						hx-post="/api/user/positions/%s/close"
 						hx-confirm="Are you sure you want to CLOSE this position?"
 						hx-target="closest tr"
 						hx-swap="outerHTML"
-						class="bg-[#ff6b6b] border-2 border-black text-white font-bold px-4 py-2 shadow-[4px_4px_0px_0px_#000] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-none transition-all text-sm uppercase tracking-wide"
+						class="text-xs font-medium bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 px-3 py-1.5 rounded hover:bg-rose-50 hover:border-rose-200 hover:text-rose-600 dark:hover:bg-rose-900/20 dark:hover:border-rose-800 dark:hover:text-rose-400 transition-all"
 					>
-						❌ Close
+						Close
 					</button>
 				</td>
 			</tr>
 		`,
 			pos.Symbol,
-			sideBgClass, sideTextClass, sideEmoji, pos.Side,
+			sideBadgeClass, pos.Side,
 			pos.EntryPrice,
 			currentPrice,
-			pos.SLPrice,
 			pos.TPPrice,
-			pnlBgClass, pnlTextClass, pnlSign, pnlPercent, pnlValue,
-			pos.ID,
+			pos.SLPrice,
+			pnlClass, pnlSign, pnlValue,
+			pnlClass, pnlSign, pnlPercent,
+			pos.ID, // For closing
 		)
 	}
 

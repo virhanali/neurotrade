@@ -214,7 +214,7 @@ func main() {
 	// Initialize HTTP handlers
 	authHandler := httpdelivery.NewAuthHandler(userRepo)
 	userHandler := httpdelivery.NewUserHandler(userRepo, positionRepo, tradingService)
-	adminHandler := httpdelivery.NewAdminHandler(db, marketScanScheduler, signalRepo, settingsRepo)
+	adminHandler := httpdelivery.NewAdminHandler(db, marketScanScheduler, signalRepo, settingsRepo, templates)
 
 	// Initialize web handler (Phase 5 - HTML pages)
 	webHandler := httpdelivery.NewWebHandler(templates, userRepo, positionRepo, db, priceService)
@@ -222,7 +222,7 @@ func main() {
 	// Create auth middleware wrapper for web routes
 	webAuthMiddleware := func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			// First run the JWT auth middleware
+
 			if err := authmiddleware.AuthMiddleware(func(c echo.Context) error {
 				// Fetch full user object from database using user_id from JWT
 				userID, err := authmiddleware.GetUserID(c)
@@ -239,7 +239,7 @@ func main() {
 				c.Set("user", user)
 				return next(c)
 			})(c); err != nil {
-				return err
+				return c.Redirect(http.StatusFound, "/login?error=Session+expired")
 			}
 			return nil
 		}
