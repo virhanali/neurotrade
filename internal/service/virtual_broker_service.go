@@ -86,7 +86,7 @@ func (s *VirtualBrokerService) CheckPositions(ctx context.Context) error {
 		}
 
 		// Check if TP or SL is hit
-		shouldClose, status := position.CheckSLTP(currentPrice)
+		shouldClose, status, closedBy := position.CheckSLTP(currentPrice)
 		if !shouldClose {
 			log.Printf("Position %s: Current=%.2f, Entry=%.2f, SL=%.2f, TP=%.2f (Still OPEN)",
 				position.Symbol, currentPrice, position.EntryPrice, position.SLPrice, position.TPPrice)
@@ -95,11 +95,14 @@ func (s *VirtualBrokerService) CheckPositions(ctx context.Context) error {
 
 		// Calculate PnL with fees
 		netPnL := s.calculateNetPnL(position, currentPrice)
+		pnlPercent := position.CalculatePnLPercent(currentPrice)
 
 		// Close position
 		now := time.Now()
 		position.ExitPrice = &currentPrice
 		position.PnL = &netPnL
+		position.PnLPercent = &pnlPercent
+		position.ClosedBy = &closedBy
 		position.Status = status
 		position.ClosedAt = &now
 
@@ -122,21 +125,16 @@ func (s *VirtualBrokerService) CheckPositions(ctx context.Context) error {
 		}
 
 		// --- NOTIFICATION & SIGNAL UPDATE LOGIC ---
-		// Determine result string for Signal Review
+		// Determine result string for Signal Review (based on actual PnL, not trigger)
 		reviewResult := "WIN"
-		if status == domain.StatusClosedLoss {
+		if netPnL < 0 {
 			reviewResult = "LOSS"
+			position.Status = domain.StatusClosedLoss
+		} else {
+			position.Status = domain.StatusClosedWin
 		}
 
-		// Determine PnL % for review
-		var pnlPercent float64
-		// Use case-insensitive side check
-		side := strings.ToUpper(position.Side)
-		if side == "LONG" || side == "BUY" {
-			pnlPercent = ((currentPrice - position.EntryPrice) / position.EntryPrice) * 100
-		} else {
-			pnlPercent = ((position.EntryPrice - currentPrice) / position.EntryPrice) * 100
-		}
+		// pnlPercent already calculated above - no need to recalculate
 
 		// Update Signal in DB if attached
 		if position.SignalID != nil {

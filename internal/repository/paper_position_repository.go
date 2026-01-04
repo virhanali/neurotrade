@@ -26,9 +26,9 @@ func (r *PaperPositionRepositoryImpl) Save(ctx context.Context, position *domain
 	query := `
 		INSERT INTO paper_positions (
 			id, user_id, signal_id, symbol, side, entry_price,
-			sl_price, tp_price, size, status, created_at
+			sl_price, tp_price, size, leverage, status, created_at
 		) VALUES (
-			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
+			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
 		)
 	`
 
@@ -42,6 +42,7 @@ func (r *PaperPositionRepositoryImpl) Save(ctx context.Context, position *domain
 		position.SLPrice,
 		position.TPPrice,
 		position.Size,
+		position.Leverage,
 		position.Status,
 		position.CreatedAt,
 	)
@@ -159,8 +160,11 @@ func (r *PaperPositionRepositoryImpl) Update(ctx context.Context, position *doma
 		    pnl = $2,
 		    status = $3,
 		    closed_at = $4,
-		    sl_price = $5
-		WHERE id = $6
+		    sl_price = $5,
+		    pnl_percent = $6,
+		    closed_by = $7,
+		    leverage = $8
+		WHERE id = $9
 	`
 
 	_, err := r.db.Exec(ctx, query,
@@ -169,6 +173,9 @@ func (r *PaperPositionRepositoryImpl) Update(ctx context.Context, position *doma
 		position.Status,
 		position.ClosedAt,
 		position.SLPrice,
+		position.PnLPercent,
+		position.ClosedBy,
+		position.Leverage,
 		position.ID,
 	)
 

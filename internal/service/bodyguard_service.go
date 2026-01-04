@@ -105,15 +105,15 @@ func (s *BodyguardService) CheckPositionsFast(ctx context.Context) error {
 		}
 
 		// Check SL/TP
-		shouldClose, status := pos.CheckSLTP(currentPrice)
+		shouldClose, status, closedBy := pos.CheckSLTP(currentPrice)
 		if shouldClose {
-			err := s.closePosition(ctx, pos, currentPrice, status)
+			err := s.closePosition(ctx, pos, currentPrice, status, closedBy)
 			if err != nil {
 				log.Printf("[WARN] Bodyguard: Failed to close %s: %v", pos.Symbol, err)
 				continue
 			}
 			closedCount++
-			log.Printf("[GUARD] Bodyguard: Closed %s via %s @ $%.4f", pos.Symbol, status, currentPrice)
+			log.Printf("[GUARD] Bodyguard: Closed %s via %s @ $%.4f", pos.Symbol, closedBy, currentPrice)
 		} else {
 			// Try to apply Trailing Stop if profit is good
 			s.applyTrailingStop(ctx, pos, currentPrice)
@@ -128,7 +128,7 @@ func (s *BodyguardService) CheckPositionsFast(ctx context.Context) error {
 }
 
 // closePosition closes a position and updates all related records
-func (s *BodyguardService) closePosition(ctx context.Context, pos *domain.PaperPosition, exitPrice float64, status string) error {
+func (s *BodyguardService) closePosition(ctx context.Context, pos *domain.PaperPosition, exitPrice float64, status string, closedBy string) error {
 	// Calculate Net PnL (Gross - Fees)
 	grossPnL := pos.CalculateGrossPnL(exitPrice)
 
@@ -137,11 +137,16 @@ func (s *BodyguardService) closePosition(ctx context.Context, pos *domain.PaperP
 	fees := (pos.EntryPrice * pos.Size * feeRate) + (exitPrice * pos.Size * feeRate)
 	pnl := grossPnL - fees
 
+	// Calculate PnL percentage (matches Binance calculation)
+	pnlPercent := pos.CalculatePnLPercent(exitPrice)
+
 	// Update position
 	now := time.Now()
 	pos.Status = status
 	pos.ExitPrice = &exitPrice
 	pos.PnL = &pnl
+	pos.PnLPercent = &pnlPercent
+	pos.ClosedBy = &closedBy
 	pos.ClosedAt = &now
 
 	if err := s.positionRepo.Update(ctx, pos); err != nil {
@@ -157,14 +162,17 @@ func (s *BodyguardService) closePosition(ctx context.Context, pos *domain.PaperP
 		}
 	}
 
-	// Determine result
+	// Determine result AND fix status based on ACTUAL PnL
+	// This fixes trailing stop exits being labeled as LOSS when PnL is positive
 	result := "WIN"
 	if pnl < 0 {
 		result = "LOSS"
+		pos.Status = domain.StatusClosedLoss
+	} else {
+		pos.Status = domain.StatusClosedWin
 	}
 
-	// Calculate PnL percentage
-	pnlPercent := pos.CalculatePnLPercent(exitPrice)
+	// pnlPercent already calculated above
 
 	// Fetch signal for metrics and update status
 	var sig *domain.Signal

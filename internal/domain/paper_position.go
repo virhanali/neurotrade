@@ -17,10 +17,13 @@ type PaperPosition struct {
 	EntryPrice float64    `json:"entry_price"`
 	SLPrice    float64    `json:"sl_price"`
 	TPPrice    float64    `json:"tp_price"`
-	Size       float64    `json:"size"` // Position size in base asset (e.g., BTC, ETH)
+	Size       float64    `json:"size"`     // Position size in base asset (e.g., BTC, ETH)
+	Leverage   float64    `json:"leverage"` // Leverage used for this position
 	ExitPrice  *float64   `json:"exit_price,omitempty"`
-	PnL        *float64   `json:"pnl,omitempty"`
+	PnL        *float64   `json:"pnl,omitempty"`         // PnL in USD
+	PnLPercent *float64   `json:"pnl_percent,omitempty"` // PnL as percentage (with leverage)
 	Status     string     `json:"status"`
+	ClosedBy   *string    `json:"closed_by,omitempty"` // TP, SL, TRAILING, MANUAL
 	CreatedAt  time.Time  `json:"created_at"`
 	ClosedAt   *time.Time `json:"closed_at,omitempty"`
 }
@@ -39,6 +42,14 @@ const (
 	StatusClosedManual            = "CLOSED_MANUAL"
 	StatusPositionPendingApproval = "PENDING_APPROVAL"
 	StatusPositionRejected        = "REJECTED"
+)
+
+// ClosedBy constants (how the position was closed)
+const (
+	ClosedByTP       = "TP"       // Take Profit hit
+	ClosedBySL       = "SL"       // Stop Loss hit
+	ClosedByTrailing = "TRAILING" // Trailing Stop hit
+	ClosedByManual   = "MANUAL"   // Manually closed by user
 )
 
 // PaperPositionRepository defines the interface for paper position operations
@@ -100,22 +111,22 @@ func (p *PaperPosition) CalculatePnLPercent(currentPrice float64) float64 {
 	return ((p.EntryPrice - currentPrice) / p.EntryPrice) * 100
 }
 
-// CheckSLTP checks if SL or TP is hit
-func (p *PaperPosition) CheckSLTP(currentPrice float64) (shouldClose bool, status string) {
+// CheckSLTP checks if SL or TP is hit and returns how it was closed
+func (p *PaperPosition) CheckSLTP(currentPrice float64) (shouldClose bool, status string, closedBy string) {
 	if p.IsLong() {
 		if currentPrice <= p.SLPrice {
-			return true, StatusClosedLoss
+			return true, StatusClosedLoss, ClosedBySL
 		}
 		if currentPrice >= p.TPPrice {
-			return true, StatusClosedWin
+			return true, StatusClosedWin, ClosedByTP
 		}
 	} else {
 		if currentPrice >= p.SLPrice {
-			return true, StatusClosedLoss
+			return true, StatusClosedLoss, ClosedBySL
 		}
 		if currentPrice <= p.TPPrice {
-			return true, StatusClosedWin
+			return true, StatusClosedWin, ClosedByTP
 		}
 	}
-	return false, StatusOpen
+	return false, StatusOpen, ""
 }

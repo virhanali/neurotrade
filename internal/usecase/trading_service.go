@@ -352,6 +352,7 @@ func (ts *TradingService) createPaperPositionForUser(ctx context.Context, user *
 		SLPrice:    signal.SLPrice,
 		TPPrice:    signal.TPPrice,
 		Size:       positionSize,
+		Leverage:   leverage, // Store leverage for accurate PnL calculations
 		Status:     initialStatus,
 		CreatedAt:  time.Now(),
 	}
