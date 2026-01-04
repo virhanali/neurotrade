@@ -655,7 +655,7 @@ class DeepLearner:
             with self.engine.connect() as conn:
                 # Get last N samples
                 query = text(f"""
-                    SELECT actual_pnl
+                    SELECT pnl
                     FROM ai_learning_logs
                     ORDER BY timestamp DESC
                     LIMIT {self.REGIME_WINDOW_SIZE}
