@@ -118,6 +118,9 @@ class DeepLearner:
                 'score': signal_data.get('score', 0),
                 'vol_ratio': signal_data.get('vol_ratio', 1.0),
                 'atr_pct': signal_data.get('atr_pct', 0),
+                'funding_rate': signal_data.get('funding_rate', 0),
+                'ls_ratio': signal_data.get('ls_ratio', 0),
+                'whale_score': signal_data.get('whale_score', 0),
                 'hour_of_day': hour_of_day,
                 'day_of_week': day_of_week
             }
@@ -125,9 +128,9 @@ class DeepLearner:
             # Check if extended columns exist, use basic insert if not
             stmt = text("""
                 INSERT INTO ai_learning_logs
-                (symbol, outcome, pnl, adx, vol_z_score, ker, is_squeeze, score)
+                (symbol, outcome, pnl, adx, vol_z_score, ker, is_squeeze, score, funding_rate, ls_ratio, whale_score)
                 VALUES
-                (:symbol, :outcome, :pnl, :adx, :vol_z_score, :ker, :is_squeeze, :score)
+                (:symbol, :outcome, :pnl, :adx, :vol_z_score, :ker, :is_squeeze, :score, :funding_rate, :ls_ratio, :whale_score)
             """)
 
             with self.engine.connect() as conn:
@@ -139,7 +142,10 @@ class DeepLearner:
                     'vol_z_score': metric_data['vol_z_score'],
                     'ker': metric_data['ker'],
                     'is_squeeze': metric_data['is_squeeze'],
-                    'score': metric_data['score']
+                    'score': metric_data['score'],
+                    'funding_rate': metric_data['funding_rate'],
+                    'ls_ratio': metric_data['ls_ratio'],
+                    'whale_score': metric_data['whale_score']
                 })
                 conn.commit()
 
@@ -160,11 +166,12 @@ class DeepLearner:
             with self.engine.connect() as conn:
                 result = conn.execute(text("""
                     SELECT outcome, adx, vol_z_score, ker, is_squeeze, score, pnl,
+                           funding_rate, ls_ratio, whale_score,
                            EXTRACT(HOUR FROM timestamp) as hour,
                            EXTRACT(DOW FROM timestamp) as dow
                     FROM ai_learning_logs
                     ORDER BY timestamp DESC
-                    LIMIT 1000
+                    LIMIT 2000
                 """))
                 return [dict(row._mapping) for row in result]
         except Exception as e:
@@ -183,6 +190,9 @@ class DeepLearner:
                 float(row.get('ker', 0) or 0),
                 1.0 if row.get('is_squeeze') else 0.0,
                 float(row.get('score', 0) or 0),
+                float(row.get('funding_rate', 0) or 0),
+                float(row.get('ls_ratio', 0) or 0),
+                float(row.get('whale_score', 0) or 0),
                 float(row.get('hour', 12) or 12),
                 float(row.get('dow', 0) or 0),
                 # Derived features
@@ -586,6 +596,7 @@ class DeepLearner:
         try:
             feature_names = [
                 'adx', 'vol_z_score', 'ker', 'is_squeeze', 'score',
+                'funding_rate', 'ls_ratio', 'whale_score',
                 'hour', 'day_of_week', 'adx_ker_interaction', 'high_volume_flag'
             ]
             importance = self.model.feature_importance(importance_type='gain')

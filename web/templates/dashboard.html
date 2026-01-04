@@ -58,20 +58,61 @@
             }
         }
 
+        // Sidebar Logic
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebar-overlay');
+
+            if (window.innerWidth < 1024) {
+                // Mobile
+                const isClosed = sidebar.classList.contains('-translate-x-full');
+                if (isClosed) {
+                    sidebar.classList.remove('-translate-x-full');
+                    overlay.classList.remove('hidden');
+                } else {
+                    sidebar.classList.add('-translate-x-full');
+                    overlay.classList.add('hidden');
+                }
+            } else {
+                // Desktop
+                if (sidebar.classList.contains('w-64')) {
+                    sidebar.classList.replace('w-64', 'w-20');
+                    document.body.classList.add('sidebar-collapsed');
+                    localStorage.setItem('sidebarCollapsed', 'true');
+                } else {
+                    sidebar.classList.replace('w-20', 'w-64');
+                    document.body.classList.remove('sidebar-collapsed');
+                    localStorage.setItem('sidebarCollapsed', 'false');
+                }
+            }
+        }
+
+        // Init Sidebar
+        document.addEventListener('DOMContentLoaded', () => {
+            const sidebar = document.getElementById('sidebar');
+            if (window.innerWidth >= 1024 && localStorage.getItem('sidebarCollapsed') === 'true') {
+                sidebar.classList.replace('w-64', 'w-20');
+                document.body.classList.add('sidebar-collapsed');
+            }
+        });
+
         function switchTab(tabName) {
             // Hide all tabs
-            document.getElementById('tab-dashboard').classList.add('hidden');
-            document.getElementById('tab-brain-health').classList.add('hidden');
+            ['tab-dashboard', 'tab-brain-health', 'tab-live', 'tab-history'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.classList.add('hidden');
+            });
 
             // Show selected tab
-            document.getElementById('tab-' + tabName).classList.remove('hidden');
+            const target = document.getElementById('tab-' + tabName);
+            if (target) target.classList.remove('hidden');
 
             // Update Nav Styles
             const activeClass = ['bg-slate-100', 'dark:bg-slate-800', 'text-emerald-600', 'dark:text-emerald-400'];
             const inactiveClass = ['text-slate-600', 'dark:text-slate-400', 'hover:bg-slate-50', 'dark:hover:bg-slate-800'];
 
             // Reset all navs
-            ['dashboard', 'brain'].forEach(id => {
+            ['dashboard', 'brain', 'live', 'history'].forEach(id => {
                 const el = document.getElementById('nav-' + id);
                 if (el) {
                     el.classList.remove(...activeClass);
@@ -80,7 +121,10 @@
             });
 
             // Activate selected nav
-            const activeNav = document.getElementById('nav-' + (tabName === 'brain-health' ? 'brain' : 'dashboard'));
+            let navId = tabName;
+            if (tabName === 'brain-health') navId = 'brain';
+
+            const activeNav = document.getElementById('nav-' + navId);
             if (activeNav) {
                 activeNav.classList.remove(...inactiveClass);
                 activeNav.classList.add(...activeClass);
@@ -111,6 +155,29 @@
             if (data.market_regime) {
                 document.getElementById('regime-type').innerText = data.market_regime.type;
                 document.getElementById('regime-conf').innerText = data.market_regime.confidence + '%';
+            }
+
+            // Render Whale Stats
+            if (data.feature_importance && (data.feature_importance.funding_rate > 0 || data.feature_importance.ls_ratio > 0)) {
+                const gatheringMsg = document.getElementById('whale-gathering-msg');
+                const statsContainer = document.getElementById('whale-stats-container');
+                if (gatheringMsg) gatheringMsg.classList.add('hidden');
+                if (statsContainer) statsContainer.classList.remove('hidden');
+
+                // Scaling importance for visualization (e.g. max 20% importance fills bar)
+                const fundingImp = Math.min((data.feature_importance.funding_rate || 0) * 500, 100);
+                document.getElementById('funding-bar').style.width = fundingImp + '%';
+                // Display raw percentage
+                document.getElementById('funding-val').innerText = ((data.feature_importance.funding_rate || 0) * 100).toFixed(1) + '%';
+
+                const lsImp = Math.min((data.feature_importance.ls_ratio || 0) * 500, 100);
+                document.getElementById('ls-bar').style.width = lsImp + '%';
+                document.getElementById('ls-val').innerText = ((data.feature_importance.ls_ratio || 0) * 100).toFixed(1) + '%';
+            } else {
+                const gatheringMsg = document.getElementById('whale-gathering-msg');
+                const statsContainer = document.getElementById('whale-stats-container');
+                if (gatheringMsg) gatheringMsg.classList.remove('hidden');
+                if (statsContainer) statsContainer.classList.add('hidden');
             }
 
             // Update Feature Chart if exists
@@ -191,14 +258,33 @@
             background: linear-gradient(90deg, #1e293b 25%, #334155 50%, #1e293b 75%);
         }
 
-        @keyframes shimmer {
-            0% {
-                background-position: 200% 0;
-            }
+        /* Sidebar Collapse */
+        body.sidebar-collapsed .group span:not(.relative) {
+            display: none;
+        }
 
-            100% {
-                background-position: -200% 0;
-            }
+        body.sidebar-collapsed .sidebar-brand-text {
+            display: none;
+        }
+
+        body.sidebar-collapsed .sidebar-brand-icon {
+            margin-right: 0;
+        }
+
+        body.sidebar-collapsed nav a {
+            justify-content: center;
+            padding-left: 0;
+            padding-right: 0;
+        }
+
+        body.sidebar-collapsed nav i {
+            margin-right: 0;
+            font-size: 1.5rem;
+        }
+
+        /* Mobile Overlay */
+        #sidebar-overlay {
+            transition: opacity 0.3s ease;
         }
 
         /* PnL Flash Animation */
@@ -247,7 +333,7 @@
             <i class="ri-brain-line text-emerald-500 text-xl"></i>
             <span class="font-bold text-lg">NeuroTrade</span>
         </div>
-        <button onclick="document.getElementById('sidebar').classList.toggle('-translate-x-full')"
+        <button onclick="toggleSidebar()"
             class="p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg">
             <i class="ri-menu-line text-xl"></i>
         </button>
@@ -255,43 +341,54 @@
 
     <div class="flex h-screen overflow-hidden">
 
+        <!-- Sidebar Overlay (Mobile) -->
+        <div id="sidebar-overlay" onclick="toggleSidebar()"
+            class="fixed inset-0 bg-slate-900/50 z-40 hidden lg:hidden backdrop-blur-sm"></div>
+
         <!-- Sidebar Navigation -->
         <aside id="sidebar"
-            class="fixed inset-y-0 left-0 z-50 w-64 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 transform -translate-x-full lg:translate-x-0 lg:static lg:inset-auto transition-transform duration-300 flex flex-col">
+            class="fixed inset-y-0 left-0 z-50 w-64 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 transform -translate-x-full lg:translate-x-0 lg:static lg:inset-auto transition-all duration-300 flex flex-col">
+
+            <!-- Desktop Collapse Button -->
+            <button onclick="toggleSidebar()"
+                class="hidden lg:flex absolute -right-3 top-6 w-6 h-6 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-full items-center justify-center text-slate-500 hover:text-emerald-500 shadow-sm z-50 transition-transform duration-300">
+                <i class="ri-arrow-left-s-line transformed-icon"></i>
+            </button>
+
             <!-- Brand -->
-            <div class="h-16 flex items-center px-6 border-b border-slate-100 dark:border-slate-800">
-                <i class="ri-brain-fill text-emerald-500 text-2xl mr-2"></i>
-                <span class="font-bold text-xl tracking-tight">NeuroTrade <span
-                        class="text-xs text-slate-400 font-normal">v2.5</span></span>
+            <div
+                class="h-16 flex items-center px-6 border-b border-slate-100 dark:border-slate-800 overflow-hidden whitespace-nowrap">
+                <i class="ri-brain-fill text-emerald-500 text-2xl mr-3 sidebar-brand-icon flex-shrink-0"></i>
+                <span class="font-bold text-xl tracking-tight sidebar-brand-text">NeuroTrade</span>
             </div>
 
             <!-- Nav Links -->
-            <nav class="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
+            <nav class="flex-1 px-4 py-6 space-y-1 overflow-y-auto overflow-x-hidden">
                 <a href="#" onclick="switchTab('dashboard')" id="nav-dashboard"
-                    class="flex items-center px-3 py-2.5 bg-slate-100 dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 font-medium rounded-lg group transition-colors">
-                    <i class="ri-dashboard-3-line mr-3 text-lg"></i>
-                    Dashboard
+                    class="flex items-center px-3 py-2.5 bg-slate-100 dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 font-medium rounded-lg group transition-colors whitespace-nowrap">
+                    <i class="ri-dashboard-3-line mr-3 text-lg flex-shrink-0"></i>
+                    <span>Dashboard</span>
                 </a>
                 <a href="#" onclick="switchTab('brain-health')" id="nav-brain"
-                    class="flex items-center px-3 py-2.5 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100 font-medium rounded-lg transition-colors group">
-                    <i class="ri-brain-line mr-3 text-lg group-hover:text-emerald-500"></i>
-                    Brain Health
+                    class="flex items-center px-3 py-2.5 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100 font-medium rounded-lg transition-colors group whitespace-nowrap">
+                    <i class="ri-brain-line mr-3 text-lg group-hover:text-emerald-500 flex-shrink-0"></i>
+                    <span>Brain Health</span>
                 </a>
-                <a href="#"
-                    class="flex items-center px-3 py-2.5 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100 font-medium rounded-lg transition-colors group">
-                    <i class="ri-pulse-line mr-3 text-lg group-hover:text-emerald-500"></i>
-                    Live Positions
+                <a href="#" onclick="switchTab('live')" id="nav-live"
+                    class="flex items-center px-3 py-2.5 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100 font-medium rounded-lg transition-colors group whitespace-nowrap">
+                    <i class="ri-pulse-line mr-3 text-lg group-hover:text-emerald-500 flex-shrink-0"></i>
+                    <span>Live Positions</span>
                 </a>
-                <a href="#"
-                    class="flex items-center px-3 py-2.5 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100 font-medium rounded-lg transition-colors group">
-                    <i class="ri-history-line mr-3 text-lg group-hover:text-emerald-500"></i>
-                    Trade History
+                <a href="#" onclick="switchTab('history')" id="nav-history"
+                    class="flex items-center px-3 py-2.5 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100 font-medium rounded-lg transition-colors group whitespace-nowrap">
+                    <i class="ri-history-line mr-3 text-lg group-hover:text-emerald-500 flex-shrink-0"></i>
+                    <span>Trade History</span>
                 </a>
             </nav>
 
             <!-- User Profile & Theme -->
             <div class="p-4 border-t border-slate-200 dark:border-slate-800">
-                <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center justify-between mb-4 sidebar-brand-text">
                     <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Appearance</span>
                     <button onclick="toggleTheme()"
                         class="p-1.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-yellow-400 transition-colors">
@@ -300,23 +397,24 @@
                     </button>
                 </div>
                 <div
-                    class="flex items-center p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
+                    class="flex items-center p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 overflow-hidden whitespace-nowrap">
                     <div
-                        class="w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-900 flex items-center justify-center text-emerald-600 dark:text-emerald-400 font-bold text-sm">
+                        class="w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-900 flex items-center justify-center text-emerald-600 dark:text-emerald-400 font-bold text-sm flex-shrink-0">
                         {{if .User.Username}}{{slice .User.Username 0 1}}{{else}}A{{end}}
                     </div>
-                    <div class="ml-3 overflow-hidden flex-1">
-                        <p class="text-sm font-medium text-slate-900 dark:text-white truncate">{{.User.Username}}</p>
-                        <p class="text-xs text-slate-500 dark:text-slate-400 capitalize">{{.User.Role}}</p>
+                    <div class="ml-3 overflow-hidden flex-1 group">
+                        <p class="text-sm font-medium text-slate-900 dark:text-white truncate group-span">
+                            {{.User.Username}}</p>
+                        <p class="text-xs text-slate-500 dark:text-slate-400 capitalize group-span">{{.User.Role}}</p>
                     </div>
                 </div>
                 <!-- Logout Button -->
                 <form id="logout-form" action="/api/auth/logout" method="POST" class="hidden"></form>
                 <button
                     onclick="showConfirmModal('Logout', 'Are you sure you want to end your session?', () => document.getElementById('logout-form').submit(), 'logout')"
-                    class="mt-3 w-full flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg transition-colors">
-                    <i class="ri-logout-box-r-line"></i>
-                    Logout
+                    class="mt-3 w-full flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg transition-colors whitespace-nowrap">
+                    <i class="ri-logout-box-r-line text-lg flex-shrink-0"></i>
+                    <span class="sidebar-brand-text">Logout</span>
                 </button>
             </div>
         </aside>
@@ -705,29 +803,117 @@
                             </div>
                         </div>
 
-                        <div class="space-y-4">
+                        <!-- Placeholder for Future Whale Correlation Data -->
+                        <!-- Whale Correlation Section -->
+                        <div id="whale-gathering-msg" class="mt-6 text-center">
+                            <div
+                                class="inline-flex items-center px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-xs text-slate-500 font-medium">
+                                <i class="ri-loader-4-line animate-spin mr-2"></i>
+                                Gathering Whale Data (Requires 50+ Trades)
+                            </div>
+                        </div>
+
+                        <div id="whale-stats-container" class="hidden space-y-4 mt-6">
                             <div
                                 class="p-3 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-100 dark:border-slate-700">
                                 <div class="flex justify-between items-center text-sm mb-1">
                                     <span class="text-slate-500 text-xs uppercase font-bold">Funding Rate
-                                        Correlation</span>
-                                    <span class="text-slate-900 dark:text-white font-mono font-bold">High</span>
+                                        Relevance</span>
+                                    <span id="funding-val"
+                                        class="text-slate-900 dark:text-white font-mono font-bold">0%</span>
                                 </div>
                                 <div class="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-1.5">
-                                    <div class="bg-rose-500 h-1.5 rounded-full" style="width: 75%"></div>
+                                    <div id="funding-bar"
+                                        class="bg-rose-500 h-1.5 rounded-full transition-all duration-1000"
+                                        style="width: 0%"></div>
                                 </div>
                             </div>
                             <div
                                 class="p-3 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-100 dark:border-slate-700">
                                 <div class="flex justify-between items-center text-sm mb-1">
                                     <span class="text-slate-500 text-xs uppercase font-bold">L/S Ratio Impact</span>
-                                    <span class="text-slate-900 dark:text-white font-mono font-bold">Medium</span>
+                                    <span id="ls-val"
+                                        class="text-slate-900 dark:text-white font-mono font-bold">0%</span>
                                 </div>
                                 <div class="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-1.5">
-                                    <div class="bg-blue-500 h-1.5 rounded-full" style="width: 45%"></div>
+                                    <div id="ls-bar" class="bg-blue-500 h-1.5 rounded-full transition-all duration-1000"
+                                        style="width: 0%"></div>
                                 </div>
                             </div>
                         </div>
+                    </div>
+                </div>
+
+                <!-- Live Positions Tab -->
+                <div id="tab-live" class="hidden">
+                    <div
+                        class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+                        <div
+                            class="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center">
+                            <h3 class="text-lg font-semibold text-slate-900 dark:text-white">Active Positions</h3>
+                            <span
+                                class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400">
+                                Live & Updating
+                            </span>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full text-left">
+                                <thead class="bg-slate-50 dark:bg-slate-800/50">
+                                    <tr>
+                                        <th
+                                            class="py-3 px-6 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                                            Time</th>
+                                        <th
+                                            class="py-3 px-6 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                                            Symbol</th>
+                                        <th
+                                            class="py-3 px-6 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                                            Side</th>
+                                        <th
+                                            class="py-3 px-6 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                                            Entry</th>
+                                        <th
+                                            class="py-3 px-6 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                                            Current</th>
+                                        <th
+                                            class="py-3 px-6 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                                            TP/SL</th>
+                                        <th
+                                            class="py-3 px-6 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                                            PnL</th>
+                                        <th
+                                            class="py-3 px-6 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider text-right">
+                                            Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-100 dark:divide-slate-800"
+                                    hx-get="/api/user/positions/html" hx-trigger="load, every 3s">
+                                    <tr>
+                                        <td colspan="8" class="p-6 text-center text-sm text-slate-400">
+                                            <div class="flex items-center justify-center gap-2">
+                                                <i class="ri-loader-4-line animate-spin"></i> Loading live positions...
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Trade History Tab -->
+                <div id="tab-history" class="hidden">
+                    <div
+                        class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm p-12 text-center">
+                        <div
+                            class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-slate-100 dark:bg-slate-800 mb-4">
+                            <i class="ri-history-line text-3xl text-slate-400"></i>
+                        </div>
+                        <h3 class="text-lg font-medium text-slate-900 dark:text-white mb-2">Trade History</h3>
+                        <p class="text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
+                            Detailed trade history logs will be implemented in the next update. Checks PostgreSQL table
+                            'paper_positions' for raw data.
+                        </p>
                     </div>
                 </div>
             </div>

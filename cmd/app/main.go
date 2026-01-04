@@ -345,7 +345,7 @@ func main() {
 	// Start HTTP server
 	addr := fmt.Sprintf(":%s", cfg.Server.Port)
 	log.Println("========================================")
-	log.Printf("[SIGNAL] NeuroTrade v2.5 (Aggressive Scalper) starting on %s", addr)
+	log.Printf("[SIGNAL] NeuroTrade (Aggressive Scalper) starting on %s", addr)
 	log.Printf("[INFO] Environment: %s", cfg.Server.Env)
 	log.Printf("💰 Default Balance: $%.2f USDT", cfg.Trading.DefaultBalance)
 	log.Printf("📈 Min Confidence: %d%%", cfg.Trading.MinConfidence)
