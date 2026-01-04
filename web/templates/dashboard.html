@@ -647,16 +647,35 @@
 
                         <!-- PnL Card -->
                         <div
-                            class="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden">
+                            class="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden group hover:border-emerald-500/30 transition-colors">
                             <div class="flex justify-between items-start">
                                 <div>
                                     <p class="text-sm font-medium text-slate-500 dark:text-slate-400">Total PnL</p>
                                     <h3 class="text-2xl font-bold text-slate-900 dark:text-white mt-1" id="total-pnl">
                                         {{if .Stats}}{{if index .Stats "total_pnl_formatted"}}{{index .Stats
                                         "total_pnl_formatted"}}{{else}}$0.00{{end}}{{else}}$0.00{{end}}</h3>
+                                    {{if .Stats}}{{if gt .Stats.TotalPnL 0.0}}
+                                    <div
+                                        class="flex items-center mt-1 text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+                                        <i class="ri-arrow-up-line mr-1"></i>
+                                        <span>Lifetime Profit</span>
+                                    </div>
+                                    {{else if lt .Stats.TotalPnL 0.0}}
+                                    <div
+                                        class="flex items-center mt-1 text-xs text-rose-600 dark:text-rose-400 font-medium">
+                                        <i class="ri-arrow-down-line mr-1"></i>
+                                        <span>Lifetime Loss</span>
+                                    </div>
+                                    {{else}}
+                                    <div
+                                        class="flex items-center mt-1 text-xs text-slate-500 dark:text-slate-400 font-medium">
+                                        <i class="ri-subtract-line mr-1"></i>
+                                        <span>No Trades Yet</span>
+                                    </div>
+                                    {{end}}{{end}}
                                 </div>
                                 <div
-                                    class="p-2 bg-slate-50 dark:bg-slate-800 rounded-lg text-slate-600 dark:text-slate-400">
+                                    class="p-2 bg-slate-50 dark:bg-slate-800 rounded-lg text-slate-600 dark:text-slate-400 group-hover:text-emerald-500 transition-colors">
                                     <i class="ri-line-chart-line text-xl"></i>
                                 </div>
                             </div>
@@ -664,16 +683,29 @@
 
                         <!-- Win Rate Card -->
                         <div
-                            class="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden">
+                            class="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden group hover:border-amber-500/30 transition-colors">
                             <div class="flex justify-between items-start">
                                 <div>
                                     <p class="text-sm font-medium text-slate-500 dark:text-slate-400">Win Rate</p>
                                     <h3 class="text-2xl font-bold text-slate-900 dark:text-white mt-1">{{if
                                         .Stats}}{{printf
                                         "%.1f" .Stats.WinRate}}%{{else}}--%{{end}}</h3>
+                                    {{if .Stats}}
+                                    <div
+                                        class="flex items-center mt-1 text-xs text-amber-600 dark:text-amber-400 font-medium">
+                                        <i class="ri-bar-chart-horizontal-line mr-1"></i>
+                                        <span>{{.Stats.TotalWins}}W / {{.Stats.TotalLosses}}L</span>
+                                    </div>
+                                    {{else}}
+                                    <div
+                                        class="flex items-center mt-1 text-xs text-slate-500 dark:text-slate-400 font-medium">
+                                        <i class="ri-bar-chart-horizontal-line mr-1"></i>
+                                        <span>0W / 0L</span>
+                                    </div>
+                                    {{end}}
                                 </div>
                                 <div
-                                    class="p-2 bg-slate-50 dark:bg-slate-800 rounded-lg text-slate-600 dark:text-slate-400">
+                                    class="p-2 bg-slate-50 dark:bg-slate-800 rounded-lg text-slate-600 dark:text-slate-400 group-hover:text-amber-500 transition-colors">
                                     <i class="ri-trophy-line text-xl"></i>
                                 </div>
                             </div>
@@ -1617,7 +1649,10 @@
         }
 
         // Signal Filtering Logic
+        let currentSignalFilter = 'ALL'; // Store current filter state
+
         function filterSignals(filter) {
+            currentSignalFilter = filter; // Save the filter state
             const items = document.querySelectorAll('.signal-item');
             let hasVisible = false;
             items.forEach(item => {
@@ -1644,8 +1679,7 @@
             }
             // Re-apply filter when signal list updates
             if (evt.detail.target.id === 'scan-results') {
-                const filter = document.getElementById('signalFilter').value;
-                filterSignals(filter);
+                filterSignals(currentSignalFilter);
             }
         });
     </script>

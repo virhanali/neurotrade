@@ -517,16 +517,17 @@ func (h *WebHandler) getSystemStats(c echo.Context) (map[string]interface{}, err
 		activePositions = len(allOpenPositions)
 	}
 
-	// Calculate win rate
+	// Calculate win rate with wins/losses breakdown
 	// Helper query for efficiency
-	var totalClosed, wins int
+	var totalClosed, wins, losses int
 	err = h.db.QueryRow(ctx, `
-		SELECT 
+		SELECT
 			COUNT(*),
-			COUNT(*) FILTER (WHERE pnl > 0)
-		FROM paper_positions 
+			COUNT(*) FILTER (WHERE pnl > 0),
+			COUNT(*) FILTER (WHERE pnl <= 0)
+		FROM paper_positions
 		WHERE status IN ('CLOSED', 'CLOSED_WIN', 'CLOSED_LOSS', 'CLOSED_MANUAL')
-	`).Scan(&totalClosed, &wins)
+	`).Scan(&totalClosed, &wins, &losses)
 
 	winRate := 0.0
 	if err == nil && totalClosed > 0 {
@@ -551,6 +552,9 @@ func (h *WebHandler) getSystemStats(c echo.Context) (map[string]interface{}, err
 		"total_pnl":           totalPnL,
 		"total_pnl_formatted": formattedPnL,
 		"WinRate":             winRate, // Keep both casings for compatibility
+		"TotalPnL":            totalPnL,
+		"TotalWins":           wins,
+		"TotalLosses":         losses,
 	}, nil
 }
 
