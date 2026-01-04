@@ -451,13 +451,20 @@ func (h *WebHandler) getSystemStats(c echo.Context) (map[string]interface{}, err
 	var totalPnL float64
 	h.db.QueryRow(ctx, "SELECT COALESCE(SUM(pnl), 0) FROM paper_positions WHERE pnl IS NOT NULL").Scan(&totalPnL)
 
+	// Format PnL
+	formattedPnL := fmt.Sprintf("$%.2f", totalPnL)
+	if totalPnL < 0 {
+		formattedPnL = fmt.Sprintf("-$%.2f", -totalPnL)
+	}
+
 	return map[string]interface{}{
-		"total_users":      totalUsers,
-		"total_signals":    0,
-		"active_positions": activePositions,
-		"win_rate":         winRate,
-		"total_pnl":        totalPnL,
-		"WinRate":          winRate, // Keep both casings for compatibility
+		"total_users":         totalUsers,
+		"total_signals":       0,
+		"active_positions":    activePositions,
+		"win_rate":            winRate,
+		"total_pnl":           totalPnL,
+		"total_pnl_formatted": formattedPnL,
+		"WinRate":             winRate, // Keep both casings for compatibility
 	}, nil
 }
 

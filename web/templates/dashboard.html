@@ -652,8 +652,8 @@
                                 <div>
                                     <p class="text-sm font-medium text-slate-500 dark:text-slate-400">Total PnL</p>
                                     <h3 class="text-2xl font-bold text-slate-900 dark:text-white mt-1" id="total-pnl">
-                                        {{if .Stats}}{{if index .Stats "total_pnl"}}${{printf "%.2f" (index .Stats
-                                        "total_pnl")}}{{else}}$0.00{{end}}{{else}}$0.00{{end}}</h3>
+                                        {{if .Stats}}{{if index .Stats "total_pnl_formatted"}}{{index .Stats
+                                        "total_pnl_formatted"}}{{else}}$0.00{{end}}{{else}}$0.00{{end}}</h3>
                                 </div>
                                 <div
                                     class="p-2 bg-slate-50 dark:bg-slate-800 rounded-lg text-slate-600 dark:text-slate-400">
