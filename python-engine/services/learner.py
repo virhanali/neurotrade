@@ -633,6 +633,40 @@ class DeepLearner:
             logging.error(f"[LEARNER] Failed to get performance stats: {e}")
             return {}
 
+    def get_brain_stats(self) -> Dict:
+        """Get comprehensive ML statistics for Brain Health dashboard"""
+        if not self.engine:
+            return {"status": "error", "message": "No DB connection"}
+
+        try:
+            # 1. Get sample count
+            with self.engine.connect() as conn:
+                count = conn.execute(text("SELECT COUNT(*) FROM ai_learning_logs")).scalar() or 0
+                
+            # 2. Get feature importance
+            importance = self.get_feature_importance()
+            
+            # 3. Get regime info
+            regime = self._detect_market_regime()
+            
+            return {
+                "status": "active" if count >= self.MIN_SAMPLES_FOR_ML else "learning",
+                "samples": count,
+                "required_samples": self.MIN_SAMPLES_FOR_ML,
+                "progress_percent": min(100, int((count / self.MIN_SAMPLES_FOR_ML) * 100)),
+                "model_trained": self.model is not None,
+                "last_train_time": self.last_train_time.isoformat() if self.last_train_time else None,
+                "feature_importance": importance,
+                "market_regime": {
+                    "type": regime.regime,
+                    "win_rate": round(regime.win_rate * 100, 1),
+                    "confidence": round(regime.confidence * 100, 1)
+                }
+            }
+        except Exception as e:
+            logging.error(f"[LEARNER] Failed to get brain stats: {e}")
+            return {"status": "error", "message": str(e)}
+
 
 # Global Instance
 learner = DeepLearner()

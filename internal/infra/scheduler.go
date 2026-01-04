@@ -32,36 +32,47 @@ func NewScheduler(tradingService *usecase.TradingService, balance float64, mode 
 	}
 }
 
-// Start starts the scheduler
+// Start starts the scheduler with dynamic frequency
 func (s *Scheduler) Start() error {
 	log.Printf("Starting scheduler... [Mode: %s]", s.mode)
 
-	// Schedule market scan every 15 seconds for SCALPER mode (*/15 * * * * *)
-	// ULTRA AGGRESSIVE MODE: Captures pumps immediately.
-	// Safe because overlap is prevented by Mutex in trading_service.
-	_, err := s.cron.AddFunc("*/15 * * * * *", func() {
+	// AGGRESSIVE: Every 10 seconds during overlap hours
+	_, err := s.cron.AddFunc("*/10 * * * * *", func() {
 		ctx := context.Background()
-
-		// GOLDEN HOURS FILTER (UTC)
-		// We skip scanning during low-liquidity/choppy zones to improve win-rate.
-		// Allowed Zones:
-		// 1. Asia Session: 00:00 - 04:00 (Good for accumulation/ping-pong)
-		// 2. London Open: 07:00 - 11:00 (Breakouts)
-		// 3. New York Open: 13:00 - 18:00 (High Volatility)
-
 		now := time.Now().UTC()
 		hour := now.Hour()
+		second := now.Second()
 
+		// === SESSION CLASSIFICATION ===
+		// Overlap (London+NY): 13:00-16:00 UTC → AGGRESSIVE (every 10s)
+		// Golden Hours: 00:00-04:00, 07:00-11:00, 13:00-18:00 UTC → NORMAL (every 15s)
+		// Dead Hours: Everything else → SKIP
+
+		isOverlapHour := hour >= 13 && hour < 16
 		isGoldenHour := (hour >= 0 && hour < 4) || (hour >= 7 && hour < 11) || (hour >= 13 && hour < 18)
 
+		// SKIP: Not golden hour
 		if !isGoldenHour {
-			// Log only once per hour to avoid spamming, or use debug level if available.
-			// For now, we just return silently or log sparingly.
-			// log.Printf("💤 Scheduler: Skipping scan (Hour: %d UTC). Waiting for Golden Hours.", hour)
 			return
 		}
 
-		log.Printf("[CRON] Cron Triggered: Starting scheduled market scan [Mode: %s]...", s.mode)
+		// DYNAMIC FREQUENCY:
+		// - Overlap hours: run EVERY 10 seconds (this cron fires every 10s)
+		// - Other golden hours: run only at :00, :15, :30, :45 (every 15s)
+		if !isOverlapHour {
+			// Only run at 0, 15, 30, 45 seconds (every 15s)
+			if second != 0 && second != 15 && second != 30 && second != 45 {
+				return
+			}
+		}
+
+		// Log with frequency indicator
+		freq := "15s"
+		if isOverlapHour {
+			freq = "10s [OVERLAP]"
+		}
+
+		log.Printf("[CRON] Scan triggered (%s) [Mode: %s]", freq, s.mode)
 
 		if err := s.tradingService.ProcessMarketScan(ctx, s.balance, s.mode); err != nil {
 			log.Printf("ERROR: Scheduled market scan failed: %v", err)
@@ -75,7 +86,7 @@ func (s *Scheduler) Start() error {
 	// Start the cron scheduler
 	s.cron.Start()
 	log.Println("[OK] Scheduler started successfully")
-	log.Printf("[OK] Market scan scheduled every 15 seconds (*/15 * * * * *) [Mode: %s]", s.mode)
+	log.Println("[OK] Dynamic frequency: 10s (Overlap 13:00-16:00 UTC) | 15s (Other Golden Hours)")
 
 	return nil
 }

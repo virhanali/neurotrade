@@ -248,6 +248,15 @@ async def get_prices(symbols: Optional[str] = None):
     }
 
 
+@app.get("/ml/brain-health")
+async def get_brain_health():
+    """Get ML Brain Health statistics"""
+    if not HAS_LEARNER or not learner:
+        return {"status": "error", "message": "ML module not available"}
+    
+    return learner.get_brain_stats()
+
+
 @app.post("/analyze/market", response_model=MarketAnalysisResponse)
 async def analyze_market(request: MarketAnalysisRequest):
     """
