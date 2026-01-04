@@ -89,14 +89,18 @@
 
         // Init Sidebar & Routing
         document.addEventListener('DOMContentLoaded', () => {
-            // Sidebar Init
-            const sidebar = document.getElementById('sidebar');
-            if (window.innerWidth >= 1024 && localStorage.getItem('sidebarCollapsed') === 'true') {
-                sidebar.classList.replace('w-64', 'w-20');
-                document.body.classList.add('sidebar-collapsed');
+            try {
+                // Sidebar Init
+                const sidebar = document.getElementById('sidebar');
+                if (sidebar && window.innerWidth >= 1024 && localStorage.getItem('sidebarCollapsed') === 'true') {
+                    sidebar.classList.replace('w-64', 'w-20');
+                    document.body.classList.add('sidebar-collapsed');
+                }
+            } catch (e) {
+                console.error('Sidebar init error:', e);
             }
 
-            // Routing Init
+            // Routing Init - always run even if sidebar fails
             const path = window.location.pathname;
             let activeTab = 'dashboard';
 
@@ -114,6 +118,7 @@
                 activeTab = 'dashboard';
             }
 
+            console.log('[Router] Switching to tab:', activeTab);
             switchTab(activeTab, null);
         });
 
@@ -888,7 +893,7 @@
                         <span>Progress: <span id="brain-samples"
                                 class="font-bold text-slate-900 dark:text-white">0</span> / 50 Trades</span>
                         <span id="brain-status"
-                            class="px-2 py-0.5 rounded-full bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 text-xs font-bold">LEARNING</span>
+                            class="px-2 py-0.5 rounded-full bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 text-xs font-bold">Learning</span>
                     </div>
                     <div class="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-4 overflow-hidden relative">
                         <div id="brain-progress"
