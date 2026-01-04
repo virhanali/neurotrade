@@ -180,23 +180,30 @@
             if (subEl) subEl.innerText = info.subtitle;
 
             // Update URL (Push State)
-            const newPath = '/dashboard/' + tabName;
-            // Avoid pushing if already on path (avoids duplicate history entries or loops)
-            // But if we are at /dashboard (root) and switching to 'dashboard', we might prefer /dashboard/dashboard or just /dashboard?
-            // Let's stick to /dashboard/tabName for uniformity except default?
-            // Actually, usually /dashboard is alias for /dashboard/dashboard.
+            let newPath = '/dashboard/' + tabName;
 
-            if (tabName !== 'dashboard' || window.location.pathname.includes('/dashboard/')) {
-                if (window.location.pathname !== newPath) {
-                    history.pushState({ tab: tabName }, '', newPath);
-                }
-            } else {
-                // If default tab and at root /dashboard, usually we don't change URL or change to /dashboard
+            // Clean URL for dashboard
+            if (tabName === 'dashboard') {
+                newPath = '/dashboard';
+            }
+
+            if (window.location.pathname !== newPath) {
+                history.pushState({ tab: tabName }, '', newPath);
             }
 
             // Trigger data load if brain health
             if (tabName === 'brain-health') {
                 loadBrainStats();
+            }
+
+            // Trigger HTMX for tables to ensure fresh data
+            if (tabName === 'live') {
+                const el = document.getElementById('live-positions-tbody');
+                if (el) htmx.trigger(el, 'load');
+            }
+            if (tabName === 'history') {
+                const el = document.getElementById('history-positions-tbody');
+                if (el) htmx.trigger(el, 'load');
             }
         }
 
@@ -944,7 +951,7 @@
                                             Action</th>
                                     </tr>
                                 </thead>
-                                <tbody class="divide-y divide-slate-100 dark:divide-slate-800"
+                                <tbody id="live-positions-tbody" class="divide-y divide-slate-100 dark:divide-slate-800"
                                     hx-get="/api/user/positions/html" hx-trigger="load, every 3s">
                                     <tr>
                                         <td colspan="8" class="p-12 text-center text-sm text-slate-400">
@@ -1020,7 +1027,9 @@
                                             Status</th>
                                     </tr>
                                 </thead>
-                                <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+                                <tbody id="history-positions-tbody"
+                                    class="divide-y divide-slate-100 dark:divide-slate-800"
+                                    hx-get="/api/user/history/html" hx-trigger="load">
                                     <!-- Empty State -->
                                     <tr>
                                         <td colspan="8" class="p-12 text-center">
