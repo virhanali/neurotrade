@@ -134,6 +134,7 @@
         };
 
         function switchTab(tabName, event) {
+            console.log('[switchTab] Called with:', tabName, 'Stack:', new Error().stack.split('\n')[2]);
             if (event) event.preventDefault();
 
             // Hide all tabs
@@ -144,7 +145,10 @@
 
             // Show selected tab
             const target = document.getElementById('tab-' + tabName);
-            if (target) target.classList.remove('hidden');
+            if (target) {
+                target.classList.remove('hidden');
+                console.log('[switchTab] Showing tab-' + tabName);
+            }
 
             // Update Nav Styles
             const activeClass = ['bg-slate-100', 'dark:bg-slate-800', 'text-emerald-600', 'dark:text-emerald-400'];
