@@ -235,7 +235,7 @@ func (h *WebHandler) HandlePositionsHTML(c echo.Context) error {
 	if !ok {
 		return c.HTML(http.StatusUnauthorized, `
 			<tr>
-				<td colspan="7" class="p-4 text-center text-sm text-rose-500 bg-rose-50 dark:bg-rose-900/10 rounded-lg m-2">
+				<td colspan="8" class="p-4 text-center text-sm text-rose-500 bg-rose-50 dark:bg-rose-900/10 rounded-lg m-2">
 					<i class="ri-lock-line mr-1"></i> Authentication required
 				</td>
 			</tr>
@@ -262,7 +262,7 @@ func (h *WebHandler) HandlePositionsHTML(c echo.Context) error {
 	if err != nil {
 		return c.HTML(http.StatusInternalServerError, `
 			<tr>
-				<td colspan="7" class="p-4 text-center text-sm text-slate-500">
+				<td colspan="8" class="p-4 text-center text-sm text-slate-500">
 					Error loading positions
 				</td>
 			</tr>
@@ -277,15 +277,7 @@ func (h *WebHandler) HandlePositionsHTML(c echo.Context) error {
 		}
 	}
 
-	if len(positions) == 0 {
-		return c.HTML(http.StatusOK, `
-			<tr>
-				<td colspan="7" class="py-8 text-center text-slate-400 italic text-sm">
-					No active positions running
-				</td>
-			</tr>
-		`)
-	}
+	// Continue to processing
 
 	// Build HTML rows
 	html := ""

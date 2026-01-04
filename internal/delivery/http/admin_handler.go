@@ -390,7 +390,7 @@ func (h *AdminHandler) GetLatestScanResults(c echo.Context) error {
 // GetBrainHealth proxies the request to the Python engine
 // GET /api/admin/ml/brain-health
 func (h *AdminHandler) GetBrainHealth(c echo.Context) error {
-	url := "http://python-engine:5000/ml/brain-health"
+	url := "http://python-engine:8000/ml/brain-health"
 	resp, err := http.Get(url)
 	if err != nil {
 		c.Logger().Errorf("Failed to proxy to ML: %v", err)
