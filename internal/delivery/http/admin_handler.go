@@ -27,21 +27,23 @@ type MarketScanScheduler interface {
 
 // AdminHandler handles admin-related requests
 type AdminHandler struct {
-	db           *pgxpool.Pool
-	scheduler    MarketScanScheduler
-	signalRepo   domain.SignalRepository
-	positionRepo domain.PaperPositionRepository
-	templates    *template.Template
+	db              *pgxpool.Pool
+	scheduler       MarketScanScheduler
+	signalRepo      domain.SignalRepository
+	positionRepo    domain.PaperPositionRepository
+	templates       *template.Template
+	pythonEngineURL string
 }
 
 // NewAdminHandler creates a new AdminHandler
-func NewAdminHandler(db *pgxpool.Pool, scheduler MarketScanScheduler, signalRepo domain.SignalRepository, positionRepo domain.PaperPositionRepository, templates *template.Template) *AdminHandler {
+func NewAdminHandler(db *pgxpool.Pool, scheduler MarketScanScheduler, signalRepo domain.SignalRepository, positionRepo domain.PaperPositionRepository, templates *template.Template, pythonEngineURL string) *AdminHandler {
 	return &AdminHandler{
-		db:           db,
-		scheduler:    scheduler,
-		signalRepo:   signalRepo,
-		positionRepo: positionRepo,
-		templates:    templates,
+		db:              db,
+		scheduler:       scheduler,
+		signalRepo:      signalRepo,
+		positionRepo:    positionRepo,
+		templates:       templates,
+		pythonEngineURL: pythonEngineURL,
 	}
 }
 
@@ -390,7 +392,7 @@ func (h *AdminHandler) GetLatestScanResults(c echo.Context) error {
 // GetBrainHealth proxies the request to the Python engine
 // GET /api/admin/ml/brain-health
 func (h *AdminHandler) GetBrainHealth(c echo.Context) error {
-	url := "http://python-engine:8000/ml/brain-health"
+	url := h.pythonEngineURL + "/ml/brain-health"
 	resp, err := http.Get(url)
 	if err != nil {
 		c.Logger().Errorf("Failed to proxy to ML: %v", err)
