@@ -65,6 +65,7 @@ class DeepLearner:
     MODEL_PATH = "/tmp/neurotrade_ml_model.pkl"
     SCALER_PATH = "/tmp/neurotrade_scaler.pkl"
     MIN_SAMPLES_FOR_ML = 50  # Minimum trades before ML kicks in
+    REGIME_WINDOW_SIZE = int(os.getenv("REGIME_WINDOW_SIZE", "20"))
 
     def __init__(self):
         # Database connection
@@ -643,6 +644,50 @@ class DeepLearner:
         except Exception as e:
             logging.error(f"[LEARNER] Failed to get performance stats: {e}")
             return {}
+
+
+    def _detect_market_regime(self) -> MarketRegime:
+        """Analyze recent trades to determine market regime"""
+        try:
+            if not self.engine:
+                 return MarketRegime("UNKNOWN", 0.0, 0.0, 0, 0.0)
+
+            with self.engine.connect() as conn:
+                # Get last N samples
+                query = text(f"""
+                    SELECT actual_pnl
+                    FROM ai_learning_logs
+                    ORDER BY timestamp DESC
+                    LIMIT {self.REGIME_WINDOW_SIZE}
+                """)
+                result = conn.execute(query).fetchall()
+                
+            samples = [float(row[0]) for row in result]
+            if not samples:
+                return MarketRegime("WAITING_DATA", 0.0, 0.0, 0, 0.0)
+                
+            count = len(samples)
+            wins = sum(1 for x in samples if x > 0)
+            win_rate = wins / count
+            avg_pnl = sum(samples) / count
+            
+            # Simple heuristic for regime
+            if abs(avg_pnl) < 1.0 and win_rate > 0.4 and win_rate < 0.6:
+                 regime = "QUIET"
+            elif win_rate > 0.6:
+                 regime = "TRENDING"
+            elif win_rate < 0.4:
+                 regime = "VOLATILE"
+            else:
+                 regime = "RANGING"
+                 
+            confidence = min(1.0, count / float(self.REGIME_WINDOW_SIZE))
+            
+            return MarketRegime(regime, win_rate, avg_pnl, count, confidence)
+            
+        except Exception as e:
+            logging.error(f"Regime detection failed: {e}")
+            return MarketRegime("ERROR", 0.0, 0.0, 0, 0.0)
 
     def get_brain_stats(self) -> Dict:
         """Get comprehensive ML statistics for Brain Health dashboard"""
