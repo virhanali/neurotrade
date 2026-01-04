@@ -263,6 +263,9 @@ async def analyze_market(request: MarketAnalysisRequest):
             if learning_ctx.strip():
                 print(f"[LEARNING] Context Injected: {learning_ctx.strip()}")
 
+        # Semaphore to limit concurrent analyses (prevent API rate limits)
+        semaphore = asyncio.Semaphore(6)
+
         async def analyze_single_candidate(candidate: Dict) -> Optional[SignalResult]:
             """Analyze a single candidate - runs concurrently"""
             symbol = candidate['symbol']

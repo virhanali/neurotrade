@@ -230,10 +230,10 @@ class MarketScreener:
                          if vol_z_score > 2.0: score += 30 # Squeeze + Volume Anomaly = JACKPOT
                     
                     # 2. TREND QUALITY: Efficiency Ratio
-                    if efficiency_ratio > 0.5:
-                        score += 20 # Bonus for Clean Trend (Easy to trade)
-                    elif efficiency_ratio > 0.7:
+                    if efficiency_ratio > 0.7:
                         score += 40 # Super Smooth trend
+                    elif efficiency_ratio > 0.5:
+                        score += 20 # Bonus for Clean Trend (Easy to trade)
                     
                     # 3. MOMENTUM: RSI Extremes
                     if rsi_val < 35 and major_trend == "BULL": score += 15
