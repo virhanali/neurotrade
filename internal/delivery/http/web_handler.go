@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"time"
 
 	"neurotrade/internal/domain"
 	"neurotrade/internal/middleware"
@@ -72,7 +73,7 @@ func (h *WebHandler) HandleIndex(c echo.Context) error {
 		c.SetCookie(&http.Cookie{Name: "token", MaxAge: -1, Path: "/"})
 	}
 
-	return c.Redirect(http.StatusFound, "/login")
+	return h.templates.ExecuteTemplate(c.Response().Writer, "landing", nil)
 }
 
 // GET /login - Render login page
@@ -129,15 +130,100 @@ func (h *WebHandler) HandleLoginPost(c echo.Context) error {
 	cookie := &http.Cookie{
 		Name:     "token",
 		Value:    token,
+		Expires:  time.Now().Add(24 * time.Hour),
+		HttpOnly: true, // Secure against XSS
 		Path:     "/",
-		HttpOnly: true,
-		Secure:   false, // Set to true in production with HTTPS
-		SameSite: http.SameSiteLaxMode,
-		MaxAge:   86400, // 24 hours
 	}
 	c.SetCookie(cookie)
 
 	// Redirect to dashboard
+	return c.Redirect(http.StatusFound, "/dashboard")
+}
+
+// GET /register - Render register page
+func (h *WebHandler) HandleRegister(c echo.Context) error {
+	// If already logged in, redirect to dashboard
+	cookie, err := c.Cookie("token")
+	if err == nil && cookie.Value != "" {
+		if h.validateToken(cookie.Value) {
+			return c.Redirect(http.StatusFound, "/dashboard")
+		}
+	}
+	return h.templates.ExecuteTemplate(c.Response().Writer, "register", map[string]interface{}{
+		"Error": c.QueryParam("error"),
+	})
+}
+
+// POST /register - Handle register form submission
+func (h *WebHandler) HandleRegisterPost(c echo.Context) error {
+	username := c.FormValue("username")
+	password := c.FormValue("password")
+	confirmPassword := c.FormValue("confirm_password")
+
+	// Validate input
+	if username == "" || password == "" {
+		return c.Redirect(http.StatusFound, "/register?error=Username+and+password+are+required")
+	}
+
+	if len(password) < 6 {
+		return c.Redirect(http.StatusFound, "/register?error=Password+must+be+at+least+6+characters")
+	}
+
+	if password != confirmPassword {
+		return c.Redirect(http.StatusFound, "/register?error=Passwords+do+not+match")
+	}
+
+	ctx := c.Request().Context()
+
+	// Check if username exists
+	existingUser, err := h.userRepo.GetByUsername(ctx, username)
+	if err == nil && existingUser != nil {
+		return c.Redirect(http.StatusFound, "/register?error=Username+already+taken")
+	}
+
+	// Hash password
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return c.Redirect(http.StatusFound, "/register?error=Internal+server+error")
+	}
+
+	// Create user
+	newUser := &domain.User{
+		ID:                 uuid.New(),
+		Username:           username,
+		PasswordHash:       string(hashedPassword),
+		Role:               domain.RoleUser,
+		Mode:               domain.ModePaper,
+		PaperBalance:       5000.0, // Default Paper Balance
+		MaxDailyLoss:       5.0,    // Default 5%
+		IsAutoTradeEnabled: false,  // Default disabled
+		FixedOrderSize:     10.0,   // Default $10
+		Leverage:           1.0,    // Default 1x
+		CreatedAt:          time.Now(),
+		UpdatedAt:          time.Now(),
+	}
+
+	if err := h.userRepo.Create(ctx, newUser); err != nil {
+		return c.Redirect(http.StatusFound, "/register?error=Failed+to+create+account")
+	}
+
+	// Auto login (Generate Token)
+	token, err := middleware.GenerateJWT(newUser.ID, newUser.Role)
+	if err != nil {
+		// If token fails, just redirect to login
+		return c.Redirect(http.StatusFound, "/login?message=Account+created,+please+login")
+	}
+
+	// Set Cookie
+	cookie := &http.Cookie{
+		Name:     "token",
+		Value:    token,
+		Expires:  time.Now().Add(24 * time.Hour),
+		HttpOnly: true,
+		Path:     "/",
+	}
+	c.SetCookie(cookie)
+
 	return c.Redirect(http.StatusFound, "/dashboard")
 }
 
@@ -578,6 +664,8 @@ func RegisterWebRoutes(e *echo.Echo, handler *WebHandler, authMiddleware echo.Mi
 	e.GET("/", handler.HandleIndex)
 	e.GET("/login", handler.HandleLogin)
 	e.POST("/login", handler.HandleLoginPost)
+	e.GET("/register", handler.HandleRegister)
+	e.POST("/register", handler.HandleRegisterPost)
 
 	// Protected routes (require authentication)
 	e.GET("/dashboard", handler.HandleDashboard, authMiddleware)
