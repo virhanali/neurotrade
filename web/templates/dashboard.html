@@ -1269,16 +1269,48 @@
 
         // HTMX event listeners
         document.body.addEventListener('htmx:afterSwap', function (evt) {
+            console.log('[HTMX] afterSwap triggered for:', evt.detail.target?.id || evt.detail.target?.tagName);
             // Check if the swap was for positions table
             if (evt.detail.target && evt.detail.target.tagName === 'TBODY') {
                 trackChanges(evt.detail.target);
             }
             // Re-apply filter when signal list updates
             if (evt.detail.target.id === 'scan-results') {
+                console.log('[HTMX] scan-results swapped, content length:', evt.detail.target.innerHTML.length);
                 const filter = document.getElementById('signalFilter').value;
                 filterSignals(filter);
             }
         });
+
+        // Debug HTMX events
+        document.body.addEventListener('htmx:beforeRequest', function (evt) {
+            console.log('[HTMX] Request starting:', evt.detail.pathInfo?.requestPath || 'unknown');
+        });
+        document.body.addEventListener('htmx:afterRequest', function (evt) {
+            console.log('[HTMX] Request completed:', evt.detail.pathInfo?.requestPath, 'status:', evt.detail.xhr?.status);
+        });
+        document.body.addEventListener('htmx:responseError', function (evt) {
+            console.error('[HTMX] Response error:', evt.detail);
+        });
+        document.body.addEventListener('htmx:swapError', function (evt) {
+            console.error('[HTMX] Swap error:', evt.detail);
+        });
+
+        // Manual fallback: if after 2 seconds scan-results still has skeleton, fetch manually
+        setTimeout(function () {
+            const scanResults = document.getElementById('scan-results');
+            if (scanResults && scanResults.querySelector('.skeleton')) {
+                console.log('[Fallback] HTMX did not load signals, fetching manually...');
+                fetch('/api/admin/market-scan/results')
+                    .then(r => r.text())
+                    .then(html => {
+                        scanResults.innerHTML = html;
+                        console.log('[Fallback] Manual fetch successful, length:', html.length);
+                        filterSignals(document.getElementById('signalFilter').value);
+                    })
+                    .catch(e => console.error('[Fallback] Manual fetch failed:', e));
+            }
+        }, 2000);
     </script>
 </body>
 
