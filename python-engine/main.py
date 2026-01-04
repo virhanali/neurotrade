@@ -174,19 +174,20 @@ async def get_prices(symbols: Optional[str] = None):
 @app.post("/analyze/market", response_model=MarketAnalysisResponse)
 async def analyze_market(request: MarketAnalysisRequest):
     """
-    Analyze market and generate trading signals using Hybrid AI
+    Analyze market and generate trading signals using Hybrid AI (SCALPER MODE ONLY)
 
     Workflow:
     1. Screen market for top opportunities
-    2. Fetch BTC context (mode-aware: SCALPER uses 15m, INVESTOR uses 1h)
+    2. Fetch BTC context (SCALPER uses 15m)
     3. For each opportunity:
-       - Fetch data & generate chart
-       - Analyze with DeepSeek (logic) & Gemini (vision) with mode-specific prompts
+       - Fetch data & generate chart (M15)
+       - Analyze with DeepSeek (logic) & Gemini (vision) using SCALPER prompts
        - Combine results
-    4. Return valid signals (confidence >= 75% and agreement)
+    4. Return valid signals
     """
     start_time = datetime.utcnow()
-    mode = request.mode.upper() if request.mode else "SCALPER"
+    # FORCE SCALPER MODE
+    mode = "SCALPER"
     
     print(f"\n[TARGET] Market Analysis Started [Mode: {mode}]")
 
@@ -208,13 +209,11 @@ async def analyze_market(request: MarketAnalysisRequest):
                 execution_time_seconds=0
             )
 
-        # Step 2: Fetch BTC context (mode-aware)
-        btc_context = data_fetcher.fetch_btc_context(mode=mode)
+        # Step 2: Fetch BTC context (SCALPER MODE)
+        btc_context = data_fetcher.fetch_btc_context(mode="SCALPER")
 
-        # --- BTC SLEEP CHECK ---
-        # If market is dead flat (< 0.2% move), don't waste AI calls on altcoins.
-        # Note: In SCALPER mode, 'pct_change_1h' actually holds the 15m change due to data_fetcher logic.
-        btc_volatility = abs(btc_context.get('pct_change_1h', 0))
+        # --- BTC SLEEP CHECK (15m volatility) ---
+        btc_volatility = abs(btc_context.get('pct_change_1h', 0)) # Note: data_fetcher returns 15m change in this field for SCALPER
         if btc_volatility < 0.2:
              logging.info(f"😴 Market Sleepy (BTC Move {btc_volatility}%), skipping Scan to save credits.")
              return MarketAnalysisResponse(
@@ -226,50 +225,47 @@ async def analyze_market(request: MarketAnalysisRequest):
              )
 
         # Step 3: Analyze each opportunity IN PARALLEL
-        # Use Semaphore to limit concurrent AI calls (prevent API rate limit)
-        semaphore = asyncio.Semaphore(6)  # Max 6 coins analyzed simultaneously (16-core VPS)
+        semaphore = asyncio.Semaphore(6)  # Max 6 coins analyzed simultaneously
         
         async def analyze_single_symbol(symbol: str) -> Optional[SignalResult]:
             """Analyze a single symbol - runs concurrently"""
             async with semaphore:
                 try:
-                    # Fetch target data
+                    # Fetch target data (SCALPER MODE)
                     target_data = await asyncio.to_thread(
-                        data_fetcher.fetch_target_data, symbol, mode
+                        data_fetcher.fetch_target_data, symbol, "SCALPER"
                     )
 
-                    # Get chart data
-                    chart_timeframe = 'data_15m' if mode == "SCALPER" else 'data_1h'
-                    chart_df = target_data.get(chart_timeframe, target_data.get('data_1h', {})).get('df')
+                    # Get chart data (M15)
+                    chart_df = target_data.get('data_15m', {}).get('df')
                     
                     if chart_df is None:
                         logging.warning(f"[WARN] No chart data available for {symbol}")
                         return None
 
-                    # Generate chart image with correct interval label
-                    interval_label = "15M" if mode == "SCALPER" else "1H"
+                    # Generate chart image (M15)
                     chart_buffer = await asyncio.to_thread(
-                        charter.generate_chart_image, chart_df, symbol, interval_label
+                        charter.generate_chart_image, chart_df, symbol, "15M"
                     )
 
                     # Run AI analysis concurrently (DeepSeek + Gemini)
+                    # Logic args: btc_data, target_4h, target_trigger(15m), balance, symbol
                     logic_task = asyncio.create_task(
                         asyncio.to_thread(
                             ai_handler.analyze_logic,
                             btc_context,
-                            target_data.get('data_4h', target_data.get('data_1h', {})),
-                            target_data.get('data_15m', target_data.get('data_1h', {})) if mode == "SCALPER" else target_data.get('data_1h', {}),
+                            target_data.get('data_4h', {}),
+                            target_data.get('data_15m', {}),
                             request.balance,
-                            symbol,
-                            mode
+                            symbol
                         )
                     )
 
+                    # Vision args: chart_buffer
                     vision_task = asyncio.create_task(
                         asyncio.to_thread(
                             ai_handler.analyze_vision,
-                            chart_buffer,
-                            mode
+                            chart_buffer
                         )
                     )
 

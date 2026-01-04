@@ -15,7 +15,6 @@ import (
 
 	"neurotrade/internal/delivery/http/dto"
 	"neurotrade/internal/domain"
-	"neurotrade/internal/repository"
 	"neurotrade/internal/utils"
 )
 
@@ -32,18 +31,16 @@ type AdminHandler struct {
 	scheduler    MarketScanScheduler
 	signalRepo   domain.SignalRepository
 	positionRepo domain.PaperPositionRepository
-	settingsRepo *repository.SystemSettingsRepository
 	templates    *template.Template
 }
 
 // NewAdminHandler creates a new AdminHandler
-func NewAdminHandler(db *pgxpool.Pool, scheduler MarketScanScheduler, signalRepo domain.SignalRepository, positionRepo domain.PaperPositionRepository, settingsRepo *repository.SystemSettingsRepository, templates *template.Template) *AdminHandler {
+func NewAdminHandler(db *pgxpool.Pool, scheduler MarketScanScheduler, signalRepo domain.SignalRepository, positionRepo domain.PaperPositionRepository, templates *template.Template) *AdminHandler {
 	return &AdminHandler{
 		db:           db,
 		scheduler:    scheduler,
 		signalRepo:   signalRepo,
 		positionRepo: positionRepo,
-		settingsRepo: settingsRepo,
 		templates:    templates,
 	}
 }
@@ -435,201 +432,3 @@ type TradingModeResponse struct {
 
 // GetTradingMode returns the current trading mode
 // GET /api/admin/trading-mode
-func (h *AdminHandler) GetTradingMode(c echo.Context) error {
-	ctx, cancel := context.WithTimeout(c.Request().Context(), 5*time.Second)
-	defer cancel()
-
-	// Get from database via settings repo
-	mode := "SCALPER" // default
-	if h.settingsRepo != nil {
-		m, err := h.settingsRepo.GetTradingMode(ctx)
-		if err == nil && m != "" {
-			mode = m
-		}
-	}
-
-	// Check if we should show the config view
-	showConfig := c.QueryParam("config") == "true"
-
-	if showConfig {
-		// Show mode selection view
-		scalperChecked := ""
-		investorChecked := ""
-		if mode == "SCALPER" {
-			scalperChecked = "checked"
-		} else {
-			investorChecked = "checked"
-		}
-
-		html := fmt.Sprintf(`
-		<div class="h-full flex flex-col justify-between">
-			<div>
-				<div class="flex items-center justify-between mb-3">
-					<span class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Select Mode</span>
-				</div>
-				<div class="space-y-2">
-					<label class="flex items-center p-3 rounded-lg border border-slate-200 dark:border-slate-700 hover:border-emerald-500 dark:hover:border-emerald-500 cursor-pointer transition-colors has-[:checked]:border-emerald-500 has-[:checked]:bg-emerald-50 dark:has-[:checked]:bg-emerald-900/20">
-						<input type="radio" name="mode" value="SCALPER" class="sr-only peer" %s onchange="this.form.requestSubmit()">
-						<div class="w-4 h-4 rounded-full border-2 border-slate-300 dark:border-slate-600 peer-checked:border-emerald-500 peer-checked:bg-emerald-500 flex items-center justify-center mr-3">
-							<div class="w-2 h-2 rounded-full bg-white hidden peer-checked:block"></div>
-						</div>
-						<div class="flex-1">
-							<div class="flex items-center gap-2">
-								<i class="ri-flashlight-line text-amber-500"></i>
-								<span class="font-semibold text-slate-900 dark:text-white text-sm">SCALPER</span>
-							</div>
-							<p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">M15 Mean Reversion (Ping-Pong)</p>
-						</div>
-					</label>
-					<label class="flex items-center p-3 rounded-lg border border-slate-200 dark:border-slate-700 hover:border-emerald-500 dark:hover:border-emerald-500 cursor-pointer transition-colors has-[:checked]:border-emerald-500 has-[:checked]:bg-emerald-50 dark:has-[:checked]:bg-emerald-900/20">
-						<input type="radio" name="mode" value="INVESTOR" class="sr-only peer" %s onchange="this.form.requestSubmit()">
-						<div class="w-4 h-4 rounded-full border-2 border-slate-300 dark:border-slate-600 peer-checked:border-emerald-500 peer-checked:bg-emerald-500 flex items-center justify-center mr-3">
-							<div class="w-2 h-2 rounded-full bg-white hidden peer-checked:block"></div>
-						</div>
-						<div class="flex-1">
-							<div class="flex items-center gap-2">
-								<i class="ri-line-chart-line text-blue-500"></i>
-								<span class="font-semibold text-slate-900 dark:text-white text-sm">INVESTOR</span>
-							</div>
-							<p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">H1 Trend Following</p>
-						</div>
-					</label>
-				</div>
-			</div>
-			
-			<div class="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800">
-				<button hx-get="/api/admin/trading-mode" hx-target="closest div.bg-white, closest div.dark\:bg-slate-900" hx-swap="innerHTML"
-					class="w-full py-1.5 text-xs font-medium rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
-					Cancel
-				</button>
-			</div>
-		</div>
-		`, scalperChecked, investorChecked)
-
-		return c.HTML(http.StatusOK, html)
-	}
-
-	// Get description for display view
-	description := "M15 Mean Reversion (Ping-Pong)"
-	icon := "ri-flashlight-line"
-	iconColor := "text-amber-500"
-	if mode == "INVESTOR" {
-		description = "H1 Trend Following"
-		icon = "ri-line-chart-line"
-		iconColor = "text-blue-500"
-	}
-
-	// Fintech Style Mode Card (Display State)
-	html := fmt.Sprintf(`
-		<div class="h-full flex flex-col justify-between">
-			<div>
-				<div class="flex items-center justify-between mb-2">
-					<span class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Trading Mode</span>
-					<span class="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 text-[10px] px-2 py-0.5 rounded-full font-bold border border-emerald-200 dark:border-emerald-800">ACTIVE</span>
-				</div>
-				<h3 class="text-xl font-bold text-slate-900 dark:text-white flex items-center">
-					<i class="%s mr-2 %s"></i>
-					%s
-				</h3>
-				<p class="text-sm text-slate-500 dark:text-slate-400 mt-1">%s</p>
-			</div>
-			
-			<div class="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800 flex gap-2">
-				<button hx-get="/api/admin/trading-mode?config=true" hx-target="closest div.bg-white, closest div.dark\:bg-slate-900" hx-swap="innerHTML"
-					class="flex-1 py-1.5 text-xs font-medium rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
-					Configure
-				</button>
-			</div>
-		</div>
-	`, icon, iconColor, mode, description)
-
-	return c.HTML(http.StatusOK, html)
-}
-
-// SetTradingModeRequest represents the request to set trading mode
-type SetTradingModeRequest struct {
-	Mode string `json:"mode" form:"mode"`
-}
-
-// SetTradingMode updates the trading mode
-// PUT /api/admin/trading-mode
-func (h *AdminHandler) SetTradingMode(c echo.Context) error {
-	var mode string
-
-	// Try to get from form data first (HTMX sends form-urlencoded)
-	if formValue := c.FormValue("mode"); formValue != "" {
-		mode = formValue
-	} else {
-		// Fallback to JSON binding
-		var req SetTradingModeRequest
-		if err := c.Bind(&req); err != nil {
-			return c.HTML(http.StatusBadRequest, `
-				<div class="p-3 bg-rose-50 dark:bg-rose-900/20 text-rose-700 dark:text-rose-400 text-sm font-medium rounded-lg border border-rose-200 dark:border-rose-800">
-					<i class="ri-error-warning-line mr-1"></i> Invalid request payload
-				</div>
-			`)
-		}
-		mode = req.Mode
-	}
-
-	// Validate mode
-	if mode != "SCALPER" && mode != "INVESTOR" {
-		return c.HTML(http.StatusBadRequest, fmt.Sprintf(`
-			<div class="p-3 bg-rose-50 dark:bg-rose-900/20 text-rose-700 dark:text-rose-400 text-sm font-medium rounded-lg border border-rose-200 dark:border-rose-800">
-				<i class="ri-error-warning-line mr-1"></i> Invalid mode: %s
-			</div>
-		`, mode))
-	}
-
-	ctx, cancel := context.WithTimeout(c.Request().Context(), 5*time.Second)
-	defer cancel()
-
-	// Save to database
-	if h.settingsRepo != nil {
-		if err := h.settingsRepo.SetTradingMode(ctx, mode); err != nil {
-			return c.HTML(http.StatusInternalServerError, fmt.Sprintf(`
-				<div class="p-3 bg-rose-50 dark:bg-rose-900/20 text-rose-700 dark:text-rose-400 text-sm font-medium rounded-lg border border-rose-200 dark:border-rose-800">
-					Failed to save: %s
-				</div>
-			`, err.Error()))
-		}
-	}
-
-	// Update scheduler mode in real-time
-	if h.scheduler != nil {
-		h.scheduler.SetMode(mode)
-	}
-
-	// Get description
-	description := "M15 Mean Reversion (Ping-Pong)"
-	icon := "ri-flashlight-line"
-	if mode == "INVESTOR" {
-		description = "H1 Trend Following"
-		icon = "ri-line-chart-line"
-	}
-
-	// Fintech Style Mode Card (Active State)
-	html := fmt.Sprintf(`
-		<div class="h-full flex flex-col justify-between">
-			<div>
-				<div class="flex items-center justify-between mb-2">
-					<span class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Trading Mode</span>
-					<span class="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 text-[10px] px-2 py-0.5 rounded-full font-bold border border-emerald-200 dark:border-emerald-800">ACTIVE</span>
-				</div>
-				<h3 class="text-xl font-bold text-slate-900 dark:text-white flex items-center">
-					<i class="%s mr-2 text-emerald-500"></i>
-					%s
-				</h3>
-				<p class="text-sm text-slate-500 dark:text-slate-400 mt-1">%s</p>
-			</div>
-			
-			<div class="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800 flex gap-2">
-				<button class="flex-1 py-1.5 text-xs font-medium rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
-					Configure
-				</button>
-			</div>
-		</div>
-	`, icon, mode, description)
-
-	return c.HTML(http.StatusOK, html)
-}

@@ -215,15 +215,12 @@ func (h *WebHandler) HandleDashboard(c echo.Context) error {
 			data["Stats"] = stats
 		}
 
-		// Load current trading mode from database
-		tradingMode := "SCALPER" // default
-		var modeValue string
-		err = h.db.QueryRow(ctx, `
-			SELECT value FROM system_settings WHERE key = 'trading_mode'
-		`).Scan(&modeValue)
-		if err == nil {
-			tradingMode = modeValue
-		}
+		// Load current trading mode (Scalper enforced)
+		tradingMode := "SCALPER"
+
+		// Legacy DB query removed - Mode is now strictly enforced in Python Engine
+		// err = h.db.QueryRow(ctx, `SELECT value FROM system_settings WHERE key = 'trading_mode'`).Scan(&modeValue)
+
 		data["TradingMode"] = tradingMode
 	}
 

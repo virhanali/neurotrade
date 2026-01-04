@@ -12,18 +12,11 @@ from openai import OpenAI
 from config import settings
 
 
-def get_system_prompt(mode: str = "INVESTOR") -> str:
+def get_system_prompt() -> str:
     """
-    Returns the appropriate system prompt based on trading mode
-    
-    Args:
-        mode: Trading mode - "SCALPER" or "INVESTOR"
-    
-    Returns:
-        System prompt string for the Logic LLM
+    Returns the system prompt for SCALPER mode (M15 Smart Money/Predictive Alpha)
     """
-    if mode == "SCALPER":
-        return """ROLE: Elite Algo-Trading Execution Unit (M15 Specialist).
+    return """ROLE: Elite Algo-Trading Execution Unit (M15 Specialist).
 CONTEXT: This candidate has ALREADY PASSED strict technical filters:
 1. High Volatility & Volume Spike detected.
 2. 4H Trend Alignment confirmed (Screener Logic).
@@ -84,51 +77,13 @@ The final response content MUST be a valid raw JSON object. Do not use markdown 
     "position_size_usdt": float
   }
 }"""
-    else:  # INVESTOR mode (default)
-        return """ROLE: Quantitative Risk Manager & Senior Crypto Analyst.
-
-INPUT DATA:
-1. GLOBAL MARKET (BTC/USDT): [Trend 4H, % Change 1H]
-2. TARGET ASSET CONTEXT (4H Chart): [Trend, EMA Structure]
-3. TARGET ASSET TRIGGER (1H Chart): [Price, RSI, ATR]
-4. CAPITAL: [Balance, Max Risk 2%]
-
-LOGIC FLOW:
-PHASE 1: THE "BIG BROTHER" FILTER (BTC Check)
-- IF BTC is dumping (Drop > 1% in 1H) -> REJECT ALL LONG SIGNALS. Only Short allowed.
-- IF BTC is pumping (Rise > 1% in 1H) -> REJECT ALL SHORT SIGNALS. Only Long allowed.
-
-PHASE 2: TREND ALIGNMENT (4H Context)
-- IF Target 4H is UPTREND -> Look for LONG.
-- IF Target 4H is DOWNTREND -> Look for SHORT.
-- IF 1H signal contradicts 4H trend -> RETURN "WAIT".
-
-PHASE 3: EXECUTION (1H Trigger)
-- ENTRY: Market Price.
-- SL: Technical Level (Swing Low/High) OR 2x ATR.
-- TP: Min 1.5 Risk-Reward Ratio.
-
-PHASE 4: RISK SIZING
-- Calculate Position Size so loss never exceeds 2% of capital.
-- Leverage: Max 5x (Alts), 10x (BTC).
-
-OUTPUT FORMAT (STRICT JSON ONLY):
-The final response content MUST be a valid raw JSON object. Do not use markdown blocks.
-{ "symbol": "...", "signal": "LONG/SHORT/WAIT", "confidence": int, "reasoning": "...", "trade_params": { "entry_price": float, "stop_loss": float, "take_profit": float, "suggested_leverage": int, "position_size_usdt": float } }"""
 
 
-def get_vision_prompt(mode: str = "INVESTOR") -> str:
+def get_vision_prompt() -> str:
     """
-    Returns the appropriate vision analysis prompt based on trading mode
-    
-    Args:
-        mode: Trading mode - "SCALPER" or "INVESTOR"
-    
-    Returns:
-        Vision prompt string for chart analysis
+    Returns the vision analysis prompt for SCALPER mode
     """
-    if mode == "SCALPER":
-        return """ACT AS: Elite Technical Chart Pattern Scanner.
+    return """ACT AS: Elite Technical Chart Pattern Scanner.
 CONTEXT: Technical Screener indicates price is in a KEY ACTION ZONE.
 TASK: IDENTIFY PREDICTIVE STRUCTURES (Pump/Dump Precursors).
 
@@ -166,29 +121,6 @@ OUTPUT FORMAT (JSON):
     },
     "analysis": "Visual analysis of predictive structures and patterns..."
 }"""
-    else:  # INVESTOR mode
-        return """Analyze this candlestick chart. Identify key patterns and technical signals.
-
-Look for:
-- Chart patterns (Bull Flag, Head & Shoulders, Double Top/Bottom, Triangle, etc.)
-- Trend direction and strength
-- Support and resistance levels
-- Volume confirmation
-- Potential reversal or continuation signals
-
-Provide a clear verdict: BULLISH, BEARISH, or NEUTRAL.
-
-Format your response as JSON:
-{
-    "verdict": "BULLISH/BEARISH/NEUTRAL",
-    "confidence": <0-100>,
-    "patterns_detected": ["list", "of", "patterns"],
-    "key_levels": {
-        "support": <price or null>,
-        "resistance": <price or null>
-    },
-    "analysis": "brief explanation"
-}"""
 
 
 class AIHandler:
@@ -214,34 +146,27 @@ class AIHandler:
         target_4h: Dict,
         target_trigger: Dict,
         balance: float = 1000.0,
-        symbol: str = "UNKNOWN",
-        mode: str = "INVESTOR"
+        symbol: str = "UNKNOWN"
     ) -> Dict:
         """
-        Analyze trading logic using DeepSeek
+        Analyze trading logic using DeepSeek (SCALPER MODE ONLY)
 
         Args:
             btc_data: BTC market context
             target_4h: Target asset 4H data
-            target_trigger: Target asset trigger data (1H for INVESTOR, 15M for SCALPER)
+            target_trigger: Target asset trigger data (15M)
             balance: Trading balance in USDT
             symbol: Trading symbol
-            mode: Trading mode - "SCALPER" or "INVESTOR"
 
         Returns:
             Dict with trading signal and parameters
         """
         try:
-            # Get mode-specific system prompt
-            system_prompt = get_system_prompt(mode)
+            # Get SCALPER system prompt
+            system_prompt = get_system_prompt()
             
-            # Determine timeframe label based on mode
-            trigger_tf = "15M" if mode == "SCALPER" else "1H"
-            
-            # Build user message with market data
-            if mode == "SCALPER":
-                # SCALPER mode: Include Bollinger Bands data
-                user_message = f"""SCALPER ANALYSIS REQUEST (M15 Timeframe):
+            # Build user message with market data (SCALPER FORMAT)
+            user_message = f"""SCALPER ANALYSIS REQUEST (M15 Timeframe):
 
 GLOBAL MARKET (BTC/USDT):
 - Trend 4H: {btc_data.get('trend_4h', 'N/A')}
@@ -272,40 +197,7 @@ CAPITAL:
 - Balance: ${balance:,.2f} USDT
 - Max Risk: 2% (${balance * 0.02:,.2f})
 
-Analyze for SCALPER entry (Mean Reversion / Ping-Pong strategy). Provide JSON response."""
-            else:
-                # INVESTOR mode: Standard trend following analysis
-                user_message = f"""MARKET ANALYSIS REQUEST:
-
-GLOBAL MARKET (BTC/USDT):
-- Trend 4H: {btc_data.get('trend_4h', 'N/A')}
-- 1H Change: {btc_data.get('pct_change_1h', 0)}%
-- Direction: {btc_data.get('direction', 'N/A')}
-- Current Price: ${btc_data.get('current_price', 0):,.2f}
-- RSI 1H: {btc_data.get('rsi_1h', 50)}
-
-TARGET ASSET ({symbol}):
-4H CONTEXT:
-- Trend: {target_4h.get('trend', 'N/A')}
-- Price: ${target_4h.get('price', 0):,.4f}
-- RSI: {target_4h.get('rsi', 50)}
-- ATR: {target_4h.get('atr', 0)}
-- EMA 50: ${target_4h.get('ema_50', 0):,.4f}
-- EMA 200: ${target_4h.get('ema_200', 0):,.4f}
-
-1H TRIGGER:
-- Trend: {target_trigger.get('trend', 'N/A')}
-- Price: ${target_trigger.get('price', 0):,.4f}
-- RSI: {target_trigger.get('rsi', 50)}
-- ATR: {target_trigger.get('atr', 0)}
-- EMA 50: ${target_trigger.get('ema_50', 0):,.4f}
-- EMA 200: ${target_trigger.get('ema_200', 0):,.4f}
-
-CAPITAL:
-- Balance: ${balance:,.2f} USDT
-- Max Risk: 2% (${balance * 0.02:,.2f})
-
-Analyze this data and provide a trading decision in JSON format."""
+Analyze for SCALPER entry (Mean Reversion / Ping-Pong / Predictive Alpha). Provide JSON response."""
 
             # Call DeepSeek API (Standard V3 for Speed)
             response = self.deepseek_client.chat.completions.create(
@@ -350,13 +242,12 @@ Analyze this data and provide a trading decision in JSON format."""
         except Exception as e:
             raise Exception(f"DeepSeek analysis failed: {str(e)}")
 
-    def analyze_vision(self, image_buffer: BytesIO, mode: str = "INVESTOR") -> Dict:
+    def analyze_vision(self, image_buffer: BytesIO) -> Dict:
         """
-        Analyze chart image using OpenRouter Vision API
+        Analyze chart image using OpenRouter Vision API (SCALPER MODE)
 
         Args:
             image_buffer: BytesIO buffer containing chart PNG
-            mode: Trading mode - "SCALPER" or "INVESTOR"
 
         Returns:
             Dict with visual analysis verdict
@@ -367,8 +258,8 @@ Analyze this data and provide a trading decision in JSON format."""
             image_bytes = image_buffer.read()
             image_base64 = base64.b64encode(image_bytes).decode('utf-8')
 
-            # Get mode-specific vision prompt
-            prompt = get_vision_prompt(mode)
+            # Get SCALPER vision prompt
+            prompt = get_vision_prompt()
 
             # Call OpenRouter Vision API (using Google Gemini 2.0 Flash Lite via OpenRouter)
             response = self.vision_client.chat.completions.create(

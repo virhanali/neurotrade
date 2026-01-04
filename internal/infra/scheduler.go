@@ -3,6 +3,7 @@ package infra
 import (
 	"context"
 	"log"
+	"time"
 
 	"github.com/robfig/cron/v3"
 
@@ -40,6 +41,26 @@ func (s *Scheduler) Start() error {
 	// Safe because overlap is prevented by Mutex in trading_service.
 	_, err := s.cron.AddFunc("*/15 * * * * *", func() {
 		ctx := context.Background()
+
+		// GOLDEN HOURS FILTER (UTC)
+		// We skip scanning during low-liquidity/choppy zones to improve win-rate.
+		// Allowed Zones:
+		// 1. Asia Session: 00:00 - 04:00 (Good for accumulation/ping-pong)
+		// 2. London Open: 07:00 - 11:00 (Breakouts)
+		// 3. New York Open: 13:00 - 18:00 (High Volatility)
+
+		now := time.Now().UTC()
+		hour := now.Hour()
+
+		isGoldenHour := (hour >= 0 && hour < 4) || (hour >= 7 && hour < 11) || (hour >= 13 && hour < 18)
+
+		if !isGoldenHour {
+			// Log only once per hour to avoid spamming, or use debug level if available.
+			// For now, we just return silently or log sparingly.
+			// log.Printf("💤 Scheduler: Skipping scan (Hour: %d UTC). Waiting for Golden Hours.", hour)
+			return
+		}
+
 		log.Printf("[CRON] Cron Triggered: Starting scheduled market scan [Mode: %s]...", s.mode)
 
 		if err := s.tradingService.ProcessMarketScan(ctx, s.balance, s.mode); err != nil {

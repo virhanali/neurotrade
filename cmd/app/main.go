@@ -90,11 +90,12 @@ func main() {
 	signalRepo := repository.NewSignalRepository(db)
 	userRepo := repository.NewUserRepository(db)
 	positionRepo := repository.NewPaperPositionRepository(db)
-	settingsRepo := repository.NewSystemSettingsRepository(db)
+	// settingsRepo removed as part of Scalper-Only lock
 
 	// Initialize Telegram notification service (Phase 5)
 	telegramBotToken := os.Getenv("TELEGRAM_BOT_TOKEN")
 	telegramChatID := os.Getenv("TELEGRAM_CHAT_ID")
+
 	notificationService := telegram.NewNotificationService(telegramBotToken, telegramChatID)
 
 	// Initialize Telegram Bot Controller for remote commands
@@ -142,14 +143,9 @@ func main() {
 		cfg.Trading.MinConfidence,
 	)
 
-	// Load trading mode from database (default: SCALPER if not set)
-	tradingMode, err := settingsRepo.GetTradingMode(ctx)
-	if err != nil {
-		tradingMode = "SCALPER" // Default mode
-		log.Printf("[WARN] Trading mode not found in DB, using default: %s", tradingMode)
-	} else {
-		log.Printf("[OK] Trading mode loaded from database: %s", tradingMode)
-	}
+	// Load trading mode (Locked to SCALPER)
+	tradingMode := "SCALPER"
+	log.Printf("[OK] Trading mode locked to: %s", tradingMode)
 
 	// Initialize market scan scheduler
 	marketScanScheduler := infra.NewScheduler(tradingService, cfg.Trading.DefaultBalance, tradingMode)
@@ -305,7 +301,7 @@ func main() {
 	// Initialize HTTP handlers
 	authHandler := httpdelivery.NewAuthHandler(userRepo)
 	userHandler := httpdelivery.NewUserHandler(userRepo, positionRepo, tradingService)
-	adminHandler := httpdelivery.NewAdminHandler(db, marketScanScheduler, signalRepo, positionRepo, settingsRepo, templates)
+	adminHandler := httpdelivery.NewAdminHandler(db, marketScanScheduler, signalRepo, positionRepo, templates)
 
 	// Initialize web handler (Phase 5 - HTML pages)
 	webHandler := httpdelivery.NewWebHandler(templates, userRepo, positionRepo, db, priceService)
