@@ -269,6 +269,34 @@ class AIHandler:
                 elif order_imbalance < -20:
                     imbalance_str += " (HEAVY SELL PRESSURE - Bearish)"
 
+                # Funding Rate Interpretation (NEW)
+                funding_rate = metrics.get('funding_rate', 0)
+                funding_str = f"{funding_rate:.4f}%"
+                if funding_rate > 0.05:
+                    funding_str += " (HIGH - Longs paying, contrarian BEARISH)"
+                elif funding_rate > 0.02:
+                    funding_str += " (Slightly bullish sentiment)"
+                elif funding_rate < -0.03:
+                    funding_str += " (NEGATIVE - Shorts paying, contrarian BULLISH)"
+                elif funding_rate < -0.01:
+                    funding_str += " (Slightly bearish sentiment)"
+                else:
+                    funding_str += " (Neutral)"
+
+                # Long/Short Ratio Interpretation (NEW)
+                ls_ratio = metrics.get('ls_ratio', 1.0)
+                ls_str = f"{ls_ratio:.2f}"
+                if ls_ratio > 1.5:
+                    ls_str += " (LONG CROWDED - contrarian BEARISH, dump risk)"
+                elif ls_ratio > 1.2:
+                    ls_str += " (Slightly long heavy)"
+                elif ls_ratio < 0.7:
+                    ls_str += " (SHORT CROWDED - contrarian BULLISH, squeeze risk)"
+                elif ls_ratio < 0.85:
+                    ls_str += " (Slightly short heavy)"
+                else:
+                    ls_str += " (Balanced)"
+
                 metrics_txt = f"""
 QUANTITATIVE ALPHA METRICS (CRITICAL):
 - Volume: {vol_str}
@@ -282,13 +310,17 @@ QUANTITATIVE ALPHA METRICS (CRITICAL):
 - Whale Signal: {whale_str}
 - Liquidation Pressure: {liq_str}
 - Order Book Imbalance: {imbalance_str}
+- Funding Rate: {funding_str}
+- Long/Short Ratio: {ls_str}
 - Whale Confidence: {whale_confidence}%
 
-⚡ INTERPRETATION:
-- If Whale Signal is PUMP_IMMINENT + Order Imbalance > +15% → STRONG LONG SETUP
-- If Whale Signal is DUMP_IMMINENT + Order Imbalance < -15% → STRONG SHORT SETUP
-- If Liquidation Pressure is LONG_HEAVY → Avoid LONG (Cascade risk)
-- If Liquidation Pressure is SHORT_HEAVY → Avoid SHORT (Squeeze risk)
+⚡ INTERPRETATION (CONTRARIAN SIGNALS):
+- PUMP: Whale PUMP_IMMINENT + Negative Funding + Short Crowded → STRONG LONG
+- DUMP: Whale DUMP_IMMINENT + High Funding + Long Crowded → STRONG SHORT
+- AVOID LONG: Liquidation LONG_HEAVY (longs getting rekt)
+- AVOID SHORT: Liquidation SHORT_HEAVY (shorts getting squeezed)
+- L/S Ratio > 1.5 = Too many longs = Dump risk = Bearish
+- L/S Ratio < 0.7 = Too many shorts = Squeeze risk = Bullish
 """
 
             # Inject Learning Context
@@ -361,13 +393,43 @@ Analyze for SCALPER entry (Mean Reversion / Ping-Pong / Predictive Alpha). Provi
 
             result = json.loads(json_str)
 
+            # === VALIDATION LAYER (Prevent hallucinations) ===
+            # 1. Validate signal
+            valid_signals = ["LONG", "SHORT", "WAIT"]
+            if result.get("signal") not in valid_signals:
+                logging.warning(f"[AI] Invalid signal '{result.get('signal')}', defaulting to WAIT")
+                result["signal"] = "WAIT"
+            
+            # 2. Validate confidence (clamp to 0-100)
+            conf = result.get("confidence", 0)
+            if not isinstance(conf, (int, float)):
+                conf = 0
+            result["confidence"] = max(0, min(100, int(conf)))
+            
+            # 3. Ensure trade_params exists
+            if result.get("signal") != "WAIT" and not result.get("trade_params"):
+                logging.warning(f"[AI] Signal {result['signal']} but no trade_params, forcing WAIT")
+                result["signal"] = "WAIT"
+                result["confidence"] = 0
+            
+            # 4. Validate trade_params if present
+            if result.get("trade_params"):
+                tp = result["trade_params"]
+                required = ["entry_price", "stop_loss", "take_profit"]
+                for field in required:
+                    if field not in tp or tp[field] is None or tp[field] <= 0:
+                        logging.warning(f"[AI] Invalid trade_params.{field}, forcing WAIT")
+                        result["signal"] = "WAIT"
+                        result["confidence"] = 0
+                        break
+
             return result
 
         except json.JSONDecodeError as e:
             # Fallback if JSON parsing fails
-            print(f"DEBUG: JSON Parse Error. Raw Content: {content[:500]}...") # Print first 500 chars of raw content
+            logging.error(f"[AI] JSON Parse Error. Raw Content: {content[:500]}...")
             return {
-                "symbol": str(symbol), # Ensure symbol is string
+                "symbol": str(symbol),
                 "signal": "WAIT",
                 "confidence": 0,
                 "reasoning": f"Failed to parse AI response: {str(e)}",
@@ -395,9 +457,10 @@ Analyze for SCALPER entry (Mean Reversion / Ping-Pong / Predictive Alpha). Provi
             # Get SCALPER vision prompt
             prompt = get_vision_prompt()
 
-            # Call OpenRouter Vision API (using Google Gemini 2.0 Flash Lite via OpenRouter)
+            # Call OpenRouter Vision API
+            # Using Qwen 2.5 VL 72B - Powerful open-source vision model
             response = self.vision_client.chat.completions.create(
-                model="google/gemini-2.0-flash-lite-001",  # Cost-effective Vision model
+                model="qwen/qwen2.5-vl-72b-instruct",  # 72B parameter vision model
                 messages=[
                     {
                         "role": "user",
@@ -415,8 +478,8 @@ Analyze for SCALPER entry (Mean Reversion / Ping-Pong / Predictive Alpha). Provi
                         ]
                     }
                 ],
-                temperature=0.3,
-                max_tokens=1000
+                temperature=0.2,  # Lower for more consistent analysis
+                max_tokens=1500   # More tokens for detailed analysis
             )
 
             # Parse response

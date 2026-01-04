@@ -43,6 +43,8 @@ class WhaleSignal:
     order_imbalance: float  # -100 to +100 (negative = sell heavy, positive = buy heavy)
     large_trades_bias: str  # BUYING, SELLING, MIXED
     reasoning: str
+    funding_rate: float = 0.0  # Funding rate percentage (NEW)
+    ls_ratio: float = 1.0  # Long/Short ratio (NEW)
     timestamp: float = field(default_factory=time.time)
 
 
@@ -324,8 +326,80 @@ class WhaleDetector:
         return None
 
     # ========================
-    # 4. LARGE TRADES ANALYSIS
+    # 5. FUNDING RATE ANALYSIS (NEW)
     # ========================
+
+    async def fetch_funding_rate(self, symbol: str) -> Optional[Dict]:
+        """
+        Fetch current funding rate from Binance Futures
+        
+        Funding Rate interpretation:
+        - Positive: Longs pay shorts = Market is bullish/overleveraged longs = BEARISH signal
+        - Negative: Shorts pay longs = Market is bearish/overleveraged shorts = BULLISH signal
+        - Extreme (>0.1% or <-0.1%): Strong contrarian signal
+        """
+        normalized = symbol.replace('/', '').upper()
+
+        try:
+            session = await self.get_session()
+            url = f"https://fapi.binance.com/fapi/v1/premiumIndex?symbol={normalized}"
+
+            async with session.get(url) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    funding_rate = float(data.get('lastFundingRate', 0)) * 100  # Convert to percentage
+                    mark_price = float(data.get('markPrice', 0))
+                    
+                    return {
+                        'funding_rate': funding_rate,  # e.g., 0.01 means 0.01%
+                        'mark_price': mark_price,
+                        'next_funding_time': data.get('nextFundingTime', 0)
+                    }
+
+        except Exception as e:
+            logger.error(f"[WHALE] Funding rate fetch error for {symbol}: {e}")
+
+        return None
+
+    # ========================
+    # 6. LONG/SHORT RATIO (NEW)
+    # ========================
+
+    async def fetch_long_short_ratio(self, symbol: str) -> Optional[Dict]:
+        """
+        Fetch Long/Short ratio from Binance Futures
+        
+        Interpretation:
+        - Ratio > 1.5: Too many longs = BEARISH (crowd is usually wrong)
+        - Ratio < 0.67: Too many shorts = BULLISH (shorts may get squeezed)
+        - Between 0.8-1.2: Balanced
+        """
+        normalized = symbol.replace('/', '').upper()
+
+        try:
+            session = await self.get_session()
+            # Top Trader Long/Short Ratio (Accounts)
+            url = f"https://fapi.binance.com/futures/data/topLongShortAccountRatio?symbol={normalized}&period=5m&limit=1"
+
+            async with session.get(url) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    if data and len(data) > 0:
+                        latest = data[0]
+                        long_ratio = float(latest.get('longAccount', 50))
+                        short_ratio = float(latest.get('shortAccount', 50))
+                        ls_ratio = float(latest.get('longShortRatio', 1.0))
+                        
+                        return {
+                            'long_percent': long_ratio,
+                            'short_percent': short_ratio,
+                            'ls_ratio': ls_ratio  # e.g., 1.5 means 60% long / 40% short
+                        }
+
+        except Exception as e:
+            logger.error(f"[WHALE] Long/Short ratio fetch error for {symbol}: {e}")
+
+        return None
 
     async def fetch_recent_trades(self, symbol: str, limit: int = 100) -> List[Dict]:
         """Fetch recent aggressor trades"""
@@ -403,14 +477,16 @@ class WhaleDetector:
         """
         normalized = symbol.replace('/', '').upper()
 
-        # Collect all signals in parallel
+        # Collect all signals in parallel (UPGRADED: +funding +LS ratio)
         try:
             orderbook_task = self.fetch_orderbook(normalized)
             trades_task = self.fetch_recent_trades(normalized)
             oi_task = self.fetch_open_interest(normalized)
+            funding_task = self.fetch_funding_rate(normalized)
+            ls_ratio_task = self.fetch_long_short_ratio(normalized)
 
-            orderbook, trades, oi = await asyncio.gather(
-                orderbook_task, trades_task, oi_task,
+            orderbook, trades, oi, funding, ls_ratio = await asyncio.gather(
+                orderbook_task, trades_task, oi_task, funding_task, ls_ratio_task,
                 return_exceptions=True
             )
 
@@ -421,6 +497,10 @@ class WhaleDetector:
                 trades = []
             if isinstance(oi, Exception):
                 oi = None
+            if isinstance(funding, Exception):
+                funding = None
+            if isinstance(ls_ratio, Exception):
+                ls_ratio = None
 
         except Exception as e:
             logger.error(f"[WHALE] Detection error for {symbol}: {e}")
@@ -445,8 +525,14 @@ class WhaleDetector:
         # 4. Large Trade Analysis
         trade_bias, buy_vol, sell_vol = self.analyze_large_trades(trades)
 
+        # 5. Funding Rate Analysis (NEW)
+        funding_rate = funding.get('funding_rate', 0) if funding else 0
+
+        # 6. Long/Short Ratio Analysis (NEW)
+        ls_ratio_val = ls_ratio.get('ls_ratio', 1.0) if ls_ratio else 1.0
+
         # ========================
-        # SIGNAL SYNTHESIS
+        # SIGNAL SYNTHESIS (UPGRADED)
         # ========================
 
         signal = 'NEUTRAL'
@@ -476,6 +562,22 @@ class WhaleDetector:
             pump_score += 20
             reasons.append(f"Buy wall at ${walls['buy_wall']['price']:,.2f}")
 
+        # CONTRARIAN: Negative funding rate = shorts are paying = BULLISH
+        if funding_rate < -0.03:  # < -0.03%
+            pump_score += 20
+            reasons.append(f"Funding bearish: {funding_rate:.3f}% (contrarian BULL)")
+        elif funding_rate < -0.01:
+            pump_score += 10
+            reasons.append(f"Funding slightly bearish: {funding_rate:.3f}%")
+
+        # CONTRARIAN: Too many shorts = squeeze potential = BULLISH
+        if ls_ratio_val < 0.7:  # 70% shorts
+            pump_score += 20
+            reasons.append(f"L/S ratio {ls_ratio_val:.2f} (SHORT crowded, squeeze risk)")
+        elif ls_ratio_val < 0.85:
+            pump_score += 10
+            reasons.append(f"L/S ratio slightly short: {ls_ratio_val:.2f}")
+
         # === DUMP DETECTION ===
         dump_score = 0
 
@@ -498,6 +600,22 @@ class WhaleDetector:
         if walls.get('sell_wall'):
             dump_score += 20
             reasons.append(f"Sell wall at ${walls['sell_wall']['price']:,.2f}")
+
+        # CONTRARIAN: High positive funding rate = longs are paying = BEARISH
+        if funding_rate > 0.05:  # > 0.05%
+            dump_score += 20
+            reasons.append(f"Funding bullish: {funding_rate:.3f}% (contrarian BEAR)")
+        elif funding_rate > 0.02:
+            dump_score += 10
+            reasons.append(f"Funding slightly bullish: {funding_rate:.3f}%")
+
+        # CONTRARIAN: Too many longs = dump risk = BEARISH
+        if ls_ratio_val > 1.5:  # 60% longs
+            dump_score += 20
+            reasons.append(f"L/S ratio {ls_ratio_val:.2f} (LONG crowded, dump risk)")
+        elif ls_ratio_val > 1.2:
+            dump_score += 10
+            reasons.append(f"L/S ratio slightly long: {ls_ratio_val:.2f}")
 
         # === SQUEEZE DETECTION ===
         # If many longs are liquidated BUT price hasn't dropped much = whale accumulating
@@ -528,7 +646,9 @@ class WhaleDetector:
             liquidation_pressure=liq_pressure,
             order_imbalance=order_imbalance,
             large_trades_bias=trade_bias,
-            reasoning=' | '.join(reasons) if reasons else 'No significant whale activity'
+            reasoning=' | '.join(reasons) if reasons else 'No significant whale activity',
+            funding_rate=funding_rate,
+            ls_ratio=ls_ratio_val
         )
 
     def get_whale_metrics(self, whale_signal: WhaleSignal) -> Dict:
@@ -541,6 +661,8 @@ class WhaleDetector:
             'liquidation_pressure': whale_signal.liquidation_pressure,
             'order_imbalance': whale_signal.order_imbalance,
             'large_trades_bias': whale_signal.large_trades_bias,
+            'funding_rate': whale_signal.funding_rate,
+            'ls_ratio': whale_signal.ls_ratio,
             'whale_reasoning': whale_signal.reasoning
         }
 
