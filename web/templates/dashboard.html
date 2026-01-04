@@ -952,7 +952,7 @@
                                     </tr>
                                 </thead>
                                 <tbody id="live-positions-tbody" class="divide-y divide-slate-100 dark:divide-slate-800"
-                                    hx-get="/api/user/positions/html" hx-trigger="load, every 3s">
+                                    hx-get="/api/user/positions/html" hx-trigger="revealed, every 3s">
                                     <tr>
                                         <td colspan="8" class="p-12 text-center text-sm text-slate-400">
                                             <div class="flex flex-col items-center justify-center gap-3">
@@ -1029,7 +1029,7 @@
                                 </thead>
                                 <tbody id="history-positions-tbody"
                                     class="divide-y divide-slate-100 dark:divide-slate-800"
-                                    hx-get="/api/user/history/html" hx-trigger="load">
+                                    hx-get="/api/user/history/html" hx-trigger="revealed">
                                     <!-- Empty State -->
                                     <tr>
                                         <td colspan="8" class="p-12 text-center">
