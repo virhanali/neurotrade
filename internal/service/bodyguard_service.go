@@ -157,32 +157,52 @@ func (s *BodyguardService) closePosition(ctx context.Context, pos *domain.PaperP
 		}
 	}
 
-	// Update signal status if linked
+	// Determine result
+	result := "WIN"
+	if pnl < 0 {
+		result = "LOSS"
+	}
+
+	// Calculate PnL percentage
+	pnlPercent := pos.CalculatePnLPercent(exitPrice)
+
+	// Fetch signal for metrics and update status
+	var sig *domain.Signal
 	if pos.SignalID != nil {
-		result := "WIN"
-		if pnl < 0 {
-			result = "LOSS"
-		}
+		sig, _ = s.signalRepo.GetByID(ctx, *pos.SignalID)
 
-		// Calculate PnL percentage
-		pnlPercent := pos.CalculatePnLPercent(exitPrice)
-
+		// Update signal status
 		if err := s.signalRepo.UpdateReviewStatus(ctx, *pos.SignalID, result, &pnlPercent); err != nil {
 			log.Printf("[WARN] Failed to update signal status: %v", err)
 		}
 	}
 
+	// Send ML Feedback to Python Engine (async, non-blocking)
+	go func() {
+		feedbackCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		feedback := &domain.FeedbackData{
+			Symbol:  pos.Symbol,
+			Outcome: result,
+			PnL:     pnlPercent,
+		}
+
+		// Attach screener metrics if available from signal
+		if sig != nil && sig.ScreenerMetrics != nil {
+			feedback.Metrics = sig.ScreenerMetrics
+		}
+
+		if err := s.aiService.SendFeedback(feedbackCtx, feedback); err != nil {
+			log.Printf("[WARN] Failed to send ML feedback: %v", err)
+		}
+	}()
+
 	// Send notification
-	if s.notifService != nil && pos.SignalID != nil {
-		if sig, err := s.signalRepo.GetByID(ctx, *pos.SignalID); err == nil {
-			result := "WIN"
-			if pnl < 0 {
-				result = "LOSS"
-			}
-			sig.ReviewResult = &result
-			if err := s.notifService.SendReview(*sig, &pnl); err != nil {
-				log.Printf("[WARN] Failed to send notification: %v", err)
-			}
+	if s.notifService != nil && sig != nil {
+		sig.ReviewResult = &result
+		if err := s.notifService.SendReview(*sig, &pnl); err != nil {
+			log.Printf("[WARN] Failed to send notification: %v", err)
 		}
 	}
 

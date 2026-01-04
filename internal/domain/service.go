@@ -6,6 +6,14 @@ import (
 	"github.com/google/uuid"
 )
 
+// FeedbackData represents the data sent to Python for ML learning
+type FeedbackData struct {
+	Symbol  string           `json:"symbol"`
+	Outcome string           `json:"outcome"` // WIN or LOSS
+	PnL     float64          `json:"pnl"`
+	Metrics *ScreenerMetrics `json:"metrics,omitempty"`
+}
+
 // AIService defines the interface for AI analysis operations
 type AIService interface {
 	// AnalyzeMarket calls the Python Engine to analyze market and generate signals
@@ -14,6 +22,9 @@ type AIService interface {
 
 	// GetWebSocketPrices fetches real-time prices from Python's WebSocket cache
 	GetWebSocketPrices(ctx context.Context, symbols []string) (map[string]float64, error)
+
+	// SendFeedback sends trade outcome to Python ML engine for learning
+	SendFeedback(ctx context.Context, feedback *FeedbackData) error
 }
 
 // TradingService defines the interface for core trading logic

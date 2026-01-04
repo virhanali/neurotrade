@@ -2,82 +2,106 @@
 AI Handler Service
 Integrates DeepSeek (Logic) and Gemini (Vision) for hybrid trading analysis
 Supports SCALPER (M15 Mean Reversion) and INVESTOR (H1/4H Trend Following) modes
+Enhanced with ML-based win probability prediction (v4.0)
 """
 
 import json
 import base64
+import logging
 from typing import Dict, Optional
 from io import BytesIO
 from openai import OpenAI
 from config import settings
 
+# Import ML learner for predictions
+try:
+    from services.learner import learner
+    HAS_LEARNER = True
+except ImportError:
+    HAS_LEARNER = False
+    logging.warning("[AI_HANDLER] Learner module not available")
+
 
 def get_system_prompt() -> str:
     """
     Returns the system prompt for SCALPER mode (M15 Smart Money/Predictive Alpha)
+    Enhanced with Whale Detection (v4.2)
     """
-    return """ROLE: Elite Algo-Trading Execution Unit (M15 Specialist).
+    return """ROLE: Elite Algo-Trading Execution Unit (M15 Specialist) with WHALE RADAR.
 CONTEXT: This candidate has ALREADY PASSED strict technical filters:
 1. High Volatility & Volume Spike detected.
 2. 4H Trend Alignment confirmed (Screener Logic).
 3. RSI is in "Action Zone" (Oversold/Overbought).
+4. **NEW: WHALE DETECTION DATA AVAILABLE** - Liquidations, Order Book, Large Trades.
 
-YOUR MISSION: Validate the M15 Swing Setup and generate PRECISE execution parameters.
+YOUR MISSION: Validate the M15 Swing Setup using BOTH Technical + Whale Data.
 
-CRITICAL WARNING (LOSS PREVENTION):
-- DO NOT FIGHT MOMENTUM. Touching a Bollinger Band is NOT a signal.
-- RSI > 70 is NOT a Short signal if the last candle is a big Green Marubozu (Breakout).
-- RSI < 30 is NOT a Long signal if the last candle is a big Red Marubozu (Dump).
-- YOU MUST SEE REJECTION (Long Wicks) or REVERSAL PATTERNS (Engulfing) before entry.
+🐋 WHALE SIGNAL INTERPRETATION (HIGHEST PRIORITY):
+- **PUMP_IMMINENT**: Whales are accumulating. High buy pressure. GO LONG AGGRESSIVELY.
+- **DUMP_IMMINENT**: Whales are distributing. High sell pressure. GO SHORT AGGRESSIVELY.
+- **SQUEEZE_LONGS**: Many leveraged longs at risk. AVOID LONGS (cascade dump possible).
+- **SQUEEZE_SHORTS**: Many leveraged shorts at risk. AVOID SHORTS (short squeeze possible).
+- **NEUTRAL**: No clear whale activity. Use standard technical analysis.
+
+📊 LIQUIDATION PRESSURE LOGIC:
+- **LONG_HEAVY**: Many longs getting liquidated = Dump in progress. SHORT bias.
+- **SHORT_HEAVY**: Many shorts getting liquidated = Pump in progress. LONG bias.
+- **BALANCED/NONE**: Normal market. Use other signals.
+
+📈 ORDER IMBALANCE LOGIC:
+- **> +20%**: Heavy buy orders waiting. Support strong. LONG bias.
+- **< -20%**: Heavy sell orders waiting. Resistance strong. SHORT bias.
+- **-20% to +20%**: Balanced. No directional bias from order book.
+
+⚠️ CRITICAL CONFLUENCE RULES:
+1. **WHALE + TECHNICAL AGREE**: Execute with HIGH CONFIDENCE (85+).
+   - Example: PUMP_IMMINENT + RSI < 35 + Bullish Trend = STRONG LONG
+   - Example: DUMP_IMMINENT + RSI > 65 + Bearish Trend = STRONG SHORT
+
+2. **WHALE + TECHNICAL CONFLICT**: WHALE WINS (Smart Money knows more).
+   - Example: RSI < 30 (oversold) BUT DUMP_IMMINENT = NO LONG (whale selling)
+   - Example: RSI > 70 (overbought) BUT PUMP_IMMINENT = NO SHORT (whale buying)
+
+3. **LIQUIDATION WARNING**: If your intended direction matches liquidation pressure, AVOID.
+   - Example: Want LONG but LONG_HEAVY = SKIP (you'll get liquidated too)
+   - Example: Want SHORT but SHORT_HEAVY = SKIP (short squeeze risk)
 
 STRATEGY MAP based on QUANTITATIVE DATA (ADX):
 A. IF ADX < 25 (WEAK TREND / SIDEWAYS):
    - **MODE:** PING-PONG SCALPER (Mean Reversion).
-   - **ACTION:** Buy at Lower Bollinger Band. Sell at Upper Bollinger Band.
-   - **FORBIDDEN:** Do NOT chase Breakouts here (Most are fakeouts).
+   - **ACTION:** Buy at Lower BB. Sell at Upper BB. Confirm with Whale data.
+   - **WHALE OVERRIDE:** If PUMP_IMMINENT in sideways, expect breakout UP.
 
 B. IF ADX > 25 (STRONG TREND):
    - **MODE:** MOMENTUM RIDER (Trend Following).
-   - **ACTION:** Enter on Pullback to EMA 20 or Valid Breakout with Volume.
-   - **FORBIDDEN:** Do NOT Counter-Trade. (If Bullish Trend, NO SHORTS).
+   - **ACTION:** Enter on Pullback to EMA 20.
+   - **WHALE OVERRIDE:** If Whale signal contradicts trend, wait for clarity.
 
 C. IF PREDICTIVE ALPHA (THE "SMART MONEY" SETUP):
-   - **Scenario:** Price is coiling tight (Bollinger Squeeze) or moving in a Channel.
-   - **PRE-PUMP SIGNALS:**
-     1. "The Squeeze": Bands are super tight.
-     2. "Silent Accumulation": Price is flat, but Volume is slowly rising (Green candles dominant).
-     3. "Higher Lows": Sellers try to push down, but wicks keep closing higher.
-     -> ACTION: LONG on the first forceful Breakout candle.
-   - **PRE-DUMP SIGNALS:**
-     1. "Distribution": Price struggles at resistance with long Upper Wicks.
-     2. "Lower Highs": Buyers consistenly failing to make new highs.
-     3. "Bear Flag": Weak bounce after a drop.
-     -> ACTION: SHORT on the breakdown of support.
-
-D. IF EXTREME VOLATILITY (GOD CANDLE):
-   - **Action:** HARD WAIT. Stop all trading. Let the dust settle.
+   - Use Whale Signal as PRIMARY confirmation.
+   - PUMP_IMMINENT + Squeeze = IMMEDIATE LONG (Whales loading before explosion).
+   - DUMP_IMMINENT + Lower Highs = IMMEDIATE SHORT (Whales exiting).
 
 EXECUTION PARAMETERS (STRICT RISK MANAGEMENT):
    - ENTRY: Limit Order at Current Price.
-   - STOP LOSS (SL) CALCULATION for High Leverage (20x):
+   - STOP LOSS (SL):
      - LONG: Low of previous candle MINUS (ATR * 0.5) buffer.
      - SHORT: High of previous candle PLUS (ATR * 0.5) buffer.
-     - HARD CAP: SL distance MUST NOT exceed 1.5% price movement (to avoid liquidation).
-   - TAKE PROFIT (TP) CALCULATION:
-     - MINIMUM Risk-to-Reward (RR): 1:2 (TP distance must be 2x SL distance).
-     - AIM FOR: 3% - 5% price movement for Pump/Dump setups.
-   - LEVERAGE: 
-      - Predictive Alpha (Sniper) -> 15x-20x.
-      - Trend Rider -> 10x-15x.
+     - HARD CAP: SL distance MUST NOT exceed 1.5% price movement.
+   - TAKE PROFIT (TP):
+     - MINIMUM RR: 1:2 (TP = 2x SL distance).
+     - WHALE SIGNALS: Aim for 3% - 5% on PUMP/DUMP signals.
+   - LEVERAGE:
+      - PUMP/DUMP Signal (High Confidence) -> 20x.
+      - Trend Rider -> 15x.
       - Sideways Ping-Pong -> 20x (Tight SL).
 
 OUTPUT FORMAT (JSON ONLY):
-The final response content MUST be a valid raw JSON object. Do not use markdown blocks.
 {
   "symbol": "string",
   "signal": "LONG" | "SHORT" | "WAIT",
   "confidence": 0-100,
-  "reasoning": "Strategy: Predictive Alpha? Identified Accumulation/Distribution? ...",
+  "reasoning": "Whale Signal + Technical confluence analysis...",
   "trade_params": {
     "entry_price": float,
     "stop_loss": float,
@@ -90,45 +114,66 @@ The final response content MUST be a valid raw JSON object. Do not use markdown 
 
 def get_vision_prompt() -> str:
     """
-    Returns the vision analysis prompt for SCALPER mode
+    Returns the vision analysis prompt for SCALPER mode (v4.2)
+    Enhanced with Whale-Aware Pattern Recognition
     """
-    return """ACT AS: Elite Technical Chart Pattern Scanner.
-CONTEXT: Technical Screener indicates price is in a KEY ACTION ZONE.
-TASK: IDENTIFY PREDICTIVE STRUCTURES (Pump/Dump Precursors).
+    return """ACT AS: Elite Technical Chart Pattern Scanner with SMART MONEY AWARENESS.
+CONTEXT: Technical Screener + WHALE DETECTOR indicates price is in a KEY ACTION ZONE.
+TASK: IDENTIFY PREDICTIVE STRUCTURES that confirm or deny WHALE ACTIVITY.
 
-VISUAL CHECKLIST:
-1. **PREDICTIVE PATTERNS (THE ALPHA)**:
-   - **SQUEEZE / TRIANGLE**: Price coiling into a point + Low Volatility. -> PRE-BREAKOUT.
-   - **BULL FLAG**: Channel down after a sharp move up. -> BULLISH.
-   - **BEAR FLAG**: Channel up after a sharp move down. -> BEARISH.
-   - **HIGHER LOWS**: Wicks keep closing higher (Buyers stepping up). -> BULLISH.
-   - **LOWER HIGHS**: Wicks keep closing lower (Sellers pressing down). -> BEARISH.
+🐋 WHALE-AWARE VISUAL ANALYSIS:
+Focus on patterns that WHALES create during accumulation/distribution:
 
-2. **BOLLINGER BANDS**:
-   - **ALLIGATOR MOUTH**: Bands opening wide? -> EXPLOSION DETECTED.
-   - **FLAT/PARALLEL**: Sideways Range? -> RANGE PLAY.
+1. **ACCUMULATION PATTERNS (PRE-PUMP)**:
+   - **SPRING**: Sharp drop below support followed by quick recovery (Wyckoff).
+   - **HIGHER LOWS on VOLUME**: Each dip has LESS selling, HIGHER close.
+   - **TIGHT CONSOLIDATION**: Very small candles = Calm before storm.
+   - **BULLISH DIVERGENCE**: Price makes lower lows, but RSI makes higher lows.
+   -> If WHALE DATA says PUMP_IMMINENT: VOTE BULLISH with HIGH confidence.
 
-3. **CANDLESTICK SIGNALS**:
-   - **REJECTION**: Long Wicks at key levels.
-   - **MOMENTUM**: Big Marubozu candles.
+2. **DISTRIBUTION PATTERNS (PRE-DUMP)**:
+   - **UPTHRUST**: Sharp spike above resistance then REJECTED hard.
+   - **LOWER HIGHS**: Each rally has LESS buying power.
+   - **BEARISH ENGULFING at RESISTANCE**: Big red candle swallows green.
+   - **BEARISH DIVERGENCE**: Price makes higher highs, but RSI makes lower highs.
+   -> If WHALE DATA says DUMP_IMMINENT: VOTE BEARISH with HIGH confidence.
+
+3. **TRADITIONAL PATTERNS**:
+   - **SQUEEZE / TRIANGLE**: Price coiling = PRE-BREAKOUT.
+   - **BULL FLAG**: Channel down after pump = CONTINUATION.
+   - **BEAR FLAG**: Channel up after dump = CONTINUATION.
+   - **DOUBLE BOTTOM/TOP**: Classic reversal.
+
+4. **BOLLINGER BANDS**:
+   - **SQUEEZE (Bands Tight)**: EXPLOSION INCOMING.
+   - **ALLIGATOR MOUTH (Bands Opening)**: Move in progress.
+   - **RIDING THE BAND**: Strong trend, don't counter-trade.
+
+5. **DANGER SIGNALS (REJECT TRADE)**:
+   - **GOD CANDLE**: Huge candle with no context = FOMO trap.
+   - **FALLING KNIFE**: Multiple big red candles = Don't catch.
+   - **EXTENDED FROM BB**: Price too far from middle = Wait for pullback.
+   - **CHOPPY NOISE**: No clear structure = INVALID_CHOPPY.
 
 DECISION LOGIC:
-- Predictive Pattern + Contracting Bands -> VOTE BULLISH/BEARISH (Pre-Breakout / Sniper).
-- Band Expansion + Momentum AFTER Pattern -> VOTE BULLISH/BEARISH (Valid Breakout Entry).
-- Band Expansion (Random) + Big Candle -> VOTE NEUTRAL (Chase/FOMO Prevention).
-- Flat Bands + Rejection Wick -> VOTE BULLISH/BEARISH (Range Setup).
+- Accumulation Pattern + Squeeze = BULLISH (Sniper Long).
+- Distribution Pattern + Resistance = BEARISH (Sniper Short).
+- Big candle WITHOUT pattern = NEUTRAL (Chase Prevention).
+- No clear structure = INVALID_CHOPPY.
+- Extreme extension = DANGEROUS_BREAKOUT.
 
 OUTPUT FORMAT (JSON):
 {
     "verdict": "BULLISH/BEARISH/NEUTRAL",
     "confidence": <0-100>,
     "setup_valid": "VALID_SETUP" or "INVALID_CHOPPY" or "DANGEROUS_BREAKOUT",
-    "patterns_detected": ["Ascending Triangle", "Bull Flag", "Squeeze", "Higher Lows"],
+    "patterns_detected": ["Spring", "Higher Lows", "Squeeze", "Accumulation"],
+    "whale_confirmation": "Supports PUMP" or "Supports DUMP" or "Unclear",
     "key_levels": {
         "support": <price or null>,
         "resistance": <price or null>
     },
-    "analysis": "Visual analysis of predictive structures and patterns..."
+    "analysis": "Visual analysis with whale-aware interpretation..."
 }"""
 
 
@@ -156,27 +201,19 @@ class AIHandler:
         target_trigger: Dict,
         balance: float = 1000.0,
         symbol: str = "UNKNOWN",
-        metrics: Optional[Dict] = None
+        metrics: Optional[Dict] = None,
+        learning_context: str = ""
     ) -> Dict:
         """
         Analyze trading logic using DeepSeek (SCALPER MODE ONLY)
-
-        Args:
-            btc_data: BTC market context
-            target_4h: Target asset 4H data
-            target_trigger: Target asset trigger data (15M)
-            balance: Trading balance in USDT
-            symbol: Trading symbol
-            metrics: Alpha metrics from screener (Optional)
-
-        Returns:
-            Dict with trading signal and parameters
+        ...
+        learning_context: Insights from machine learning feedback loop
         """
         try:
             # Get SCALPER system prompt
             system_prompt = get_system_prompt()
-            
-            # Prepare Metrics Text
+
+            # Prepare Metrics Text (QUANTITATIVE ALPHA)
             metrics_txt = "N/A"
             if metrics:
                 vol_ratio = metrics.get('vol_ratio', 0)
@@ -186,20 +223,52 @@ class AIHandler:
                 adx = metrics.get('adx', 0)
                 atr_pct = metrics.get('atr_pct', 0)
                 ker = metrics.get('efficiency_ratio', 0)
-                
+
+                # Whale Detection Data (NEW v4.2)
+                whale_signal = metrics.get('whale_signal', 'NEUTRAL')
+                liq_pressure = metrics.get('liquidation_pressure', 'NONE')
+                order_imbalance = metrics.get('order_imbalance', 0)
+                whale_confidence = metrics.get('whale_confidence', 0)
+
                 squeeze_str = "YES (EXPLOSION IMMINENT - PREPARE ENTRY)" if is_squeeze else "NO"
-                
+
                 vol_str = f"Ratio: {vol_ratio:.2f}x | Z-Score: {vol_z_score:.2f}σ"
                 if vol_z_score > 3.0: vol_str += " (BLACK SWAN EVENT - HUGE VOLUME)"
-                
+                elif vol_z_score > 2.0: vol_str += " (WHALE ACTIVITY DETECTED)"
+
                 adx_str = f"{adx:.1f}"
                 if adx > 25: adx_str += " (TRENDING)"
                 else: adx_str += " (SIDEWAYS)"
-                
+
                 ker_str = f"{ker:.2f}"
                 if ker > 0.6: ker_str += " (SUPER CLEAN - SNIPER ENTRY)"
                 elif ker < 0.3: ker_str += " (MESSY/CHOPPY - CAUTION)"
-                
+
+                # Whale Signal Interpretation
+                whale_str = f"{whale_signal}"
+                if whale_signal == "PUMP_IMMINENT":
+                    whale_str += " 🐋🚀 (WHALES LOADING - HIGH PROBABILITY LONG)"
+                elif whale_signal == "DUMP_IMMINENT":
+                    whale_str += " 🐋📉 (WHALES EXITING - HIGH PROBABILITY SHORT)"
+                elif whale_signal == "SQUEEZE_LONGS":
+                    whale_str += " ⚠️ (LONG LIQUIDATIONS BUILDING - AVOID LONGS)"
+                elif whale_signal == "SQUEEZE_SHORTS":
+                    whale_str += " ⚠️ (SHORT LIQUIDATIONS BUILDING - AVOID SHORTS)"
+
+                # Liquidation Pressure
+                liq_str = f"{liq_pressure}"
+                if liq_pressure == "LONG_HEAVY":
+                    liq_str += " (Many leveraged longs - Dump risk HIGH)"
+                elif liq_pressure == "SHORT_HEAVY":
+                    liq_str += " (Many leveraged shorts - Pump risk HIGH)"
+
+                # Order Imbalance
+                imbalance_str = f"{order_imbalance:+.1f}%"
+                if order_imbalance > 20:
+                    imbalance_str += " (HEAVY BUY PRESSURE - Bullish)"
+                elif order_imbalance < -20:
+                    imbalance_str += " (HEAVY SELL PRESSURE - Bearish)"
+
                 metrics_txt = f"""
 QUANTITATIVE ALPHA METRICS (CRITICAL):
 - Volume: {vol_str}
@@ -208,7 +277,23 @@ QUANTITATIVE ALPHA METRICS (CRITICAL):
 - ADX Strategy: {adx_str}
 - Volatility (ATR): {atr_pct:.2f}%
 - Screener Score: {score}/100
+
+🐋 WHALE DETECTION (SMART MONEY RADAR):
+- Whale Signal: {whale_str}
+- Liquidation Pressure: {liq_str}
+- Order Book Imbalance: {imbalance_str}
+- Whale Confidence: {whale_confidence}%
+
+⚡ INTERPRETATION:
+- If Whale Signal is PUMP_IMMINENT + Order Imbalance > +15% → STRONG LONG SETUP
+- If Whale Signal is DUMP_IMMINENT + Order Imbalance < -15% → STRONG SHORT SETUP
+- If Liquidation Pressure is LONG_HEAVY → Avoid LONG (Cascade risk)
+- If Liquidation Pressure is SHORT_HEAVY → Avoid SHORT (Squeeze risk)
 """
+
+            # Inject Learning Context
+            if learning_context:
+                metrics_txt += f"\n{learning_context}\n"
 
             # Build user message with market data (SCALPER FORMAT)
             user_message = f"""SCALPER ANALYSIS REQUEST (M15 Timeframe):
@@ -216,6 +301,8 @@ QUANTITATIVE ALPHA METRICS (CRITICAL):
 {metrics_txt}
 
 GLOBAL MARKET (BTC/USDT):
+...
+
 - Trend 4H: {btc_data.get('trend_4h', 'N/A')}
 - 15M Change: {btc_data.get('pct_change_15m', btc_data.get('pct_change_1h', 0))}%
 - Direction: {btc_data.get('direction', 'N/A')}
@@ -358,18 +445,45 @@ Analyze for SCALPER entry (Mean Reversion / Ping-Pong / Predictive Alpha). Provi
         except Exception as e:
             raise Exception(f"OpenRouter vision analysis failed: {str(e)}")
 
-    def combine_analysis(self, logic_result: Dict, vision_result: Dict) -> Dict:
+    def combine_analysis(self, logic_result: Dict, vision_result: Dict, metrics: Dict = None) -> Dict:
         """
         Combine DeepSeek logic and Gemini vision results using HYBRID AGGRESSIVE VETO
-        
+        Enhanced with ML-based win probability prediction (v4.0)
+
         PHILOSOPHY: Balance Quality with Quantity for Small Cap Growth.
         Allow 'Neutral' charts if Logic is strong (Mathematical Reversal).
+        Use ML to boost confidence or veto low-probability trades.
         """
         logic_signal = logic_result.get('signal', 'WAIT')
         vision_verdict = vision_result.get('verdict', 'NEUTRAL')
         logic_confidence = logic_result.get('confidence', 0)
         vision_confidence = vision_result.get('confidence', 0)
         setup_valid = vision_result.get('setup_valid', 'VALID_SETUP')
+
+        # === 0. ML PREDICTION (if available) ===
+        ml_win_prob = 0.5
+        ml_threshold = settings.MIN_CONFIDENCE
+        ml_insights = []
+        ml_is_trained = False  # Flag: Is ML model trained with real data?
+
+        if HAS_LEARNER and metrics:
+            try:
+                prediction = learner.get_prediction(metrics)
+                ml_win_prob = prediction.win_probability
+                ml_threshold = prediction.recommended_confidence_threshold
+                ml_insights = prediction.insights
+
+                # Check if ML is actually trained (not just rule-based fallback)
+                # Rule-based fallback returns values between 0.3-0.7 typically
+                # ML model can be more extreme (closer to 0 or 1)
+                ml_is_trained = learner.model is not None and learner.scaler is not None
+
+                if ml_is_trained:
+                    logging.info(f"[ML] TRAINED Model - Win Prob: {ml_win_prob:.0%}, Threshold: {ml_threshold}%")
+                else:
+                    logging.info(f"[ML] Rule-Based Fallback - Win Prob: {ml_win_prob:.0%} (Collecting data...)")
+            except Exception as e:
+                logging.warning(f"[ML] Prediction failed: {e}")
 
         # === 1. HARD SAFETY CHECK ===
         # If Vision explicitly says chart is garbage (Choppy/Unreadable), we SKIP.
@@ -382,29 +496,56 @@ Analyze for SCALPER entry (Mean Reversion / Ping-Pong / Predictive Alpha). Provi
                 "setup_valid": setup_valid,
                 "logic_analysis": logic_result,
                 "vision_analysis": vision_result,
-                "recommendation": "SKIP (Vision Veto: Invalid/Choppy Setup)"
+                "recommendation": "SKIP (Vision Veto: Invalid/Choppy Setup)",
+                "ml_win_probability": ml_win_prob,
+                "ml_insights": ml_insights
             }
 
-        # === 2. HYBRID AGREEMENT LOGIC ===
+        # === 2. ML VETO CHECK ===
+        # ONLY apply ML Veto if ML is actually trained with real data
+        # If ML is not trained, we use standard Logic + Vision system
+        if ml_is_trained and ml_win_prob < 0.3 and logic_confidence < 85:
+            return {
+                "final_signal": "WAIT",
+                "combined_confidence": 0,
+                "agreement": False,
+                "setup_valid": setup_valid,
+                "logic_analysis": logic_result,
+                "vision_analysis": vision_result,
+                "recommendation": f"SKIP (ML Veto: Win Prob {ml_win_prob:.0%} too low)",
+                "ml_win_probability": ml_win_prob,
+                "ml_insights": ml_insights,
+                "ml_is_trained": ml_is_trained
+            }
+
+        # === 3. HYBRID AGREEMENT LOGIC ===
         agreement = False
-        
+
         # Scenario A: PERFECT AGREEMENT (Best Quality)
         if logic_signal == "LONG" and vision_verdict == "BULLISH":
             agreement = True
         elif logic_signal == "SHORT" and vision_verdict == "BEARISH":
             agreement = True
-            
+
         # Scenario B: LOGIC OVERRIDE (Quantity Booster)
         # If Vision is NEUTRAL (unsure), but DeepSeek is VERY CONFIDENT (>75%), we take it.
         # DeepSeek sees math (RSI Div) that Vision might miss.
         elif logic_signal != "WAIT" and vision_verdict == "NEUTRAL":
             if logic_confidence > 75:
                 agreement = True
-        
-        # Scenario C: CONFLICT (Safety)
+
+        # Scenario C: ML BOOST (New in v4.0)
+        # ONLY boost if ML is actually trained with real data
+        # If ML is very confident (>70% win prob), lower the logic threshold
+        elif logic_signal != "WAIT" and ml_is_trained and ml_win_prob > 0.7:
+            if logic_confidence > 65:
+                agreement = True
+                logging.info(f"[ML] Boosting trade - High ML confidence: {ml_win_prob:.0%}")
+
+        # Scenario D: CONFLICT (Safety)
         # DeepSeek says LONG, Vision says BEARISH -> HARD REJECT.
-        
-        # === 3. CONFIDENCE SYNTHESIS ===
+
+        # === 4. CONFIDENCE SYNTHESIS (ML-Enhanced) ===
         combined_confidence = 0
         if agreement:
             if vision_verdict == "NEUTRAL":
@@ -413,12 +554,19 @@ Analyze for SCALPER entry (Mean Reversion / Ping-Pong / Predictive Alpha). Provi
             else:
                 # If both agreed, average them for stability
                 combined_confidence = int((logic_confidence + vision_confidence) / 2)
-        
-        # Final Decision
+
+            # ML Confidence Boost: ONLY if ML is actually trained
+            if ml_is_trained and ml_win_prob > 0.65:
+                boost = int((ml_win_prob - 0.5) * 20)  # Up to +10 points
+                combined_confidence = min(100, combined_confidence + boost)
+                logging.info(f"[ML] Confidence boosted by {boost} (Win Prob: {ml_win_prob:.0%})")
+
+        # Final Decision (use adaptive threshold from ML)
         final_signal = logic_signal if agreement else "WAIT"
-        
+        effective_threshold = ml_threshold if HAS_LEARNER else settings.MIN_CONFIDENCE
+
         recommendation = "SKIP"
-        if agreement and combined_confidence >= settings.MIN_CONFIDENCE:
+        if agreement and combined_confidence >= effective_threshold:
             recommendation = "EXECUTE"
 
         return {
@@ -428,5 +576,9 @@ Analyze for SCALPER entry (Mean Reversion / Ping-Pong / Predictive Alpha). Provi
             "setup_valid": setup_valid,
             "logic_analysis": logic_result,
             "vision_analysis": vision_result,
-            "recommendation": recommendation
+            "recommendation": recommendation,
+            "ml_win_probability": ml_win_prob,
+            "ml_threshold": effective_threshold,
+            "ml_insights": ml_insights,
+            "ml_is_trained": ml_is_trained
         }

@@ -214,7 +214,48 @@ func (ts *TradingService) convertAISignalToDomain(aiSignal *domain.AISignalRespo
 		signal.TPPrice = aiSignal.TradeParams.TakeProfit
 	}
 
+	// Convert screener metrics for ML feedback loop
+	if aiSignal.ScreenerMetrics != nil {
+		signal.ScreenerMetrics = convertScreenerMetrics(aiSignal.ScreenerMetrics)
+	}
+
 	return signal
+}
+
+// convertScreenerMetrics converts map to ScreenerMetrics struct
+func convertScreenerMetrics(m map[string]interface{}) *domain.ScreenerMetrics {
+	getFloat := func(key string) float64 {
+		if v, ok := m[key]; ok {
+			switch val := v.(type) {
+			case float64:
+				return val
+			case int:
+				return float64(val)
+			case int64:
+				return float64(val)
+			}
+		}
+		return 0
+	}
+
+	getBool := func(key string) bool {
+		if v, ok := m[key]; ok {
+			if b, ok := v.(bool); ok {
+				return b
+			}
+		}
+		return false
+	}
+
+	return &domain.ScreenerMetrics{
+		ADX:        getFloat("adx"),
+		VolZScore:  getFloat("vol_z_score"),
+		KER:        getFloat("efficiency_ratio"),
+		IsSqueeze:  getBool("is_squeeze"),
+		Score:      getFloat("score"),
+		VolRatio:   getFloat("vol_ratio"),
+		ATRPercent: getFloat("atr_pct"),
+	}
 }
 
 // GetRecentSignals retrieves recent trading signals
@@ -395,32 +436,54 @@ func (ts *TradingService) ClosePosition(ctx context.Context, positionID uuid.UUI
 		return fmt.Errorf("failed to update balance: %w", err)
 	}
 
-	// Send Notification
-	if ts.notificationService != nil {
-		// Construct a manual signal/update for notification
-		// We can reuse SendReview or make a new one. SendReview is good.
-		// We need to fetch the original signal to pass to SendReview?
-		// Or just construct a dummy one with enough info.
-		// Let's try to fetch the signal if possible, otherwise mock it.
-		if position.SignalID != nil {
-			if sig, err := ts.signalRepo.GetByID(ctx, *position.SignalID); err == nil {
-				// Mark signal as closed in DB with WIN/LOSS result
-				resultStatus := "LOSS"
-				if pnl > 0 {
-					resultStatus = "WIN"
-				}
+	// Determine result
+	resultStatus := "LOSS"
+	if pnl > 0 {
+		resultStatus = "WIN"
+	}
 
-				// Update Signal Review Result & PnL
-				if err := ts.signalRepo.UpdateReviewStatus(ctx, sig.ID, resultStatus, &pnl); err != nil {
-					log.Printf("WARNING: Failed to update signal status on manual close: %v", err)
-				}
+	// Calculate PnL percentage
+	pnlPercent := position.CalculatePnLPercent(exitPrice)
 
-				sig.ReviewResult = &resultStatus
+	// Fetch signal for metrics and status update
+	var sig *domain.Signal
+	if position.SignalID != nil {
+		sig, _ = ts.signalRepo.GetByID(ctx, *position.SignalID)
 
-				if err := ts.notificationService.SendReview(*sig, &pnl); err != nil {
-					log.Printf("WARNING: Failed to send close notification: %v", err)
-				}
+		// Update Signal Review Result & PnL
+		if sig != nil {
+			if err := ts.signalRepo.UpdateReviewStatus(ctx, sig.ID, resultStatus, &pnlPercent); err != nil {
+				log.Printf("WARNING: Failed to update signal status on manual close: %v", err)
 			}
+		}
+	}
+
+	// Send ML Feedback to Python Engine (async, non-blocking)
+	go func() {
+		feedbackCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		feedback := &domain.FeedbackData{
+			Symbol:  position.Symbol,
+			Outcome: resultStatus,
+			PnL:     pnlPercent,
+		}
+
+		// Attach screener metrics if available from signal
+		if sig != nil && sig.ScreenerMetrics != nil {
+			feedback.Metrics = sig.ScreenerMetrics
+		}
+
+		if err := ts.aiService.SendFeedback(feedbackCtx, feedback); err != nil {
+			log.Printf("[WARN] Failed to send ML feedback: %v", err)
+		}
+	}()
+
+	// Send Notification
+	if ts.notificationService != nil && sig != nil {
+		sig.ReviewResult = &resultStatus
+		if err := ts.notificationService.SendReview(*sig, &pnl); err != nil {
+			log.Printf("WARNING: Failed to send close notification: %v", err)
 		}
 	}
 

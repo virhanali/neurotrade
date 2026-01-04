@@ -1,6 +1,7 @@
 """
-Market Screener Service
+Market Screener Service (v4.2)
 Scans Binance Futures market for high-volume, volatile opportunities
+Enhanced with Whale Detection (Liquidation + Order Book Analysis)
 """
 
 import ccxt
@@ -10,6 +11,14 @@ import ta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Optional
 from config import settings
+
+# Import Whale Detector
+try:
+    from services.whale_detector import get_whale_signal_sync
+    HAS_WHALE_DETECTOR = True
+except ImportError:
+    HAS_WHALE_DETECTOR = False
+    logging.warning("[SCREENER] Whale detector not available")
 
 
 class MarketScreener:
@@ -238,7 +247,7 @@ class MarketScreener:
                     score += (vol_ratio * 5)
                     score += (adx_val / 5)
 
-                    if score > 15: 
+                    if score > 15:
                         result = cand.copy()
                         result['score'] = score
                         result['rsi'] = rsi_val
@@ -249,8 +258,48 @@ class MarketScreener:
                         result['adx'] = adx_val
                         result['atr_pct'] = atr_pct
                         result['efficiency_ratio'] = efficiency_ratio
+
+                        # WHALE DETECTION (NEW v4.2)
+                        # Get whale signal for this candidate
+                        if HAS_WHALE_DETECTOR:
+                            try:
+                                whale_data = get_whale_signal_sync(symbol, current_price)
+                                result['whale_signal'] = whale_data.get('whale_signal', 'NEUTRAL')
+                                result['whale_confidence'] = whale_data.get('whale_confidence', 0)
+                                result['liquidation_pressure'] = whale_data.get('liquidation_pressure', 'NONE')
+                                result['order_imbalance'] = whale_data.get('order_imbalance', 0)
+                                result['large_trades_bias'] = whale_data.get('large_trades_bias', 'MIXED')
+
+                                # BOOST SCORE for strong whale signals
+                                whale_sig = result['whale_signal']
+                                whale_conf = result['whale_confidence']
+
+                                if whale_sig == 'PUMP_IMMINENT' and whale_conf > 60:
+                                    result['score'] += 50  # Major boost for pump detection
+                                    logging.info(f"[WHALE] {symbol}: PUMP signal detected! Score boosted +50")
+                                elif whale_sig == 'DUMP_IMMINENT' and whale_conf > 60:
+                                    result['score'] += 50  # Major boost for dump detection
+                                    logging.info(f"[WHALE] {symbol}: DUMP signal detected! Score boosted +50")
+                                elif whale_sig in ['SQUEEZE_LONGS', 'SQUEEZE_SHORTS']:
+                                    result['score'] += 25  # Moderate boost for squeeze
+                                    logging.info(f"[WHALE] {symbol}: {whale_sig} detected! Score boosted +25")
+                            except Exception as e:
+                                logging.warning(f"[WHALE] Detection failed for {symbol}: {e}")
+                                result['whale_signal'] = 'NEUTRAL'
+                                result['whale_confidence'] = 0
+                                result['liquidation_pressure'] = 'NONE'
+                                result['order_imbalance'] = 0
+                                result['large_trades_bias'] = 'MIXED'
+                        else:
+                            # No whale detector available
+                            result['whale_signal'] = 'NEUTRAL'
+                            result['whale_confidence'] = 0
+                            result['liquidation_pressure'] = 'NONE'
+                            result['order_imbalance'] = 0
+                            result['large_trades_bias'] = 'MIXED'
+
                         return result
-                    
+
                     return None
                     
                 except Exception as e:

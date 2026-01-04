@@ -151,15 +151,16 @@ func (r *PaperPositionRepositoryImpl) GetOpenPositions(ctx context.Context) ([]*
 	return positions, nil
 }
 
-// Update updates position status, exit price, and PnL
+// Update updates position status, exit price, PnL, and SL price (for trailing stop)
 func (r *PaperPositionRepositoryImpl) Update(ctx context.Context, position *domain.PaperPosition) error {
 	query := `
 		UPDATE paper_positions
 		SET exit_price = $1,
 		    pnl = $2,
 		    status = $3,
-		    closed_at = $4
-		WHERE id = $5
+		    closed_at = $4,
+		    sl_price = $5
+		WHERE id = $6
 	`
 
 	_, err := r.db.Exec(ctx, query,
@@ -167,6 +168,7 @@ func (r *PaperPositionRepositoryImpl) Update(ctx context.Context, position *doma
 		position.PnL,
 		position.Status,
 		position.ClosedAt,
+		position.SLPrice,
 		position.ID,
 	)
 

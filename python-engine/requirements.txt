@@ -23,6 +23,11 @@ google-generativeai==0.3.2
 
 # Database
 psycopg2-binary==2.9.9
+sqlalchemy==2.0.25
+
+# Machine Learning
+lightgbm==4.3.0
+scikit-learn==1.4.0
 
 # Utilities
 python-dotenv==1.0.0

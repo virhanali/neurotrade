@@ -18,6 +18,23 @@ from services.charter import ChartGenerator
 from services.ai_handler import AIHandler
 from services.price_stream import price_stream
 
+# ML Learner (for learning context)
+try:
+    from services.learner import learner
+    HAS_LEARNER = True
+except ImportError:
+    learner = None
+    HAS_LEARNER = False
+    logging.warning("[MAIN] Learner module not available")
+
+# Whale Detector (for liquidation stream)
+try:
+    from services.whale_detector import whale_detector, start_whale_monitoring
+    HAS_WHALE = True
+except ImportError:
+    HAS_WHALE = False
+    logging.warning("[MAIN] Whale detector not available")
+
 # Configure logging with timestamp
 logging.basicConfig(
     level=logging.INFO,
@@ -52,16 +69,27 @@ ai_handler = AIHandler()
 # Startup/Shutdown events for WebSocket
 @app.on_event("startup")
 async def startup_event():
-    """Start WebSocket price stream on app startup"""
+    """Start WebSocket price stream and whale detector on app startup"""
+    # Start price stream
     await price_stream.start()
     print("[WS] WebSocket price stream started")
+
+    # Start whale liquidation monitoring (background task)
+    if HAS_WHALE:
+        asyncio.create_task(start_whale_monitoring())
+        print("[WHALE] Liquidation stream started (background)")
 
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    """Stop WebSocket price stream on app shutdown"""
+    """Stop WebSocket price stream and whale detector on app shutdown"""
     await price_stream.stop()
     print("[WS] WebSocket price stream stopped")
+
+    # Close whale detector
+    if HAS_WHALE:
+        await whale_detector.close()
+        print("[WHALE] Whale detector closed")
 
 
 # ============================================
@@ -102,6 +130,7 @@ class SignalResult(BaseModel):
     logic_reasoning: str
     vision_analysis: str
     trade_params: Optional[TradeParams]
+    screener_metrics: Optional[Dict] = None  # ML metrics for feedback loop
 
 
 class MarketAnalysisResponse(BaseModel):
@@ -226,9 +255,14 @@ async def analyze_market(request: MarketAnalysisRequest):
                 execution_time_seconds=0
              )
 
-        # Step 3: Analyze each opportunity IN PARALLEL
-        semaphore = asyncio.Semaphore(6)  # Max 6 coins analyzed simultaneously
-        
+        # Run all symbol analyses in parallel
+        # NEW: Get Learning Context (Global Wisdom)
+        learning_ctx = ""
+        if HAS_LEARNER and learner:
+            learning_ctx = learner.get_learning_context()
+            if learning_ctx.strip():
+                print(f"[LEARNING] Context Injected: {learning_ctx.strip()}")
+
         async def analyze_single_candidate(candidate: Dict) -> Optional[SignalResult]:
             """Analyze a single candidate - runs concurrently"""
             symbol = candidate['symbol']
@@ -253,7 +287,7 @@ async def analyze_market(request: MarketAnalysisRequest):
                     )
 
                     # Run AI analysis concurrently (DeepSeek + Gemini)
-                    # Logic args: btc_data, target_4h, target_trigger(15m), balance, symbol, metrics
+                    # Logic args: btc_data, target_4h, target_trigger(15m), balance, symbol, metrics, learning_context
                     logic_task = asyncio.create_task(
                         asyncio.to_thread(
                             ai_handler.analyze_logic,
@@ -262,7 +296,8 @@ async def analyze_market(request: MarketAnalysisRequest):
                             target_data.get('data_15m', {}),
                             request.balance,
                             symbol,
-                            candidate # PASSING METRICS HERE (Alpha Data)
+                            candidate, # Metrics
+                            learning_ctx # Wisdom
                         )
                     )
 
@@ -276,11 +311,12 @@ async def analyze_market(request: MarketAnalysisRequest):
 
                     logic_result, vision_result = await asyncio.gather(logic_task, vision_task)
 
-                    # Combine results
-                    combined = ai_handler.combine_analysis(logic_result, vision_result)
+                    # Combine results (pass metrics for ML prediction)
+                    combined = ai_handler.combine_analysis(logic_result, vision_result, metrics=candidate)
 
                     if combined.get('recommendation') == 'EXECUTE':
-                        logging.info(f"[SIGNAL] SIGNAL FOUND: {symbol} {combined.get('final_signal')} (Conf: {combined.get('combined_confidence')}%)")
+                        ml_prob = combined.get('ml_win_probability', 0.5)
+                        logging.info(f"[SIGNAL] SIGNAL FOUND: {symbol} {combined.get('final_signal')} (Conf: {combined.get('combined_confidence')}%, ML: {ml_prob:.0%})")
                         trade_params = logic_result.get('trade_params')
                         return SignalResult(
                             symbol=symbol,
@@ -290,7 +326,8 @@ async def analyze_market(request: MarketAnalysisRequest):
                             recommendation=combined['recommendation'],
                             logic_reasoning=logic_result.get('reasoning', ''),
                             vision_analysis=vision_result.get('analysis', ''),
-                            trade_params=TradeParams(**trade_params) if trade_params else None
+                            trade_params=TradeParams(**trade_params) if trade_params else None,
+                            screener_metrics=candidate  # Pass metrics for feedback loop
                         )
                     return None
 
@@ -320,7 +357,7 @@ async def analyze_market(request: MarketAnalysisRequest):
         return MarketAnalysisResponse(
             timestamp=end_time,
             btc_context=btc_context,
-            opportunities_screened=len(top_symbols),
+            opportunities_screened=len(top_candidates),
             valid_signals=valid_signals,
             execution_time_seconds=round(execution_time, 2)
         )
@@ -330,6 +367,165 @@ async def analyze_market(request: MarketAnalysisRequest):
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+class FeedbackRequest(BaseModel):
+    symbol: str
+    outcome: str # "WIN" or "LOSS"
+    pnl: float
+    metrics: Optional[Dict] = {}
+
+@app.post("/feedback")
+async def feedback(request: FeedbackRequest):
+    """Endpoint to receive trade feedback from Go backend"""
+    try:
+        from services.learner import learner
+        learner.record_outcome(request.symbol, request.metrics, request.outcome, request.pnl)
+        return {"status": "ok"}
+    except Exception as e:
+        logging.error(f"Feedback error: {str(e)}")
+        return {"status": "error", "detail": str(e)}
+
+
+@app.get("/ml/stats")
+async def ml_stats():
+    """Get ML model performance statistics"""
+    try:
+        from services.learner import learner
+        stats = learner.get_performance_stats()
+        regime = learner.get_market_regime()
+        threshold = learner.get_recommended_threshold()
+
+        return {
+            "status": "ok",
+            "stats": stats,
+            "market_regime": {
+                "regime": regime.regime,
+                "win_rate": regime.win_rate,
+                "avg_pnl": regime.avg_pnl,
+                "sample_size": regime.sample_size,
+                "confidence": regime.confidence
+            },
+            "recommended_confidence_threshold": threshold
+        }
+    except Exception as e:
+        logging.error(f"ML stats error: {str(e)}")
+        return {"status": "error", "detail": str(e)}
+
+
+class PredictionRequest(BaseModel):
+    metrics: Dict
+
+
+@app.post("/ml/predict")
+async def ml_predict(request: PredictionRequest):
+    """Get ML prediction for a set of metrics"""
+    try:
+        from services.learner import learner
+        prediction = learner.get_prediction(request.metrics)
+
+        return {
+            "status": "ok",
+            "win_probability": prediction.win_probability,
+            "recommended_threshold": prediction.recommended_confidence_threshold,
+            "regime": prediction.regime.regime,
+            "insights": prediction.insights
+        }
+    except Exception as e:
+        logging.error(f"ML prediction error: {str(e)}")
+        return {"status": "error", "detail": str(e)}
+
+
+# ============================================
+# Whale Detection Endpoints (NEW v4.2)
+# ============================================
+
+@app.get("/whale/status")
+async def whale_status():
+    """Get whale detector status and connection info"""
+    if not HAS_WHALE:
+        return {"status": "unavailable", "reason": "Whale detector not imported"}
+
+    return {
+        "status": "ok",
+        "liquidation_stream_connected": whale_detector.ws_connected,
+        "tracked_symbols": len(whale_detector.liquidations),
+        "orderbook_cache_size": len(whale_detector.orderbook_cache),
+        "oi_cache_size": len(whale_detector.oi_cache)
+    }
+
+
+class WhaleDetectRequest(BaseModel):
+    symbol: str
+    current_price: Optional[float] = 0
+
+
+@app.post("/whale/detect")
+async def whale_detect(request: WhaleDetectRequest):
+    """
+    Detect whale activity for a specific symbol
+
+    Returns:
+        - signal: PUMP_IMMINENT, DUMP_IMMINENT, SQUEEZE_LONGS, SQUEEZE_SHORTS, NEUTRAL
+        - confidence: 0-100
+        - liquidation_pressure: LONG_HEAVY, SHORT_HEAVY, BALANCED, NONE
+        - order_imbalance: -100 to +100
+        - large_trades_bias: BUYING, SELLING, MIXED
+    """
+    if not HAS_WHALE:
+        return {
+            "status": "error",
+            "reason": "Whale detector not available"
+        }
+
+    try:
+        signal = await whale_detector.detect_whale_activity(
+            request.symbol,
+            request.current_price
+        )
+
+        return {
+            "status": "ok",
+            "symbol": request.symbol,
+            "signal": signal.signal,
+            "confidence": signal.confidence,
+            "liquidation_pressure": signal.liquidation_pressure,
+            "order_imbalance": signal.order_imbalance,
+            "large_trades_bias": signal.large_trades_bias,
+            "reasoning": signal.reasoning,
+            "timestamp": signal.timestamp
+        }
+    except Exception as e:
+        logging.error(f"Whale detection error: {str(e)}")
+        return {"status": "error", "detail": str(e)}
+
+
+@app.get("/whale/liquidations/{symbol}")
+async def whale_liquidations(symbol: str):
+    """Get recent liquidation events for a symbol"""
+    if not HAS_WHALE:
+        return {"status": "error", "reason": "Whale detector not available"}
+
+    normalized = symbol.replace('/', '').upper()
+    pressure, long_liq, short_liq = whale_detector.get_liquidation_pressure(normalized)
+
+    events = []
+    if normalized in whale_detector.liquidations:
+        for event in list(whale_detector.liquidations[normalized])[-20:]:  # Last 20
+            events.append({
+                "side": event.side,
+                "quantity_usd": event.quantity,
+                "price": event.price,
+                "timestamp": event.timestamp
+            })
+
+    return {
+        "status": "ok",
+        "symbol": normalized,
+        "pressure": pressure,
+        "long_liquidations_usd": long_liq,
+        "short_liquidations_usd": short_liq,
+        "recent_events": events
+    }
 
 
 if __name__ == "__main__":

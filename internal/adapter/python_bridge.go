@@ -186,3 +186,56 @@ func (pb *PythonBridge) GetWebSocketPrices(ctx context.Context, symbols []string
 
 	return pricesResp.Prices, nil
 }
+
+// SendFeedback sends trade outcome to Python ML engine for learning
+func (pb *PythonBridge) SendFeedback(ctx context.Context, feedback *domain.FeedbackData) error {
+	// Prepare request body matching Python's FeedbackRequest model
+	reqBody := map[string]interface{}{
+		"symbol":  feedback.Symbol,
+		"outcome": feedback.Outcome,
+		"pnl":     feedback.PnL,
+		"metrics": map[string]interface{}{},
+	}
+
+	// Add metrics if available
+	if feedback.Metrics != nil {
+		reqBody["metrics"] = map[string]interface{}{
+			"adx":              feedback.Metrics.ADX,
+			"vol_z_score":      feedback.Metrics.VolZScore,
+			"efficiency_ratio": feedback.Metrics.KER,
+			"is_squeeze":       feedback.Metrics.IsSqueeze,
+			"score":            feedback.Metrics.Score,
+			"vol_ratio":        feedback.Metrics.VolRatio,
+			"atr_pct":          feedback.Metrics.ATRPercent,
+		}
+	}
+
+	jsonData, err := json.Marshal(reqBody)
+	if err != nil {
+		return fmt.Errorf("failed to marshal feedback request: %w", err)
+	}
+
+	// Create HTTP request
+	url := fmt.Sprintf("%s/feedback", pb.baseURL)
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to create feedback request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	// Execute request (non-blocking, fire-and-forget pattern)
+	resp, err := pb.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send feedback to Python engine: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("Python engine feedback failed: status=%d, body=%s", resp.StatusCode, string(body))
+	}
+
+	log.Printf("[ML] Feedback sent: %s %s (PnL: %.2f%%)", feedback.Symbol, feedback.Outcome, feedback.PnL)
+	return nil
+}
