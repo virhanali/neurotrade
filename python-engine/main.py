@@ -246,9 +246,10 @@ async def analyze_market(request: MarketAnalysisRequest):
                         logging.warning(f"[WARN] No chart data available for {symbol}")
                         return None
 
-                    # Generate chart image
+                    # Generate chart image with correct interval label
+                    interval_label = "15M" if mode == "SCALPER" else "1H"
                     chart_buffer = await asyncio.to_thread(
-                        charter.generate_chart_image, chart_df, symbol
+                        charter.generate_chart_image, chart_df, symbol, interval_label
                     )
 
                     # Run AI analysis concurrently (DeepSeek + Gemini)

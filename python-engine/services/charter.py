@@ -31,64 +31,105 @@ class ChartGenerator:
             edgecolor='#2a2e39',
         )
 
-    def generate_chart_image(self, df: pd.DataFrame, symbol: str) -> BytesIO:
+    def generate_chart_image(self, df: pd.DataFrame, symbol: str, interval: str = "1H") -> BytesIO:
         """
-        Generate candlestick chart with Bollinger Bands and Volume
-
+        Generate candlestick chart with Smart Money Visual Cues (Volume Climax & Structure)
+        
         Args:
-            df: DataFrame with OHLCV data (must have datetime index)
-            symbol: Trading pair name for title
+            df: DataFrame with OHLCV data
+            symbol: Trading pair name
+            interval: Timeframe label
 
         Returns:
             BytesIO buffer containing PNG image
         """
         try:
-            # Calculate Bollinger Bands
-            rolling_mean = df['close'].rolling(window=20).mean()
-            rolling_std = df['close'].rolling(window=20).std()
-            df['bb_upper'] = rolling_mean + (rolling_std * 2)
-            df['bb_middle'] = rolling_mean
-            df['bb_lower'] = rolling_mean - (rolling_std * 2)
+            # Focus on recent data (last 60 candles)
+            plot_df = df.tail(60).copy() if len(df) > 60 else df.copy()
 
-            # Add plots for Bollinger Bands
-            add_plots = [
-                mpf.make_addplot(df['bb_upper'], color='#787b86', linestyle='--', width=0.7),
-                mpf.make_addplot(df['bb_middle'], color='#2962ff', linestyle='-', width=1),
-                mpf.make_addplot(df['bb_lower'], color='#787b86', linestyle='--', width=0.7),
-            ]
+            # 1. VOLUME CLIMAX LOGIC
+            # Calculate Volume MA
+            vol_ma = plot_df['volume'].rolling(window=20).mean()
+            
+            # Define Volume Colors based on Relative Volume (RVOL)
+            # Default: Grey (Noise)
+            # High (>1.5x): Cyan (Activity)
+            # Climax (>2.5x): Yellow (Smart Money / Stopping Volume)
+            vol_colors = []
+            for i in range(len(plot_df)):
+                vol = plot_df['volume'].iloc[i]
+                avg = vol_ma.iloc[i] if pd.notna(vol_ma.iloc[i]) else vol
+                
+                if vol > 2.5 * avg:
+                    vol_colors.append('#ffd700')  # GOLD for Climax
+                elif vol > 1.5 * avg:
+                    vol_colors.append('#00e5ff')  # CYAN for High Activity
+                else:
+                    vol_colors.append('#363a45')  # GREY for Normal
+            
+            # 2. STRUCTURE (Simulated Support/Resistance)
+            # Find recent significant Swing High/Low in the visible window
+            recent_low = plot_df['low'].min()
+            recent_high = plot_df['high'].max()
+            
+            add_plots = []
+            
+            # Add Volume Climax Overlay (We need to use 'volume' kwarg in plot, but we can pass colors)
+            # Actually, mpf handles volume colors via marketcolors, but that's global.
+            # To have specific bar colors, we might need a workaround or accept global styling.
+            # Workaround: We will use the 'volume' argument in mpf.plot and pass `volume_panel=1`. 
+            # MPF doesn't easily support per-bar volume colors without custom overrides. 
+            # SIMPLER ALTERNATIVE: We plot dots on the price chart to signal volume climax.
+            
+            # Add "Smart Money" Signal Dots on Price
+            # Yellow Dot below candle = Climax Volume (Attention!)
+            climax_signals = [plot_df['low'].iloc[i] * 0.995 if plot_df['volume'].iloc[i] > 2.5 * vol_ma.iloc[i] else float('nan') for i in range(len(plot_df))]
+            
+            add_plots.append(
+                 mpf.make_addplot(climax_signals, type='scatter', markersize=40, marker='^', color='#ffd700', panel=0)
+            )
 
-            # Add EMA if available
-            if 'ema_50' in df.columns and not df['ema_50'].isna().all():
-                add_plots.append(
-                    mpf.make_addplot(df['ema_50'], color='#ff6d00', linestyle='-', width=1.5)
-                )
+            # Bollinger Bands
+            if 'bb_upper' in plot_df.columns:
+                add_plots.extend([
+                    mpf.make_addplot(plot_df['bb_upper'], color='#787b86', linestyle='--', width=0.8),
+                    mpf.make_addplot(plot_df['bb_middle'], color='#2962ff', linestyle='-', width=1.0),
+                    mpf.make_addplot(plot_df['bb_lower'], color='#787b86', linestyle='--', width=0.8),
+                ])
 
-            if 'ema_200' in df.columns and not df['ema_200'].isna().all():
-                add_plots.append(
-                    mpf.make_addplot(df['ema_200'], color='#00bcd4', linestyle='-', width=1.5)
-                )
+            # EMAs
+            if 'ema_50' in plot_df.columns:
+                add_plots.append(mpf.make_addplot(plot_df['ema_50'], color='#ff6d00', linestyle='-', width=1.2))
+            if 'ema_200' in plot_df.columns:
+                add_plots.append(mpf.make_addplot(plot_df['ema_200'], color='#00bcd4', linestyle='-', width=1.5))
+                
+            # Horizontal Lines for S/R (Visual Guide)
+            hlines = dict(hlines=[recent_low, recent_high], colors=['#4caf50', '#f44336'], linestyle=':', linewidths=0.8, alpha=0.6)
 
-            # Create figure
+            # Create figure with HIGHER DPI
+            # We override volume style slightly via make_marketcolors logic if possible, 
+            # but for now, the YELLOW DOTS on price are a clearer signal for Vision AI than colored volume bars.
             fig, axes = mpf.plot(
-                df,
+                plot_df,
                 type='candle',
                 style=self.style,
                 volume=True,
                 addplot=add_plots,
-                title=f'{symbol} - 1H Chart',
-                ylabel='Price (USDT)',
-                ylabel_lower='Volume',
+                hlines=hlines,
+                title=f'{symbol} - {interval} (Smart Money View)',
+                ylabel='Price',
+                ylabel_lower='Vol',
                 figsize=(12, 8),
                 returnfig=True,
                 warn_too_much_data=200,
+                tight_layout=True
             )
 
             # Save to buffer
             buffer = BytesIO()
-            fig.savefig(buffer, format='png', dpi=100, bbox_inches='tight', facecolor='#1e222d')
+            fig.savefig(buffer, format='png', dpi=120, bbox_inches='tight', facecolor='#1e222d')
             buffer.seek(0)
 
-            # Close figure and clear memory aggressively
             plt.close(fig)
             plt.close('all')
             gc.collect()

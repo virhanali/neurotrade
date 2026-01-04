@@ -133,47 +133,63 @@ class MarketScreener:
 
                     # --- Tech Analysis ---
 
-                    # A. Volume Filter (15m) - LOOSENED for more quantity
-                    # Only skip if volume is significantly BELOW average (dead market)
+                    # A. Volume Logic (Smart Money Context)
+                    # Calculate Volume Ratio
                     avg_vol = df_15m['volume'].rolling(window=20).mean().iloc[-1]
                     cur_vol = df_15m['volume'].iloc[-1]
                     vol_ratio = cur_vol / avg_vol if avg_vol > 0 else 0
                     
-                    if vol_ratio < 0.8:  # Was 1.2, now only skip if < 0.8 (very low)
+                    # B. Bollinger Band Squeeze Detection
+                    # BandWidth = (Upper - Lower) / Middle
+                    rolling_mean = df_15m['close'].rolling(window=20).mean()
+                    rolling_std = df_15m['close'].rolling(window=20).std()
+                    bb_upper = rolling_mean + (rolling_std * 2)
+                    bb_lower = rolling_mean - (rolling_std * 2)
+                    bb_width = (bb_upper.iloc[-1] - bb_lower.iloc[-1]) / rolling_mean.iloc[-1]
+                    
+                    is_squeeze = bb_width < 0.02  # Less than 2% width = SQUEEZE
+
+                    # FILTER LOGIC:
+                    # 1. Reject Dead Coins (Vol < 0.5x Avg) UNLESS it's a Squeeze (Accumulation)
+                    if vol_ratio < 0.5 and not is_squeeze:
                         return None
 
-                    # B. Trend Filter (4H EMA 200) - Keep for direction
+                    # C. Trend Filter (4H EMA 200) - Keep for direction
                     ema_200_4h = ta.trend.ema_indicator(df_4h['close'], window=200).iloc[-1]
                     current_price = df_15m['close'].iloc[-1]
-                    
                     major_trend = "BULL" if current_price > ema_200_4h else "BEAR"
 
-                    # C. RSI (15m)
+                    # D. RSI (15m)
                     rsi_val = ta.momentum.rsi(df_15m['close'], window=14).iloc[-1]
                     
-                    # D. Confluence Logic - LOOSENED RSI zones
+                    # E. Scoring System (Hybrid: Volatility + Squeeze)
                     score = 0
                     
-                    if major_trend == "BULL":
-                        if rsi_val < 50:  # Was 45, now accept up to 50 (wider)
-                            score = (55 - rsi_val) + (vol_ratio * 3)
-                    elif major_trend == "BEAR":
-                        if rsi_val > 50:  # Was 55, now accept down to 50 (wider)
-                            score = (rsi_val - 45) + (vol_ratio * 3)
-
-                    # REMOVED strict RSI zone filter - let AI decide quality
-                    # Previously: if 40 <= rsi_val <= 60 and vol_ratio < 3.0: return None
+                    # Scenario 1: Predictive Alpha (Squeeze) -> HIGHEST PRIORITY
+                    if is_squeeze:
+                         score += 50  # Huge bonus for squeeze
+                         if vol_ratio > 1.0: score += 20  # Squeeze + Volume = BREAKOUT IMMINENT
                     
-                    # Give minimum score if trend-aligned (let AI evaluate)
-                    if score == 0 and vol_ratio >= 1.0:
-                        score = 1 + (vol_ratio * 2)  # Base score for decent volume
+                    # Scenario 2: Reversal Play (RSI Extreme)
+                    elif rsi_val < 35 and major_trend == "BULL": # Oversold in Uptrend
+                        score += (35 - rsi_val) * 2
+                    elif rsi_val > 65 and major_trend == "BEAR": # Overbought in Downtrend
+                        score += (rsi_val - 65) * 2
                         
-                    if score > 0:
+                    # Scenario 3: Breakout Play (Volume Spike)
+                    elif vol_ratio > 2.0:
+                        score += 30
+                    
+                    # Baseline Volume Score
+                    score += (vol_ratio * 5)
+
+                    if score > 10: # Only return decent candidates
                         result = cand.copy()
                         result['score'] = score
                         result['rsi'] = rsi_val
                         result['trend'] = major_trend
                         result['vol_ratio'] = vol_ratio
+                        result['is_squeeze'] = is_squeeze
                         return result
                     
                     return None

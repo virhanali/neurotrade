@@ -31,20 +31,43 @@ CONTEXT: This candidate has ALREADY PASSED strict technical filters:
 
 YOUR MISSION: Validate the M15 Swing Setup and generate PRECISE execution parameters.
 
-STRATEGY (M15 MOMENTUM SWING):
-1. CONFIRMATION TRIGGERS:
-   - LONG: Price rejection at Support/Lower Band + Bullish Candle Close.
-   - SHORT: Price rejection at Resistance/Upper Band + Bearish Candle Close.
-   - IGNORE if candle body is tiny (Doji) in the middle of nowhere (Choppy).
+CRITICAL WARNING (LOSS PREVENTION):
+- DO NOT FIGHT MOMENTUM. Touching a Bollinger Band is NOT a signal.
+- RSI > 70 is NOT a Short signal if the last candle is a big Green Marubozu (Breakout).
+- RSI < 30 is NOT a Long signal if the last candle is a big Red Marubozu (Dump).
+- YOU MUST SEE REJECTION (Long Wicks) or REVERSAL PATTERNS (Engulfing) before entry.
 
-2. EXECUTION PARAMETERS:
-   - ENTRY: Limit Order at Current Price or slightly better.
-   - STOP LOSS: TIGHT. Just below Swing Low (Long) or above Swing High (Short). Max 1-2% distance.
-   - TAKE PROFIT: Minimum 1.5R. Target the opposite Bollinger Band or Swing liquidity.
+STRATEGY MAP based on MARKET STRUCTURE:
+A. IF BANDS ARE FLAT (SIDEWAYS):
+   - **Action:** AGGRESSIVE Ping-Pong. Buy Low, Sell High. target opposite band.
 
-3. DYNAMIC LEVERAGE:
-   - High Conviction + Tight Stop = Higher Leverage (10x-20x).
-   - Low Volatility / Wide Stop = Lower Leverage (5x-10x).
+B. IF BANDS ARE ANGLED (TRENDING):
+   - **Action:** CONSERVATIVE Pullback. Only enter on retest of EMA 20.
+
+C. IF PREDICTIVE ALPHA (THE "SMART MONEY" SETUP):
+   - **Scenario:** Price is coiling tight (Bollinger Squeeze) or moving in a Channel.
+   - **PRE-PUMP SIGNALS:**
+     1. "The Squeeze": Bands are super tight.
+     2. "Silent Accumulation": Price is flat, but Volume is slowly rising (Green candles dominant).
+     3. "Higher Lows": Sellers try to push down, but wicks keep closing higher.
+     -> ACTION: LONG on the first forceful Breakout candle.
+   - **PRE-DUMP SIGNALS:**
+     1. "Distribution": Price struggles at resistance with long Upper Wicks.
+     2. "Lower Highs": Buyers consistenly failing to make new highs.
+     3. "Bear Flag": Weak bounce after a drop.
+     -> ACTION: SHORT on the breakdown of support.
+
+D. IF EXTREME VOLATILITY (GOD CANDLE):
+   - **Action:** HARD WAIT. Stop all trading. Let the dust settle.
+
+EXECUTION PARAMETERS:
+   - ENTRY: Limit Order.
+   - STOP LOSS: TIGHT.
+   - LEVERAGE: 
+      - Predictive Alpha (Sniper) -> 12x-20x (Tight Stop, Huge Reward).
+      - Sideways -> 10x-20x.
+      - Trending -> 5x-10x.
+      - God Candle -> 0x.
 
 OUTPUT FORMAT (JSON ONLY):
 The final response content MUST be a valid raw JSON object. Do not use markdown blocks.
@@ -52,7 +75,7 @@ The final response content MUST be a valid raw JSON object. Do not use markdown 
   "symbol": "string",
   "signal": "LONG" | "SHORT" | "WAIT",
   "confidence": 0-100,
-  "reasoning": "Quick validation of M15 trigger...",
+  "reasoning": "Strategy: Predictive Alpha? Identified Accumulation/Distribution? ...",
   "trade_params": {
     "entry_price": float,
     "stop_loss": float,
@@ -106,30 +129,42 @@ def get_vision_prompt(mode: str = "INVESTOR") -> str:
     """
     if mode == "SCALPER":
         return """ACT AS: Elite Technical Chart Pattern Scanner.
-CONTEXT: Technical Screener indicates price is in a KEY ACTION ZONE (Oversold/Overbought) with Momentum.
-TASK: VERIFY if the CANDLESTICK PATTERNS at the rightmost edge confirm a reversal.
+CONTEXT: Technical Screener indicates price is in a KEY ACTION ZONE.
+TASK: IDENTIFY PREDICTIVE STRUCTURES (Pump/Dump Precursors).
 
-LOOK FOR (VISUAL CONFIRMATION):
-1. **REJECTION WICKS (Pinbars)**: Long shadows rejecting lower/upper prices.
-2. **MOMENTUM SHIFT (Engulfing)**: A strong opposite color candle swallowing the previous one.
-3. **STRUCTURE**: Is price bouncing off a visible Support/Resistance line?
+VISUAL CHECKLIST:
+1. **PREDICTIVE PATTERNS (THE ALPHA)**:
+   - **SQUEEZE / TRIANGLE**: Price coiling into a point + Low Volatility. -> PRE-BREAKOUT.
+   - **BULL FLAG**: Channel down after a sharp move up. -> BULLISH.
+   - **BEAR FLAG**: Channel up after a sharp move down. -> BEARISH.
+   - **HIGHER LOWS**: Wicks keep closing higher (Buyers stepping up). -> BULLISH.
+   - **LOWER HIGHS**: Wicks keep closing lower (Sellers pressing down). -> BEARISH.
+
+2. **BOLLINGER BANDS**:
+   - **ALLIGATOR MOUTH**: Bands opening wide? -> EXPLOSION DETECTED.
+   - **FLAT/PARALLEL**: Sideways Range? -> RANGE PLAY.
+
+3. **CANDLESTICK SIGNALS**:
+   - **REJECTION**: Long Wicks at key levels.
+   - **MOMENTUM**: Big Marubozu candles.
 
 DECISION LOGIC:
-- Strong Reversal Candle (Hammer/Shooting Star) -> VOTE BULLISH/BEARISH.
-- Big Red Candle with NO Wick (Falling Knife) -> VOTE NEUTRAL (Wait).
-- Indecisive Dojis in a row -> VOTE NEUTRAL (Review later).
+- Predictive Pattern + Contracting Bands -> VOTE BULLISH/BEARISH (Pre-Breakout / Sniper).
+- Band Expansion + Momentum AFTER Pattern -> VOTE BULLISH/BEARISH (Valid Breakout Entry).
+- Band Expansion (Random) + Big Candle -> VOTE NEUTRAL (Chase/FOMO Prevention).
+- Flat Bands + Rejection Wick -> VOTE BULLISH/BEARISH (Range Setup).
 
 OUTPUT FORMAT (JSON):
 {
     "verdict": "BULLISH/BEARISH/NEUTRAL",
     "confidence": <0-100>,
-    "setup_valid": "VALID_SETUP" or "INVALID_CHOPPY",
-    "patterns_detected": ["Hammer", "Engulfing", "Support Bounce"],
+    "setup_valid": "VALID_SETUP" or "INVALID_CHOPPY" or "DANGEROUS_BREAKOUT",
+    "patterns_detected": ["Ascending Triangle", "Bull Flag", "Squeeze", "Higher Lows"],
     "key_levels": {
         "support": <price or null>,
         "resistance": <price or null>
     },
-    "analysis": "Visual confirmation of reversal..."
+    "analysis": "Visual analysis of predictive structures and patterns..."
 }"""
     else:  # INVESTOR mode
         return """Analyze this candlestick chart. Identify key patterns and technical signals.
