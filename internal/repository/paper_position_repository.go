@@ -316,6 +316,41 @@ func (r *PaperPositionRepositoryImpl) GetClosedPositionsHistory(ctx context.Cont
 	return history, nil
 }
 
+// GetClosedPositionsHistorySince retrieves closed positions since a specific time
+func (r *PaperPositionRepositoryImpl) GetClosedPositionsHistorySince(ctx context.Context, userID uuid.UUID, since time.Time, limit int) ([]domain.PnLHistoryEntry, error) {
+	query := `
+		SELECT closed_at, COALESCE(pnl, 0)
+		FROM paper_positions
+		WHERE user_id = $1 
+		AND status IN ('CLOSED_WIN', 'CLOSED_LOSS', 'CLOSED_MANUAL')
+		AND closed_at IS NOT NULL
+		AND closed_at >= $2
+		ORDER BY closed_at ASC
+		LIMIT $3
+	`
+
+	rows, err := r.db.Query(ctx, query, userID, since, limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query history since: %w", err)
+	}
+	defer rows.Close()
+
+	var history []domain.PnLHistoryEntry
+	for rows.Next() {
+		var entry domain.PnLHistoryEntry
+		if err := rows.Scan(&entry.ClosedAt, &entry.PnL); err != nil {
+			return nil, fmt.Errorf("failed to scan history entry: %w", err)
+		}
+		history = append(history, entry)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating history rows: %w", err)
+	}
+
+	return history, nil
+}
+
 // GetClosedPositions retrieves closed positions for a user with all details
 func (r *PaperPositionRepositoryImpl) GetClosedPositions(ctx context.Context, userID uuid.UUID, limit int) ([]*domain.PaperPosition, error) {
 	query := `

@@ -8,7 +8,7 @@ import (
 
 	"neurotrade/internal/domain"
 	"neurotrade/internal/middleware"
-	authmiddleware "neurotrade/internal/middleware"
+
 	"neurotrade/internal/utils"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -463,7 +463,7 @@ func (h *WebHandler) getSystemStats(c echo.Context) (map[string]interface{}, err
 
 // HandleHistoryHTML renders the table rows for trade history
 func (h *WebHandler) HandleHistoryHTML(c echo.Context) error {
-	userID, err := authmiddleware.GetUserID(c)
+	userID, err := middleware.GetUserID(c)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusUnauthorized, "Invalid user")
 	}
@@ -577,6 +577,48 @@ func RegisterWebRoutes(e *echo.Echo, handler *WebHandler, authMiddleware echo.Mi
 	e.GET("/dashboard/:tab", handler.HandleDashboard, authMiddleware)
 	e.GET("/api/user/positions/html", handler.HandlePositionsHTML, authMiddleware)
 	e.GET("/api/user/history/html", handler.HandleHistoryHTML, authMiddleware)
+	e.GET("/api/user/positions/count", handler.HandlePositionsCount, authMiddleware)
 }
 
-// RegisterWebRoutes registers all web routes (HTML pages)
+// HandlePositionsCount returns the count of active positions as a plain string (for HTMX)
+func (h *WebHandler) HandlePositionsCount(c echo.Context) error {
+	userID, ok := c.Get("user_id").(uuid.UUID)
+	if !ok {
+		return c.String(http.StatusUnauthorized, "0")
+	}
+
+	ctx := c.Request().Context()
+
+	// Check if user is admin
+	isAdmin := false
+	if user, err := h.userRepo.GetByID(ctx, userID); err == nil {
+		isAdmin = user.Role == domain.RoleAdmin
+	}
+
+	var count int
+	var err error
+
+	if isAdmin {
+		var positions []*domain.PaperPosition
+		positions, err = h.positionRepo.GetOpenPositions(ctx)
+		count = len(positions)
+	} else {
+		// For regular users, we need to filter open positions from their list
+		// Optimization: Add GetOpenPositionsByUserID to repo later
+		var positions []*domain.PaperPosition
+		positions, err = h.positionRepo.GetByUserID(ctx, userID)
+		if err == nil {
+			for _, pos := range positions {
+				if pos.Status == domain.StatusOpen {
+					count++
+				}
+			}
+		}
+	}
+
+	if err != nil {
+		return c.String(http.StatusOK, "0") // Default to 0 on error
+	}
+
+	return c.String(http.StatusOK, fmt.Sprintf("%d", count))
+}

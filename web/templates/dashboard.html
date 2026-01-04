@@ -58,6 +58,43 @@
             }
         }
 
+        // Custom Dropdown Logic
+        function toggleDropdown(id) {
+            const dropdown = document.getElementById(id);
+            const menu = dropdown.querySelector('.dropdown-menu');
+            const isOpen = !menu.classList.contains('hidden');
+
+            // Close all other dropdowns
+            document.querySelectorAll('.dropdown-menu').forEach(m => m.classList.add('hidden'));
+
+            if (!isOpen) {
+                menu.classList.remove('hidden');
+            }
+        }
+
+        function selectDropdownOption(dropdownId, value, label, callbackName, customCallback) {
+            const dropdown = document.getElementById(dropdownId);
+            const trigger = dropdown.querySelector('.dropdown-trigger span');
+            trigger.innerText = label;
+
+            // Hide menu
+            dropdown.querySelector('.dropdown-menu').classList.add('hidden');
+
+            // Execute callback
+            if (customCallback && typeof customCallback === 'function') {
+                customCallback(value);
+            } else if (callbackName && window[callbackName]) {
+                window[callbackName](value);
+            }
+        }
+
+        // Close dropdowns when clicking outside
+        window.onclick = function (event) {
+            if (!event.target.closest('.dropdown-container')) {
+                document.querySelectorAll('.dropdown-menu').forEach(m => m.classList.add('hidden'));
+            }
+        }
+
         // Sidebar Logic
         function toggleSidebar() {
             const sidebar = document.getElementById('sidebar');
@@ -172,8 +209,8 @@
             const headers = {
                 'dashboard': { title: 'Market Overview', subtitle: 'Aggressive Scalping • M15 Timeframe' },
                 'brain-health': { title: 'Brain Health Center', subtitle: 'AI Neural Status & Feature Analysis' },
-                'live': { title: 'Active Portfolio', subtitle: 'Real-time Position Tracking & PnL' },
-                'history': { title: 'Trade Log', subtitle: 'Historical Performance & Analytics' }
+                'live': { title: 'Live Position', subtitle: 'Real-time Position Tracking & PnL' },
+                'history': { title: 'Trade History', subtitle: 'Historical Performance & Analytics' }
             };
 
             const info = headers[tabName] || headers['dashboard'];
@@ -552,11 +589,11 @@
         </aside>
 
         <!-- Main Content Area -->
-        <main class="flex-1 overflow-y-auto h-full relative" id="main-content">
+        <main class="flex-1 overflow-y-auto h-full relative lg:pl-6 lg:pr-6" id="main-content">
             <!-- Toast Container -->
             <div id="toast-container" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2"></div>
 
-            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-16">
 
                 <!-- Page Header & Actions -->
                 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
@@ -570,7 +607,7 @@
                 </div>
 
                 <!-- Stats Grid -->
-                <div id="tab-dashboard">
+                <div id="tab-dashboard" class="hidden">
                     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
 
                         <!-- Balance Card -->
@@ -642,6 +679,32 @@
                             </div>
                         </div>
 
+                        <!-- Active Positions Card -->
+                        <div
+                            class="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden group hover:border-blue-500/30 transition-colors">
+                            <div class="flex justify-between items-start">
+                                <div>
+                                    <p class="text-sm font-medium text-slate-500 dark:text-slate-400">Active Positions
+                                    </p>
+                                    <h3 class="text-2xl font-bold text-slate-900 dark:text-white mt-1"
+                                        id="active-positions-count" hx-get="/api/user/positions/count"
+                                        hx-trigger="load, every 10s" hx-swap="innerHTML">
+                                        {{if .Stats}}{{if index .Stats "active_positions"}}{{index .Stats
+                                        "active_positions"}}{{else}}0{{end}}{{else}}0{{end}}
+                                    </h3>
+                                    <div
+                                        class="flex items-center mt-1 text-xs text-blue-600 dark:text-blue-400 font-medium">
+                                        <i class="ri-pulse-line mr-1"></i>
+                                        <span>Live Tracking</span>
+                                    </div>
+                                </div>
+                                <div
+                                    class="p-2 bg-slate-50 dark:bg-slate-800 rounded-lg text-slate-600 dark:text-slate-400 group-hover:text-blue-500 transition-colors">
+                                    <i class="ri-exchange-funds-line text-xl"></i>
+                                </div>
+                            </div>
+                        </div>
+
 
                     </div>
 
@@ -658,11 +721,26 @@
                                     <h3 class="text-lg font-semibold text-slate-900 dark:text-white">Performance
                                         Analytics
                                     </h3>
-                                    <select
-                                        class="bg-slate-50 dark:bg-slate-800 border-none text-xs rounded-md text-slate-600 dark:text-slate-300 py-1 pl-2 pr-6">
-                                        <option>Last 24 Hours</option>
-                                        <option>Last 7 Days</option>
-                                    </select>
+                                    <!-- Custom Dropdown -->
+                                    <div id="chart-period-dropdown"
+                                        class="relative inline-block text-left dropdown-container">
+                                        <button type="button" onclick="toggleDropdown('chart-period-dropdown')"
+                                            class="dropdown-trigger bg-slate-50 dark:bg-slate-800 border-none text-xs rounded-md text-slate-600 dark:text-slate-300 py-1.5 px-3 flex items-center gap-2 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
+                                            <span>Last 24 Hours</span>
+                                            <i class="ri-arrow-down-s-line"></i>
+                                        </button>
+                                        <div
+                                            class="dropdown-menu hidden absolute right-0 mt-2 w-32 bg-white dark:bg-slate-800 rounded-md shadow-lg py-1 z-10 border border-slate-100 dark:border-slate-700">
+                                            <a href="#"
+                                                onclick="selectDropdownOption('chart-period-dropdown', '24h', 'Last 24 Hours', 'loadPerformanceChart'); return false;"
+                                                class="block px-4 py-2 text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700">Last
+                                                24 Hours</a>
+                                            <a href="#"
+                                                onclick="selectDropdownOption('chart-period-dropdown', '7d', 'Last 7 Days', 'loadPerformanceChart'); return false;"
+                                                class="block px-4 py-2 text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700">Last
+                                                7 Days</a>
+                                        </div>
+                                    </div>
                                 </div>
                                 <div id="chart-container" class="h-64 relative w-full">
                                     <!-- Canvas for Chart.js -->
@@ -670,29 +748,44 @@
                                 </div>
 
                                 <script>
-                                    document.addEventListener('DOMContentLoaded', function () {
-                                        const ctx = document.getElementById('performanceChart').getContext('2d');
+                                    let performanceChartInstance = null;
 
-                                        // Fetch PnL History
-                                        fetch('/api/user/analytics/pnl')
+                                    function loadPerformanceChart(period = '24h') {
+                                        const container = document.getElementById('chart-container');
+                                        const ctx = document.getElementById('performanceChart');
+
+                                        // Destroy existing chart
+                                        if (performanceChartInstance) {
+                                            performanceChartInstance.destroy();
+                                            performanceChartInstance = null;
+                                        }
+
+                                        // Show loading
+                                        container.innerHTML = '<canvas id="performanceChart"></canvas><div class="absolute inset-0 flex items-center justify-center"><i class="ri-loader-4-line animate-spin text-2xl text-emerald-500"></i></div>';
+
+                                        fetch(`/api/user/analytics/pnl?period=${period}`)
                                             .then(response => response.json())
                                             .then(res => {
+                                                // Remove loading
+                                                container.innerHTML = '<canvas id="performanceChart"></canvas>';
+                                                const newCtx = document.getElementById('performanceChart').getContext('2d');
+
                                                 if (res.data && res.data.labels && res.data.labels.length > 0) {
                                                     const isDark = document.documentElement.classList.contains('dark');
                                                     const gridColor = isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)';
                                                     const textColor = isDark ? '#94a3b8' : '#64748b';
 
-                                                    new Chart(ctx, {
+                                                    performanceChartInstance = new Chart(newCtx, {
                                                         type: 'line',
                                                         data: {
                                                             labels: res.data.labels,
                                                             datasets: [{
                                                                 label: 'Cumulative PnL',
                                                                 data: res.data.data,
-                                                                borderColor: '#10b981', // Emerald 500
+                                                                borderColor: '#10b981',
                                                                 backgroundColor: 'rgba(16, 185, 129, 0.1)',
                                                                 borderWidth: 2,
-                                                                tension: 0.4, // Smooth curve
+                                                                tension: 0.4,
                                                                 fill: true,
                                                                 pointRadius: 3,
                                                                 pointHoverRadius: 5,
@@ -721,7 +814,7 @@
                                                             },
                                                             scales: {
                                                                 x: {
-                                                                    display: false, // Hide numeric labels for cleaner look
+                                                                    display: false,
                                                                     grid: { display: false }
                                                                 },
                                                                 y: {
@@ -742,16 +835,22 @@
                                                         }
                                                     });
                                                 } else {
-                                                    // Show Empty State if no data
-                                                    document.getElementById('chart-container').innerHTML = `
+                                                    container.innerHTML = `
                                                     <div class="h-full flex flex-col items-center justify-center text-slate-400 dark:text-slate-600 bg-slate-50/50 dark:bg-slate-800/20 rounded-lg border border-dashed border-slate-200 dark:border-slate-700">
-                                                        <i class="ri-bar-chart-groupped-line text-4xl mb-2 opacity-50"></i>
-                                                        <p class="text-sm font-medium">Chart data will appear after first close trade</p>
+                                                        <i class="ri-bar-chart-grouped-line text-4xl mb-2 opacity-50"></i>
+                                                        <p class="text-sm font-medium">No data for this period</p>
                                                     </div>
                                                 `;
                                                 }
                                             })
-                                            .catch(err => console.error("Failed to load chart data:", err));
+                                            .catch(err => {
+                                                console.error("Failed to load chart data:", err);
+                                                container.innerHTML = '<div class="h-full flex items-center justify-center text-slate-400">Failed to load chart</div>';
+                                            });
+                                    }
+
+                                    document.addEventListener('DOMContentLoaded', function () {
+                                        loadPerformanceChart('24h');
                                     });
                                 </script>
                             </div>
@@ -829,13 +928,30 @@
                                                 class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
                                         </span>
                                     </div>
-                                    <select id="signalFilter" onchange="filterSignals(this.value)"
-                                        class="bg-slate-50 dark:bg-slate-800 border-none text-[10px] font-medium uppercase tracking-wide rounded text-slate-600 dark:text-slate-400 py-1 pl-2 pr-6 focus:ring-0 cursor-pointer h-7">
-                                        <option value="ALL">All</option>
-                                        <option value="RUNNING">Running</option>
-                                        <option value="WIN">Wins</option>
-                                        <option value="LOSS">Losses</option>
-                                    </select>
+                                    <!-- Custom Dropdown -->
+                                    <div id="signal-filter-dropdown"
+                                        class="relative inline-block text-left dropdown-container">
+                                        <button type="button" onclick="toggleDropdown('signal-filter-dropdown')"
+                                            class="dropdown-trigger bg-slate-50 dark:bg-slate-800 border-none text-[10px] font-medium uppercase tracking-wide rounded text-slate-600 dark:text-slate-400 py-1.5 px-3 flex items-center gap-2 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors h-7 focus:ring-0">
+                                            <span>ALL</span>
+                                            <i class="ri-arrow-down-s-line"></i>
+                                        </button>
+                                        <div
+                                            class="dropdown-menu hidden absolute right-0 mt-2 w-28 bg-white dark:bg-slate-800 rounded-md shadow-lg py-1 z-10 border border-slate-100 dark:border-slate-700">
+                                            <a href="#"
+                                                onclick="selectDropdownOption('signal-filter-dropdown', 'ALL', 'ALL', 'filterSignals'); return false;"
+                                                class="block px-4 py-2 text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700">All</a>
+                                            <a href="#"
+                                                onclick="selectDropdownOption('signal-filter-dropdown', 'RUNNING', 'RUNNING', 'filterSignals'); return false;"
+                                                class="block px-4 py-2 text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700">Running</a>
+                                            <a href="#"
+                                                onclick="selectDropdownOption('signal-filter-dropdown', 'WIN', 'WINS', 'filterSignals'); return false;"
+                                                class="block px-4 py-2 text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700">Wins</a>
+                                            <a href="#"
+                                                onclick="selectDropdownOption('signal-filter-dropdown', 'LOSS', 'LOSSES', 'filterSignals'); return false;"
+                                                class="block px-4 py-2 text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700">Losses</a>
+                                        </div>
+                                    </div>
                                 </div>
 
                                 <!-- CONTENT AREA -->
@@ -1064,24 +1180,44 @@
                     <!-- Controls / Filter -->
                     <div
                         class="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-800/50">
-                        <div class="flex gap-2">
-                            <button
-                                class="px-3 py-1.5 text-xs font-medium bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-md text-slate-900 dark:text-white shadow-sm">All
+                        <div class="flex gap-2" id="history-filter-buttons">
+                            <button onclick="filterHistory('all', this)"
+                                class="history-filter-btn px-3 py-1.5 text-xs font-medium bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-md text-slate-900 dark:text-white shadow-sm">All
                                 Trades</button>
-                            <button
-                                class="px-3 py-1.5 text-xs font-medium text-slate-500 hover:text-emerald-500 transition-colors">Winners</button>
-                            <button
-                                class="px-3 py-1.5 text-xs font-medium text-slate-500 hover:text-rose-500 transition-colors">Losers</button>
-                        </div>
-                        <div class="flex gap-2">
-                            <button
-                                class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors">
-                                <i class="ri-filter-3-line"></i>
-                            </button>
-                            <button
-                                class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors">
-                                <i class="ri-download-line"></i>
-                            </button>
+                            <button onclick="filterHistory('win', this)"
+                                class="history-filter-btn px-3 py-1.5 text-xs font-medium text-slate-500 hover:text-emerald-500 transition-colors">Winners</button>
+                            <button onclick="filterHistory('loss', this)"
+                                class="history-filter-btn px-3 py-1.5 text-xs font-medium text-slate-500 hover:text-rose-500 transition-colors">Losers</button>
+
+                            <!-- Sort Dropdown -->
+                            <div id="history-sort-dropdown"
+                                class="relative inline-block text-left dropdown-container ml-2 border-l border-slate-200 dark:border-slate-700 pl-2">
+                                <button type="button" onclick="toggleDropdown('history-sort-dropdown')"
+                                    class="dropdown-trigger px-3 py-1.5 text-xs font-medium text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors flex items-center gap-1">
+                                    <span>Sort By</span>
+                                    <i class="ri-arrow-down-s-line"></i>
+                                </button>
+                                <div
+                                    class="dropdown-menu hidden absolute right-0 mt-2 w-36 bg-white dark:bg-slate-800 rounded-md shadow-lg py-1 z-10 border border-slate-100 dark:border-slate-700">
+                                    <a href="#"
+                                        onclick="selectDropdownOption('history-sort-dropdown', 'date-desc', 'Date (Newest)', '', () => sortHistory('date', false)); return false;"
+                                        class="block px-4 py-2 text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700">Date
+                                        (Newest)</a>
+                                    <a href="#"
+                                        onclick="selectDropdownOption('history-sort-dropdown', 'date-asc', 'Date (Oldest)', '', () => sortHistory('date', true)); return false;"
+                                        class="block px-4 py-2 text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700">Date
+                                        (Oldest)</a>
+                                    <div class="border-t border-slate-100 dark:border-slate-700 my-1"></div>
+                                    <a href="#"
+                                        onclick="selectDropdownOption('history-sort-dropdown', 'pnl-desc', 'PnL (High-Low)', '', () => sortHistory('pnl', false)); return false;"
+                                        class="block px-4 py-2 text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700">PnL
+                                        (High-Low)</a>
+                                    <a href="#"
+                                        onclick="selectDropdownOption('history-sort-dropdown', 'pnl-asc', 'PnL (Low-High)', '', () => sortHistory('pnl', true)); return false;"
+                                        class="block px-4 py-2 text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700">PnL
+                                        (Low-High)</a>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -1090,12 +1226,12 @@
                             <thead
                                 class="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
                                 <tr>
-                                    <th
-                                        class="py-3 px-6 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                                        Date</th>
-                                    <th
-                                        class="py-3 px-6 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                                        Symbol</th>
+                                    <th onclick="sortHistory('date')"
+                                        class="py-3 px-6 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:text-emerald-500 transition-colors">
+                                        Date <i class="ri-arrow-up-down-line ml-1"></i></th>
+                                    <th onclick="sortHistory('symbol')"
+                                        class="py-3 px-6 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:text-emerald-500 transition-colors">
+                                        Symbol <i class="ri-arrow-up-down-line ml-1"></i></th>
                                     <th
                                         class="py-3 px-6 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                                         Side</th>
@@ -1108,9 +1244,9 @@
                                     <th
                                         class="py-3 px-6 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                                         Exit</th>
-                                    <th
-                                        class="py-3 px-6 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                                        PnL</th>
+                                    <th onclick="sortHistory('pnl')"
+                                        class="py-3 px-6 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:text-emerald-500 transition-colors">
+                                        PnL <i class="ri-arrow-up-down-line ml-1"></i></th>
                                     <th
                                         class="py-3 px-6 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider text-right">
                                         Status</th>
@@ -1272,6 +1408,87 @@
                 toast.classList.add('opacity-0', 'translate-y-2');
                 setTimeout(() => toast.remove(), 300);
             }, 3000);
+        }
+
+        // History Filter Function
+        function filterHistory(filter, btn) {
+            const rows = document.querySelectorAll('#history-positions-tbody tr');
+            rows.forEach(row => {
+                const statusCell = row.querySelector('td:last-child span');
+                if (!statusCell) return;
+
+                const status = statusCell.textContent.trim().toUpperCase();
+
+                if (filter === 'all') {
+                    row.style.display = '';
+                } else if (filter === 'win' && status.includes('WIN')) {
+                    row.style.display = '';
+                } else if (filter === 'loss' && status.includes('LOSS')) {
+                    row.style.display = '';
+                } else if (filter !== 'all') {
+                    row.style.display = 'none';
+                }
+            });
+
+            // Update button styles
+            const allBtns = document.querySelectorAll('.history-filter-btn');
+            allBtns.forEach(b => {
+                b.classList.remove('bg-white', 'dark:bg-slate-700', 'border', 'border-slate-200', 'dark:border-slate-600', 'rounded-md', 'text-slate-900', 'dark:text-white', 'shadow-sm');
+                b.classList.add('text-slate-500');
+            });
+            if (btn) {
+                btn.classList.add('bg-white', 'dark:bg-slate-700', 'border', 'border-slate-200', 'dark:border-slate-600', 'rounded-md', 'text-slate-900', 'dark:text-white', 'shadow-sm');
+                btn.classList.remove('text-slate-500');
+            }
+        }
+
+        // History Sort Function
+        let sortState = { column: null, ascending: true };
+
+        function sortHistory(column, forceAscending = null) {
+            const tbody = document.getElementById('history-positions-tbody');
+            const rows = Array.from(tbody.querySelectorAll('tr')).filter(row => row.querySelector('td'));
+
+            if (rows.length === 0) return;
+
+            // Update sort state
+            if (forceAscending !== null) {
+                sortState.column = column;
+                sortState.ascending = forceAscending;
+            } else {
+                // Toggle direction if same column
+                if (sortState.column === column) {
+                    sortState.ascending = !sortState.ascending;
+                } else {
+                    sortState.column = column;
+                    sortState.ascending = true;
+                }
+            }
+
+            rows.sort((a, b) => {
+                let valA, valB;
+
+                if (column === 'date') {
+                    valA = a.querySelector('td:nth-child(1)')?.textContent.trim() || '';
+                    valB = b.querySelector('td:nth-child(1)')?.textContent.trim() || '';
+                } else if (column === 'symbol') {
+                    valA = a.querySelector('td:nth-child(2)')?.textContent.trim() || '';
+                    valB = b.querySelector('td:nth-child(2)')?.textContent.trim() || '';
+                    return sortState.ascending ? valA.localeCompare(valB) : valB.localeCompare(valA);
+                } else if (column === 'pnl') {
+                    const pnlTextA = a.querySelector('td:nth-child(7) span')?.textContent || '0';
+                    const pnlTextB = b.querySelector('td:nth-child(7) span')?.textContent || '0';
+                    valA = parseFloat(pnlTextA.replace(/[^-\d.]/g, '')) || 0;
+                    valB = parseFloat(pnlTextB.replace(/[^-\d.]/g, '')) || 0;
+                    return sortState.ascending ? valA - valB : valB - valA;
+                }
+
+                // Default string comparison for date
+                return sortState.ascending ? valA.localeCompare(valB) : valB.localeCompare(valA);
+            });
+
+            // Re-append sorted rows
+            rows.forEach(row => tbody.appendChild(row));
         }
 
         // Price & PnL Flash Tracking

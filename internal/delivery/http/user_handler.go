@@ -295,7 +295,7 @@ func (h *UserHandler) DeclinePosition(c echo.Context) error {
 }
 
 // GetAnalyticsPnL returns PnL history for charting
-// GET /api/analytics/pnl
+// GET /api/analytics/pnl?period=24h|7d
 func (h *UserHandler) GetAnalyticsPnL(c echo.Context) error {
 	userID, err := middleware.GetUserID(c)
 	if err != nil {
@@ -304,10 +304,27 @@ func (h *UserHandler) GetAnalyticsPnL(c echo.Context) error {
 
 	ctx := c.Request().Context()
 
-	// Get last 50 closed positions
-	history, err := h.positionRepo.GetClosedPositionsHistory(ctx, userID, 50)
+	// Get period parameter (default: 24h)
+	period := c.QueryParam("period")
+	var since time.Time
+
+	switch period {
+	case "7d":
+		since = time.Now().AddDate(0, 0, -7)
+	case "24h":
+		fallthrough
+	default:
+		since = time.Now().Add(-24 * time.Hour)
+	}
+
+	// Get closed positions with time filter
+	history, err := h.positionRepo.GetClosedPositionsHistorySince(ctx, userID, since, 100)
 	if err != nil {
-		return InternalServerErrorResponse(c, "Failed to fetch PnL history", err)
+		// Fallback to old method if new method not available
+		history, err = h.positionRepo.GetClosedPositionsHistory(ctx, userID, 50)
+		if err != nil {
+			return InternalServerErrorResponse(c, "Failed to fetch PnL history", err)
+		}
 	}
 
 	// Process data for Chart.js
@@ -327,5 +344,6 @@ func (h *UserHandler) GetAnalyticsPnL(c echo.Context) error {
 	return SuccessResponse(c, map[string]interface{}{
 		"labels": labels,
 		"data":   data,
+		"period": period,
 	})
 }

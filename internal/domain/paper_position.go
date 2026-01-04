@@ -78,6 +78,9 @@ type PaperPositionRepository interface {
 	// GetClosedPositionsHistory retrieves closed positions for chart data
 	GetClosedPositionsHistory(ctx context.Context, userID uuid.UUID, limit int) ([]PnLHistoryEntry, error)
 
+	// GetClosedPositionsHistorySince retrieves closed positions since a specific time
+	GetClosedPositionsHistorySince(ctx context.Context, userID uuid.UUID, since time.Time, limit int) ([]PnLHistoryEntry, error)
+
 	// GetClosedPositions retrieves detailed closed positions
 	GetClosedPositions(ctx context.Context, userID uuid.UUID, limit int) ([]*PaperPosition, error)
 }
