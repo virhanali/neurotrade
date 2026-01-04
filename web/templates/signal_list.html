@@ -1,4 +1,14 @@
 {{define "signal_list"}}
+{{if not .}}
+<div class="flex flex-col items-center justify-center py-12 text-slate-400 dark:text-slate-500">
+    <div
+        class="w-12 h-12 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center mb-3 text-emerald-500/50">
+        <i class="ri-signal-tower-line text-2xl"></i>
+    </div>
+    <p class="text-sm font-medium text-slate-900 dark:text-white mb-1">No Signals Yet</p>
+    <p class="text-xs text-slate-500">AI signals will appear here when the market scan runs.</p>
+</div>
+{{else}}
 <div class="space-y-3">
     {{range .}}
     <div class="signal-item bg-white dark:bg-slate-800 rounded-xl px-4 py-3 border border-slate-100 dark:border-slate-800 shadow-sm hover:shadow-md hover:border-slate-300 dark:hover:border-slate-600 transition-all group relative overflow-hidden"
@@ -46,4 +56,5 @@
     </div>
     {{end}}
 </div>
+{{end}}
 {{end}}
