@@ -404,17 +404,18 @@ func (ts *TradingService) ClosePosition(ctx context.Context, positionID uuid.UUI
 		// Let's try to fetch the signal if possible, otherwise mock it.
 		if position.SignalID != nil {
 			if sig, err := ts.signalRepo.GetByID(ctx, *position.SignalID); err == nil {
-				// Mark signal as manually closed in DB immediately to prevent ReviewService from processing it
-				manuallyClosed := "MANUAL_CLOSE"
-				// We don't have a specific pnl percentage for the signal here readily available from position pnl (which is $)
-				// But we can approximate or just leave pnl nil.
-				// UpdateReviewStatus(ctx, id, status, pnl)
-				if err := ts.signalRepo.UpdateReviewStatus(ctx, sig.ID, manuallyClosed, nil); err != nil {
-					log.Printf("WARNING: Failed to update signal status to MANUAL_CLOSE: %v", err)
+				// Mark signal as closed in DB with WIN/LOSS result
+				resultStatus := "LOSS"
+				if pnl > 0 {
+					resultStatus = "WIN"
 				}
 
-				status := "MANUAL_CLOSE"
-				sig.ReviewResult = &status // Custom status for notification logic
+				// Update Signal Review Result & PnL
+				if err := ts.signalRepo.UpdateReviewStatus(ctx, sig.ID, resultStatus, &pnl); err != nil {
+					log.Printf("WARNING: Failed to update signal status on manual close: %v", err)
+				}
+
+				sig.ReviewResult = &resultStatus
 
 				if err := ts.notificationService.SendReview(*sig, &pnl); err != nil {
 					log.Printf("WARNING: Failed to send close notification: %v", err)

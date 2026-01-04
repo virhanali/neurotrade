@@ -180,26 +180,32 @@ class AIHandler:
             metrics_txt = "N/A"
             if metrics:
                 vol_ratio = metrics.get('vol_ratio', 0)
+                vol_z_score = metrics.get('vol_z_score', 0)
                 is_squeeze = metrics.get('is_squeeze', False)
                 score = metrics.get('score', 0)
                 adx = metrics.get('adx', 0)
                 atr_pct = metrics.get('atr_pct', 0)
+                ker = metrics.get('efficiency_ratio', 0)
                 
                 squeeze_str = "YES (EXPLOSION IMMINENT - PREPARE ENTRY)" if is_squeeze else "NO"
                 
-                vol_str = f"{vol_ratio:.2f}x"
-                if vol_ratio > 3.0: vol_str += " (WHALE ACTIVITY DETECTED - FOLLOW SMART MONEY)"
-                elif vol_ratio > 1.5: vol_str += " (Elevated)"
-                else: vol_str += " (Normal)"
+                vol_str = f"Ratio: {vol_ratio:.2f}x | Z-Score: {vol_z_score:.2f}σ"
+                if vol_z_score > 3.0: vol_str += " (BLACK SWAN EVENT - HUGE VOLUME)"
                 
-                adx_str = f"{adx:.1f} (WEAK)" if adx < 25 else f"{adx:.1f} (STRONG)"
-                if adx > 50: adx_str = f"{adx:.1f} (SUPER TREND - DO NOT FADE)"
+                adx_str = f"{adx:.1f}"
+                if adx > 25: adx_str += " (TRENDING)"
+                else: adx_str += " (SIDEWAYS)"
+                
+                ker_str = f"{ker:.2f}"
+                if ker > 0.6: ker_str += " (SUPER CLEAN - SNIPER ENTRY)"
+                elif ker < 0.3: ker_str += " (MESSY/CHOPPY - CAUTION)"
                 
                 metrics_txt = f"""
 QUANTITATIVE ALPHA METRICS (CRITICAL):
-- Volume Ratio (RVOL): {vol_str}
+- Volume: {vol_str}
+- Trend Efficiency (KER): {ker_str}
 - Bollinger Squeeze: {squeeze_str}
-- ADX (Trend Strength): {adx_str}
+- ADX Strategy: {adx_str}
 - Volatility (ATR): {atr_pct:.2f}%
 - Screener Score: {score}/100
 """

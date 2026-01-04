@@ -178,52 +178,77 @@ class MarketScreener:
                     except:
                         atr_pct = 0.5 # Fallback
 
+                    # NEW: Kaufman Efficiency Ratio (KER) - The "Clean Trend" Detector
+                    # Period 10
+                    try:
+                        closes = df_15m['close'].values
+                        change = abs(closes[-1] - closes[-11]) # Net move
+                        # Sum of absolute period-to-period changes (Volatility)
+                        volatility = sum(abs(closes[i] - closes[i-1]) for i in range(-10, 0)) 
+                        efficiency_ratio = change / volatility if volatility != 0 else 0
+                    except:
+                        efficiency_ratio = 0.5
+
+                    # NEW: Volume Z-Score (Sigma) - Statistical Anomaly
+                    try:
+                        vol_series = df_15m['volume']
+                        vol_mean = vol_series.rolling(window=20).mean().iloc[-1]
+                        vol_std = vol_series.rolling(window=20).std().iloc[-1]
+                        vol_z_score = (vol_series.iloc[-1] - vol_mean) / vol_std if vol_std > 0 else 0
+                    except:
+                        vol_z_score = 0
+
                     # FILTER LOGIC (QUALITY CONTROL):
-                    # 1. ADX Filter REMOVED -> We want to trade Sideways markets too (Ping Pong Strategy)
-                    # if adx_val < 20 and not is_squeeze: return None
-                    
-                    # 2. Reject Dead Coins (Vol < 0.5x Avg) UNLESS it's a Squeeze (Accumulation)
+                    # 1. Reject Messy/Choppy Price Action (ER < 0.25)
+                    # Unless it's a Squeeze (Accumulation is often messy)
+                    if efficiency_ratio < 0.25 and not is_squeeze:
+                         return None
+
+                    # 2. Reject Dead Coins (Vol < 0.5x Avg) UNLESS Squeeze
                     if vol_ratio < 0.5 and not is_squeeze:
                         return None
                     
-                    # 3. Reject EXTREMELY Low Volatility (ATR < 0.15%) - Dead coins
+                    # 3. Reject EXTREMELY Low Volatility (ATR < 0.15%)
                     if atr_pct < 0.15:
                          return None
                     
-                    # E. Scoring System (Hybrid: Volatility + Squeeze + Trend Strength)
+                    # E. Scoring System (Updated with Quant Metrics)
                     score = 0
                     
-                    # Scenario 1: Predictive Alpha (Squeeze) -> HIGHEST PRIORITY
+                    # 1. ALPHA: Squeeze (Accumulation)
                     if is_squeeze:
-                         score += 50  # Huge bonus for squeeze
-                         if vol_ratio > 1.0: score += 20  # Squeeze + Volume = BREAKOUT IMMINENT
+                         score += 40
+                         if vol_z_score > 2.0: score += 30 # Squeeze + Volume Anomaly = JACKPOT
                     
-                    # Scenario 2: Reversal Play (RSI Extreme)
-                    elif rsi_val < 35 and major_trend == "BULL": # Oversold in Uptrend
-                        score += (35 - rsi_val) * 2
-                    elif rsi_val > 65 and major_trend == "BEAR": # Overbought in Downtrend
-                        score += (rsi_val - 65) * 2
-                        
-                    # Scenario 3: Strong Trend Play (ADX > 40)
-                    if adx_val > 40:
-                        score += 15 # Bonus for strong trend currency
-                        
-                    # Scenario 4: Breakout Play (Volume Spike)
-                    elif vol_ratio > 2.0:
-                        score += 30
+                    # 2. TREND QUALITY: Efficiency Ratio
+                    if efficiency_ratio > 0.5:
+                        score += 20 # Bonus for Clean Trend (Easy to trade)
+                    elif efficiency_ratio > 0.7:
+                        score += 40 # Super Smooth trend
                     
-                    # Baseline Volume Score
+                    # 3. MOMENTUM: RSI Extremes
+                    if rsi_val < 35 and major_trend == "BULL": score += 15
+                    elif rsi_val > 65 and major_trend == "BEAR": score += 15
+                        
+                    # 4. STATISTICAL ANOMALY: Volume Z-Score
+                    if vol_z_score > 3.0: # 3 Sigma Event (99.7% Rare)
+                        score += 35 
+                    
+                    # Baseline
                     score += (vol_ratio * 5)
+                    score += (adx_val / 5)
 
-                    if score > 10: # Only return decent candidates
+                    if score > 15: 
                         result = cand.copy()
                         result['score'] = score
                         result['rsi'] = rsi_val
                         result['trend'] = major_trend
                         result['vol_ratio'] = vol_ratio
+                        result['vol_z_score'] = vol_z_score
                         result['is_squeeze'] = is_squeeze
                         result['adx'] = adx_val
                         result['atr_pct'] = atr_pct
+                        result['efficiency_ratio'] = efficiency_ratio
                         return result
                     
                     return None
