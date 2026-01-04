@@ -534,7 +534,7 @@
             <!-- Nav Links -->
             <nav class="flex-1 px-4 py-6 space-y-1 overflow-y-auto overflow-x-hidden">
                 <a href="#" onclick="switchTab('dashboard', event)" id="nav-dashboard"
-                    class="flex items-center px-3 py-2.5 bg-slate-100 dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 font-medium rounded-lg group transition-colors whitespace-nowrap">
+                    class="flex items-center px-3 py-2.5 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100 font-medium rounded-lg transition-colors group whitespace-nowrap">
                     <i class="ri-dashboard-3-line mr-3 text-lg flex-shrink-0"></i>
                     <span>Dashboard</span>
                 </a>
@@ -775,6 +775,11 @@
                                                     const gridColor = isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)';
                                                     const textColor = isDark ? '#94a3b8' : '#64748b';
 
+                                                    const lastVal = res.data.data.length > 0 ? res.data.data[res.data.data.length - 1] : 0;
+                                                    const isProfit = lastVal >= 0;
+                                                    const lineColor = isProfit ? '#10b981' : '#f43f5e';
+                                                    const bgColor = isProfit ? 'rgba(16, 185, 129, 0.1)' : 'rgba(244, 63, 94, 0.1)';
+
                                                     performanceChartInstance = new Chart(newCtx, {
                                                         type: 'line',
                                                         data: {
@@ -782,14 +787,14 @@
                                                             datasets: [{
                                                                 label: 'Cumulative PnL',
                                                                 data: res.data.data,
-                                                                borderColor: '#10b981',
-                                                                backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                                                                borderColor: lineColor,
+                                                                backgroundColor: bgColor,
                                                                 borderWidth: 2,
                                                                 tension: 0.4,
                                                                 fill: true,
                                                                 pointRadius: 3,
                                                                 pointHoverRadius: 5,
-                                                                pointBackgroundColor: '#10b981'
+                                                                pointBackgroundColor: lineColor
                                                             }]
                                                         },
                                                         options: {
@@ -1259,23 +1264,83 @@
                             <tbody id="history-positions-tbody" class="divide-y divide-slate-100 dark:divide-slate-800"
                                 hx-get="/api/user/history/html" hx-trigger="load" hx-swap="innerHTML">
                                 <!-- Empty State -->
-                                <tr>
-                                    <td colspan="8" class="p-12 text-center">
-                                        <div
-                                            class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500">
-                                            <div
-                                                class="w-16 h-16 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center mb-4 text-emerald-500/50">
-                                                <i class="ri-file-list-3-line text-3xl"></i>
-                                            </div>
-                                            <p class="text-base font-medium text-slate-900 dark:text-white mb-2">No
-                                                Trade History Yet</p>
-                                            <p class="text-sm max-w-sm mx-auto mb-6 text-slate-500">Completed trades
-                                                will appear here automatically after AI closes a position.</p>
-                                            <button onclick="switchTab('dashboard', event)"
-                                                class="text-emerald-500 hover:text-emerald-400 text-sm font-medium flex items-center gap-1 transition-colors">
-                                                Go to Dashboard <i class="ri-arrow-right-line"></i>
-                                            </button>
-                                        </div>
+                                <!-- Loading Skeleton -->
+                                <tr class="animate-pulse border-b border-slate-100 dark:border-slate-800">
+                                    <td class="p-4">
+                                        <div class="h-3 bg-slate-200 dark:bg-slate-700/50 rounded w-20"></div>
+                                    </td>
+                                    <td class="p-4">
+                                        <div class="h-4 bg-slate-200 dark:bg-slate-700/50 rounded w-24"></div>
+                                    </td>
+                                    <td class="p-4">
+                                        <div class="h-3 bg-slate-200 dark:bg-slate-700/50 rounded w-12"></div>
+                                    </td>
+                                    <td class="p-4">
+                                        <div class="h-3 bg-slate-200 dark:bg-slate-700/50 rounded w-16"></div>
+                                    </td>
+                                    <td class="p-4">
+                                        <div class="h-3 bg-slate-200 dark:bg-slate-700/50 rounded w-16"></div>
+                                    </td>
+                                    <td class="p-4">
+                                        <div class="h-3 bg-slate-200 dark:bg-slate-700/50 rounded w-16"></div>
+                                    </td>
+                                    <td class="p-4">
+                                        <div class="h-4 bg-slate-200 dark:bg-slate-700/50 rounded w-20"></div>
+                                    </td>
+                                    <td class="p-4 text-right">
+                                        <div class="h-5 bg-slate-200 dark:bg-slate-700/50 rounded w-20 ml-auto"></div>
+                                    </td>
+                                </tr>
+                                <tr class="animate-pulse border-b border-slate-100 dark:border-slate-800">
+                                    <td class="p-4">
+                                        <div class="h-3 bg-slate-200 dark:bg-slate-700/50 rounded w-20"></div>
+                                    </td>
+                                    <td class="p-4">
+                                        <div class="h-4 bg-slate-200 dark:bg-slate-700/50 rounded w-24"></div>
+                                    </td>
+                                    <td class="p-4">
+                                        <div class="h-3 bg-slate-200 dark:bg-slate-700/50 rounded w-12"></div>
+                                    </td>
+                                    <td class="p-4">
+                                        <div class="h-3 bg-slate-200 dark:bg-slate-700/50 rounded w-16"></div>
+                                    </td>
+                                    <td class="p-4">
+                                        <div class="h-3 bg-slate-200 dark:bg-slate-700/50 rounded w-16"></div>
+                                    </td>
+                                    <td class="p-4">
+                                        <div class="h-3 bg-slate-200 dark:bg-slate-700/50 rounded w-16"></div>
+                                    </td>
+                                    <td class="p-4">
+                                        <div class="h-4 bg-slate-200 dark:bg-slate-700/50 rounded w-20"></div>
+                                    </td>
+                                    <td class="p-4 text-right">
+                                        <div class="h-5 bg-slate-200 dark:bg-slate-700/50 rounded w-20 ml-auto"></div>
+                                    </td>
+                                </tr>
+                                <tr class="animate-pulse border-b border-slate-100 dark:border-slate-800">
+                                    <td class="p-4">
+                                        <div class="h-3 bg-slate-200 dark:bg-slate-700/50 rounded w-20"></div>
+                                    </td>
+                                    <td class="p-4">
+                                        <div class="h-4 bg-slate-200 dark:bg-slate-700/50 rounded w-24"></div>
+                                    </td>
+                                    <td class="p-4">
+                                        <div class="h-3 bg-slate-200 dark:bg-slate-700/50 rounded w-12"></div>
+                                    </td>
+                                    <td class="p-4">
+                                        <div class="h-3 bg-slate-200 dark:bg-slate-700/50 rounded w-16"></div>
+                                    </td>
+                                    <td class="p-4">
+                                        <div class="h-3 bg-slate-200 dark:bg-slate-700/50 rounded w-16"></div>
+                                    </td>
+                                    <td class="p-4">
+                                        <div class="h-3 bg-slate-200 dark:bg-slate-700/50 rounded w-16"></div>
+                                    </td>
+                                    <td class="p-4">
+                                        <div class="h-4 bg-slate-200 dark:bg-slate-700/50 rounded w-20"></div>
+                                    </td>
+                                    <td class="p-4 text-right">
+                                        <div class="h-5 bg-slate-200 dark:bg-slate-700/50 rounded w-20 ml-auto"></div>
                                     </td>
                                 </tr>
                             </tbody>
@@ -1283,6 +1348,8 @@
                     </div>
                 </div>
             </div>
+            <!-- Spacer for scroll -->
+            <div class="h-24 w-full shrink-0"></div>
     </div>
     </main>
     </div>
