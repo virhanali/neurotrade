@@ -66,10 +66,48 @@ charter = ChartGenerator()
 ai_handler = AIHandler()
 
 
+# Track if streams are started (singleton pattern)
+import os
+import tempfile
+
+STREAM_LOCK_FILE = os.path.join(tempfile.gettempdir(), 'neurotrade_stream.lock')
+
+def is_primary_worker() -> bool:
+    """Check if this is the primary worker that should run streams"""
+    try:
+        # Try to create lock file - only first worker succeeds
+        if not os.path.exists(STREAM_LOCK_FILE):
+            with open(STREAM_LOCK_FILE, 'w') as f:
+                f.write(str(os.getpid()))
+            return True
+        
+        # Check if the process that created the lock is still alive
+        with open(STREAM_LOCK_FILE, 'r') as f:
+            pid = int(f.read().strip())
+        
+        # Check if PID is still running
+        try:
+            os.kill(pid, 0)  # Signal 0 checks if process exists
+            return False  # Lock holder is alive, we're secondary
+        except OSError:
+            # Lock holder is dead, take over
+            with open(STREAM_LOCK_FILE, 'w') as f:
+                f.write(str(os.getpid()))
+            return True
+    except Exception:
+        return False  # On error, don't start streams
+
 # Startup/Shutdown events for WebSocket
 @app.on_event("startup")
 async def startup_event():
     """Start WebSocket price stream and whale detector on app startup"""
+    # Only primary worker starts streams (prevents 6 duplicate connections)
+    if not is_primary_worker():
+        logging.info(f"[WORKER {os.getpid()}] Secondary worker - skipping stream startup")
+        return
+    
+    logging.info(f"[WORKER {os.getpid()}] Primary worker - starting streams")
+    
     # Start price stream
     await price_stream.start()
     print("[WS] WebSocket price stream started")
@@ -83,6 +121,10 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     """Stop WebSocket price stream and whale detector on app shutdown"""
+    # Only primary worker stops streams
+    if not is_primary_worker():
+        return
+    
     await price_stream.stop()
     print("[WS] WebSocket price stream stopped")
 
@@ -90,6 +132,12 @@ async def shutdown_event():
     if HAS_WHALE:
         await whale_detector.close()
         print("[WHALE] Whale detector closed")
+    
+    # Remove lock file
+    try:
+        os.remove(STREAM_LOCK_FILE)
+    except Exception:
+        pass
 
 
 # ============================================
