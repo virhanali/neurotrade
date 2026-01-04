@@ -237,11 +237,36 @@
             // Updated via JS to avoid template complexity
             document.getElementById('brain-samples').innerText = data.samples || 0;
             document.getElementById('brain-progress').style.width = (data.progress_percent || 0) + '%';
-            document.getElementById('brain-status').innerText = data.status === 'active' ? 'ACTIVE' : 'LEARNING';
 
-            if (data.market_regime) {
-                document.getElementById('regime-type').innerText = data.market_regime.type;
-                document.getElementById('regime-conf').innerText = data.market_regime.confidence + '%';
+            // Status display (only 'active' or 'learning' from Python backend)
+            const statusEl = document.getElementById('brain-status');
+            if (data.status === 'active') {
+                statusEl.innerText = 'Active';
+                statusEl.className = 'px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400';
+            } else {
+                statusEl.innerText = 'Learning';
+                statusEl.className = 'px-2 py-0.5 rounded-full text-xs font-bold bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400';
+            }
+
+            // Market Regime - with user-friendly labels
+            const regimeEl = document.getElementById('regime-type');
+            const regimeConfEl = document.getElementById('regime-conf');
+
+            if (data.market_regime && data.market_regime.type) {
+                const regimeMap = {
+                    'WAITING_DATA': 'Waiting for Data',
+                    'UNKNOWN': 'Analyzing...',
+                    'TRENDING': 'Trending',
+                    'RANGING': 'Ranging',
+                    'VOLATILE': 'Volatile',
+                    'QUIET': 'Quiet',
+                    'ERROR': 'Error'
+                };
+                regimeEl.innerText = regimeMap[data.market_regime.type] || data.market_regime.type;
+                regimeConfEl.innerText = (data.market_regime.confidence || 0) + '%';
+            } else {
+                regimeEl.innerText = 'Analyzing...';
+                regimeConfEl.innerText = '0%';
             }
 
             // Render Whale Stats
@@ -267,12 +292,23 @@
                 if (statsContainer) statsContainer.classList.add('hidden');
             }
 
-            // Update Feature Chart if exists
+            // Update Feature Chart - show empty state if no data
+            const chartContainer = document.getElementById('featureChartContainer');
+            const emptyState = document.getElementById('featureChartEmpty');
+
             if (window.featureChart && typeof window.featureChart.destroy === 'function') {
                 window.featureChart.destroy();
+                window.featureChart = null;
             }
+
             const ctx = document.getElementById('featureChart');
-            if (ctx && data.feature_importance) {
+            const hasFeatureData = data.feature_importance && Object.keys(data.feature_importance).length > 0 &&
+                Object.values(data.feature_importance).some(v => v > 0);
+
+            if (ctx && hasFeatureData) {
+                if (chartContainer) chartContainer.classList.remove('hidden');
+                if (emptyState) emptyState.classList.add('hidden');
+
                 window.featureChart = new Chart(ctx, {
                     type: 'bar',
                     data: {
@@ -285,6 +321,9 @@
                     },
                     options: { responsive: true, plugins: { legend: { display: false } } }
                 });
+            } else {
+                if (chartContainer) chartContainer.classList.add('hidden');
+                if (emptyState) emptyState.classList.remove('hidden');
             }
         }
     </script>
@@ -862,12 +901,37 @@
                         capabilities. Currently collecting high-quality data.</p>
                 </div>
 
-                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
                     <!-- Feature Importance -->
                     <div
-                        class="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
-                        <h3 class="text-lg font-semibold text-slate-900 dark:text-white mb-4">Feature Importance</h3>
-                        <canvas id="featureChart" height="200"></canvas>
+                        class="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm h-fit">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-lg font-semibold text-slate-900 dark:text-white">Feature Importance</h3>
+                            <span
+                                class="text-xs text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-full">ML
+                                Insights</span>
+                        </div>
+
+                        <!-- Chart Container -->
+                        <div id="featureChartContainer" class="hidden">
+                            <canvas id="featureChart" height="200"></canvas>
+                            <p class="text-xs text-slate-400 mt-3 text-center">Shows which market indicators have the
+                                most impact on AI predictions</p>
+                        </div>
+
+                        <!-- Empty State -->
+                        <div id="featureChartEmpty" class="py-8">
+                            <div class="flex flex-col items-center justify-center text-center">
+                                <div
+                                    class="w-14 h-14 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center mb-4">
+                                    <i class="ri-bar-chart-grouped-line text-2xl text-slate-400"></i>
+                                </div>
+                                <p class="text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Not Enough Data
+                                    Yet</p>
+                                <p class="text-xs text-slate-400 max-w-xs">Feature importance analysis will be available
+                                    after the ML model completes training with sufficient trade data.</p>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Whale Radar -->
@@ -971,8 +1035,8 @@
                                             Action</th>
                                     </tr>
                                 </thead>
-                                <tbody id="live-positions-tbody"
-                                    class="divide-y divide-slate-100 dark:divide-slate-800">
+                                <tbody id="live-positions-tbody" class="divide-y divide-slate-100 dark:divide-slate-800"
+                                    hx-get="/api/user/positions/html" hx-trigger="load, every 5s" hx-swap="innerHTML">
                                     <tr>
                                         <td colspan="8" class="p-12 text-center text-sm text-slate-400">
                                             <div class="flex flex-col items-center justify-center gap-3">
@@ -1048,7 +1112,8 @@
                                     </tr>
                                 </thead>
                                 <tbody id="history-positions-tbody"
-                                    class="divide-y divide-slate-100 dark:divide-slate-800">
+                                    class="divide-y divide-slate-100 dark:divide-slate-800"
+                                    hx-get="/api/user/history/html" hx-trigger="load" hx-swap="innerHTML">
                                     <!-- Empty State -->
                                     <tr>
                                         <td colspan="8" class="p-12 text-center">
