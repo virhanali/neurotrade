@@ -352,6 +352,14 @@ docker-compose down && docker-compose up --build -d
 
 ## 📝 Changelog
 
+### v4.3 (2026-01-05) - UI/UX Revolution
+- 🎨 Dashboard overhaul (Path-based routing, Aesthetic Tables)
+- 🧠 Brain Health Dashboard with dynamic ML charts
+- 🐋 Whale Radar visualization in Dashboard
+- 📊 Detailed Trade History & Live Positions view
+- ⚡ Optimized Query Performance (IN clause)
+- 🚀 Removed manual triggers (100% Automated)
+
 ### v4.2 (2026-01-05) - ML & Whale Edition
 - 🐋 Whale Detection with 6 signals (Funding, L/S Ratio)
 - 🧠 Self-Learning ML (LightGBM)

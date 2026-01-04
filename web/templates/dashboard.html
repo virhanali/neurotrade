@@ -87,14 +87,46 @@
             }
         }
 
-        // Init Sidebar
+        // Init Sidebar & Routing
         document.addEventListener('DOMContentLoaded', () => {
+            // Sidebar Init
             const sidebar = document.getElementById('sidebar');
             if (window.innerWidth >= 1024 && localStorage.getItem('sidebarCollapsed') === 'true') {
                 sidebar.classList.replace('w-64', 'w-20');
                 document.body.classList.add('sidebar-collapsed');
             }
+
+            // Routing Init
+            const path = window.location.pathname;
+            let activeTab = 'dashboard';
+
+            // Check path /dashboard/tabName
+            const match = path.match(/\/dashboard\/(.+)/);
+            if (match && match[1]) {
+                activeTab = match[1];
+            } else if (window.location.hash) {
+                // Legacy hash support
+                activeTab = window.location.hash.replace('#', '');
+            }
+
+            // Verify tab exists, default to dashboard if not
+            if (!document.getElementById('tab-' + activeTab)) {
+                activeTab = 'dashboard';
+            }
+
+            switchTab(activeTab, null);
         });
+
+        // Handle Browser Back/Forward
+        window.onpopstate = function (event) {
+            const path = window.location.pathname;
+            let tab = 'dashboard';
+            const match = path.match(/\/dashboard\/(.+)/);
+            if (match && match[1]) {
+                tab = match[1];
+            }
+            switchTab(tab, null);
+        };
 
         function switchTab(tabName, event) {
             if (event) event.preventDefault();
@@ -147,8 +179,20 @@
             if (titleEl) titleEl.innerText = info.title;
             if (subEl) subEl.innerText = info.subtitle;
 
-            // Update URL without jump
-            history.replaceState(null, null, '#' + tabName);
+            // Update URL (Push State)
+            const newPath = '/dashboard/' + tabName;
+            // Avoid pushing if already on path (avoids duplicate history entries or loops)
+            // But if we are at /dashboard (root) and switching to 'dashboard', we might prefer /dashboard/dashboard or just /dashboard?
+            // Let's stick to /dashboard/tabName for uniformity except default?
+            // Actually, usually /dashboard is alias for /dashboard/dashboard.
+
+            if (tabName !== 'dashboard' || window.location.pathname.includes('/dashboard/')) {
+                if (window.location.pathname !== newPath) {
+                    history.pushState({ tab: tabName }, '', newPath);
+                }
+            } else {
+                // If default tab and at root /dashboard, usually we don't change URL or change to /dashboard
+            }
 
             // Trigger data load if brain health
             if (tabName === 'brain-health') {

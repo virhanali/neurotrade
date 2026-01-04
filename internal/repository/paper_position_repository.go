@@ -315,3 +315,37 @@ func (r *PaperPositionRepositoryImpl) GetClosedPositionsHistory(ctx context.Cont
 
 	return history, nil
 }
+
+// GetClosedPositions retrieves closed positions for a user with all details
+func (r *PaperPositionRepositoryImpl) GetClosedPositions(ctx context.Context, userID uuid.UUID, limit int) ([]*domain.PaperPosition, error) {
+	query := `
+		SELECT id, user_id, signal_id, symbol, side, entry_price,
+		       sl_price, tp_price, size, leverage, exit_price, pnl, pnl_percent, status, closed_by,
+		       created_at, closed_at
+		FROM paper_positions
+		WHERE user_id = $1 AND status IN ('CLOSED_WIN', 'CLOSED_LOSS', 'CLOSED_MANUAL')
+		ORDER BY closed_at DESC
+		LIMIT $2
+	`
+
+	rows, err := r.db.Query(ctx, query, userID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query closed positions: %w", err)
+	}
+	defer rows.Close()
+
+	var positions []*domain.PaperPosition
+	for rows.Next() {
+		var p domain.PaperPosition
+		if err := rows.Scan(
+			&p.ID, &p.UserID, &p.SignalID, &p.Symbol, &p.Side, &p.EntryPrice,
+			&p.SLPrice, &p.TPPrice, &p.Size, &p.Leverage, &p.ExitPrice, &p.PnL, &p.PnLPercent, &p.Status, &p.ClosedBy,
+			&p.CreatedAt, &p.ClosedAt,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan position: %w", err)
+		}
+		positions = append(positions, &p)
+	}
+
+	return positions, nil
+}

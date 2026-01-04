@@ -20,7 +20,6 @@ import (
 
 // MarketScanScheduler defines the interface for market scan scheduler
 type MarketScanScheduler interface {
-	RunNow() error
 	SetMode(mode string)
 	GetMode() string
 }
@@ -264,43 +263,6 @@ func (h *AdminHandler) GetStatistics(c echo.Context) error {
 	stats["total_pnl"] = totalPnL
 
 	return SuccessResponse(c, stats)
-}
-
-// TriggerMarketScan triggers an immediate market scan manually
-// POST /api/admin/market-scan/trigger
-func (h *AdminHandler) TriggerMarketScan(c echo.Context) error {
-	if h.scheduler == nil {
-		return c.HTML(http.StatusInternalServerError, `
-			<div class="p-4 bg-[#ff6b6b] border-2 border-black text-white font-bold shadow-[4px_4px_0px_0px_#000]">
-				[ERROR] Scheduler not available
-			</div>
-		`)
-	}
-
-	// Trigger market scan in background
-	go func() {
-		if err := h.scheduler.RunNow(); err != nil {
-			// Log error but don't block response
-			c.Logger().Errorf("Market scan failed: %v", err)
-		}
-	}()
-
-	// Get current time in WIB
-	loc := utils.GetLocation()
-	timestamp := time.Now().In(loc).Format("15:04:05 WIB")
-
-	html := fmt.Sprintf(`
-		<div class="space-y-3">
-			<div class="p-4 bg-[#51cf66] border-2 border-black text-black font-bold shadow-[4px_4px_0px_0px_#000]">
-				[OK] Triggered
-			</div>
-			<div class="p-3 bg-white border-2 border-black text-black font-medium shadow-[2px_2px_0px_0px_#000] text-sm">
-				Triggered at: %s
-			</div>
-		</div>
-	`, timestamp)
-
-	return c.HTML(http.StatusOK, html)
 }
 
 // GetLatestScanResults returns the latest scan results formatted as HTML for HTMX

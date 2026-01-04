@@ -8,6 +8,7 @@ import (
 
 	"neurotrade/internal/domain"
 	"neurotrade/internal/middleware"
+	authmiddleware "neurotrade/internal/middleware"
 	"neurotrade/internal/utils"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -332,27 +333,28 @@ func (h *WebHandler) HandlePositionsHTML(c echo.Context) error {
 
 		html += fmt.Sprintf(`
 			<tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors border-b border-slate-50 dark:border-slate-800/50 last:border-0" data-symbol="%s">
-				<td class="py-3 px-4">
+                <td class="py-3 px-6 text-sm text-slate-500 dark:text-slate-400 font-mono">%s</td>
+				<td class="py-3 px-6">
 					<div class="font-bold text-slate-900 dark:text-white">%s</div>
 				</td>
-				<td class="py-3 px-4">
+				<td class="py-3 px-6">
 					<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold %s">
 						%s
 					</span>
 				</td>
-				<td class="py-3 px-4 text-sm text-slate-600 dark:text-slate-300 font-mono">%s</td>
-				<td class="py-3 px-4 price-cell text-sm text-slate-600 dark:text-slate-300 font-mono"><span class="price-value">%s</span></td>
-				<td class="py-3 px-4 text-xs font-mono text-slate-400">
+				<td class="py-3 px-6 price-cell text-sm text-slate-600 dark:text-slate-300 font-mono"><span class="price-value">%s</span></td>
+				<td class="py-3 px-6 price-cell text-sm text-slate-600 dark:text-slate-300 font-mono"><span class="price-value">%s</span></td>
+				<td class="py-3 px-6 text-xs font-mono text-slate-400">
 					TP: <span class="text-emerald-500">%s</span><br>
 					SL: <span class="text-rose-500">%s</span>
 				</td>
-				<td class="py-3 px-4 pnl-cell">
+				<td class="py-3 px-6 pnl-cell">
 					<div class="flex flex-col">
 						<span class="pnl-value font-bold text-sm %s">%s$%.2f</span>
 						<span class="text-xs %s opacity-80">%s%.2f%%</span>
 					</div>
 				</td>
-				<td class="py-3 px-4 text-right">
+				<td class="py-3 px-6 text-right">
 					<button
 						onclick="showConfirmModal('Close Position', 'Are you sure you want to close %s position? This action cannot be undone.', () => htmx.ajax('POST', '/api/user/positions/%s/close', {target: this.closest('tr'), swap: 'outerHTML'}), 'danger')"
 						class="text-xs font-medium bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 px-3 py-1.5 rounded hover:bg-rose-50 hover:border-rose-200 hover:text-rose-600 dark:hover:bg-rose-900/20 dark:hover:border-rose-800 dark:hover:text-rose-400 transition-all"
@@ -362,7 +364,8 @@ func (h *WebHandler) HandlePositionsHTML(c echo.Context) error {
 				</td>
 			</tr>
 		`,
-			pos.Symbol, // data-symbol
+			pos.Symbol,                       // data-symbol
+			pos.CreatedAt.Format("15:04:05"), // Time
 			pos.Symbol,
 			sideBadgeClass, pos.Side,
 			entryPriceStr,
@@ -374,6 +377,19 @@ func (h *WebHandler) HandlePositionsHTML(c echo.Context) error {
 			pos.Symbol, // For modal message
 			pos.ID,     // For close API
 		)
+	}
+
+	// Return empty state if no positions
+	if len(positions) == 0 {
+		html = `<tr>
+        <td colspan="8" class="p-12 text-center text-sm text-slate-400">
+            <div class="flex flex-col items-center justify-center gap-3">
+                <i class="ri-pulse-line text-4xl text-slate-300 dark:text-slate-600"></i>
+                <span class="font-medium">No active positions</span>
+				<span class="text-xs">AI is scanning for opportunities...</span>
+            </div>
+        </td>
+    </tr>`
 	}
 
 	return c.HTML(http.StatusOK, html)
@@ -424,13 +440,7 @@ func (h *WebHandler) getSystemStats(c echo.Context) (map[string]interface{}, err
 	}
 
 	// Calculate win rate
-	// Query all closed positions
-	// Depending on repo capabilities, we might need a method GetClosedPositions(ctx)
-	// For now, let's assume we need to add it or do a raw query here since this is a specific stats need.
-	// Actually, we should check if positionRepo has GetClosedPositions or similar?
-	// The interface likely doesn't have it yet.
-	// Let's do a raw counting query here for efficiency instead of fetching all closed positions into memory.
-
+	// Helper query for efficiency
 	var totalClosed, wins int
 	err = h.db.QueryRow(ctx, `
 		SELECT 
@@ -447,7 +457,6 @@ func (h *WebHandler) getSystemStats(c echo.Context) (map[string]interface{}, err
 
 	// Calculate Total PnL
 	var totalPnL float64
-	// Sum PnL for closed positions
 	h.db.QueryRow(ctx, "SELECT COALESCE(SUM(pnl), 0) FROM paper_positions WHERE pnl IS NOT NULL").Scan(&totalPnL)
 
 	return map[string]interface{}{
@@ -460,6 +469,110 @@ func (h *WebHandler) getSystemStats(c echo.Context) (map[string]interface{}, err
 	}, nil
 }
 
+// HandleHistoryHTML renders the table rows for trade history
+func (h *WebHandler) HandleHistoryHTML(c echo.Context) error {
+	userID, err := authmiddleware.GetUserID(c)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusUnauthorized, "Invalid user")
+	}
+	ctx := c.Request().Context()
+
+	// Get CLOSED positions
+	// We use 50 limit for now
+	positions, err := h.positionRepo.GetClosedPositions(ctx, userID, 50)
+	if err != nil || len(positions) == 0 {
+		return c.HTML(http.StatusOK, `
+            <tr>
+                <td colspan="8" class="p-12 text-center">
+                    <div class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500">
+                        <div class="w-16 h-16 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center mb-4 text-emerald-500/50">
+                            <i class="ri-file-list-3-line text-3xl"></i>
+                        </div>
+                        <p class="text-base font-medium text-slate-900 dark:text-white mb-2">No Trade History Yet</p>
+                        <p class="text-sm max-w-sm mx-auto mb-6 text-slate-500">Completed trades will appear here automatically.</p>
+                    </div>
+                </td>
+            </tr>
+        `)
+	}
+
+	html := ""
+	for _, pos := range positions {
+		// Calculate PnL style
+		pnl := 0.0
+		if pos.PnL != nil {
+			pnl = *pos.PnL
+		}
+		pnlPerc := 0.0
+		if pos.PnLPercent != nil {
+			pnlPerc = *pos.PnLPercent
+		}
+
+		pnlClass := "text-slate-500"
+		if pnl > 0 {
+			pnlClass = "text-emerald-600 dark:text-emerald-400"
+		} else if pnl < 0 {
+			pnlClass = "text-rose-600 dark:text-rose-400"
+		}
+
+		statusClass := "bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-300"
+		if pos.Status == "CLOSED_WIN" {
+			statusClass = "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-400"
+		} else if pos.Status == "CLOSED_LOSS" {
+			statusClass = "bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-400"
+		}
+
+		exitPriceVal := 0.0
+		if pos.ExitPrice != nil {
+			exitPriceVal = *pos.ExitPrice
+		}
+
+		closedDate := "-"
+		if pos.ClosedAt != nil {
+			closedDate = pos.ClosedAt.Format("01/02 15:04")
+		}
+
+		sideColor := "text-rose-500"
+		if pos.Side == "LONG" {
+			sideColor = "text-emerald-500"
+		}
+
+		html += fmt.Sprintf(`
+			<tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors border-b border-slate-50 dark:border-slate-800/50 last:border-0">
+				<td class="py-3 px-6 text-xs text-slate-500 dark:text-slate-400 font-mono">%s</td>
+				<td class="py-3 px-6 font-bold text-slate-900 dark:text-white">%s</td>
+				<td class="py-3 px-6">
+					<span class="text-xs font-bold %s">%s</span>
+				</td>
+				<td class="py-3 px-6 text-xs font-mono">%.4f</td>
+				<td class="py-3 px-6 text-xs font-mono">$%.4f</td>
+				<td class="py-3 px-6 text-xs font-mono">$%.4f</td>
+				<td class="py-3 px-6">
+					<div class="flex flex-col">
+						<span class="font-bold text-xs %s">$%.2f</span>
+						<span class="text-[10px] %s opacity-80">%.2f%%</span>
+					</div>
+				</td>
+				<td class="py-3 px-6 text-right">
+					<span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium uppercase %s">%s</span>
+				</td>
+			</tr>
+		`,
+			closedDate,
+			pos.Symbol,
+			sideColor, pos.Side,
+			pos.Size,
+			pos.EntryPrice,
+			exitPriceVal,
+			pnlClass, pnl,
+			pnlClass, pnlPerc,
+			statusClass, pos.Status,
+		)
+	}
+
+	return c.HTML(http.StatusOK, html)
+}
+
 // RegisterWebRoutes registers all web routes (HTML pages)
 func RegisterWebRoutes(e *echo.Echo, handler *WebHandler, authMiddleware echo.MiddlewareFunc) {
 	// Public routes
@@ -469,7 +582,9 @@ func RegisterWebRoutes(e *echo.Echo, handler *WebHandler, authMiddleware echo.Mi
 
 	// Protected routes (require authentication)
 	e.GET("/dashboard", handler.HandleDashboard, authMiddleware)
+	e.GET("/dashboard/:tab", handler.HandleDashboard, authMiddleware)
 	e.GET("/api/user/positions/html", handler.HandlePositionsHTML, authMiddleware)
+	e.GET("/api/user/history/html", handler.HandleHistoryHTML, authMiddleware)
 }
 
 // RegisterWebRoutes registers all web routes (HTML pages)

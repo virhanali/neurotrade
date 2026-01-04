@@ -98,13 +98,6 @@ func (s *Scheduler) Stop() {
 	log.Println("[OK] Scheduler stopped")
 }
 
-// RunNow triggers an immediate market scan (useful for testing)
-func (s *Scheduler) RunNow() error {
-	ctx := context.Background()
-	log.Printf("[SIGNAL] Manual Trigger: Starting immediate market scan [Mode: %s]...", s.mode)
-	return s.tradingService.ProcessMarketScan(ctx, s.balance, s.mode)
-}
-
 // SetMode updates the trading mode
 func (s *Scheduler) SetMode(mode string) {
 	s.mode = mode
