@@ -209,7 +209,7 @@
 
         async function loadBrainStats() {
             try {
-                const response = await fetch('http://localhost:5000/ml/brain-health');
+                const response = await fetch('/api/admin/ml/brain-health');
                 const data = await response.json();
                 renderBrainStats(data);
             } catch (error) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"html/template"
+	"io"
 	"net/http"
 	"sort"
 	"strconv"
@@ -386,11 +387,21 @@ func (h *AdminHandler) GetLatestScanResults(c echo.Context) error {
 	return nil
 }
 
-// TradingModeResponse represents the trading mode response
-type TradingModeResponse struct {
-	Mode        string `json:"mode"`
-	Description string `json:"description"`
-}
+// GetBrainHealth proxies the request to the Python engine
+// GET /api/admin/ml/brain-health
+func (h *AdminHandler) GetBrainHealth(c echo.Context) error {
+	url := "http://python-engine:5000/ml/brain-health"
+	resp, err := http.Get(url)
+	if err != nil {
+		c.Logger().Errorf("Failed to proxy to ML: %v", err)
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "ML Service Unavailable", "details": err.Error()})
+	}
+	defer resp.Body.Close()
 
-// GetTradingMode returns the current trading mode
-// GET /api/admin/trading-mode
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to read ML response"})
+	}
+
+	return c.Blob(resp.StatusCode, "application/json", body)
+}
