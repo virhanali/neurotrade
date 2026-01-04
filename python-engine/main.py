@@ -192,13 +192,15 @@ async def analyze_market(request: MarketAnalysisRequest):
     print(f"\n[TARGET] Market Analysis Started [Mode: {mode}]")
 
     try:
-        # Step 1: Get top opportunities
+        # Step 1: Get top opportunities (List[Dict] with metrics)
+        top_candidates = []
         if request.custom_symbols:
-            top_symbols = request.custom_symbols
+            # Create dummy metrics for custom symbols
+            top_candidates = [{'symbol': s, 'vol_ratio': 0, 'is_squeeze': False, 'score': 0} for s in request.custom_symbols]
         else:
-            top_symbols = screener.get_top_opportunities()
+            top_candidates = screener.get_top_opportunities() # RETURNS List[Dict]
 
-        if not top_symbols:
+        if not top_candidates:
             # No opportunities found - this is normal, not an error
             logging.info("[EMPTY] No trading opportunities passed filters (market too quiet)")
             return MarketAnalysisResponse(
@@ -227,8 +229,10 @@ async def analyze_market(request: MarketAnalysisRequest):
         # Step 3: Analyze each opportunity IN PARALLEL
         semaphore = asyncio.Semaphore(6)  # Max 6 coins analyzed simultaneously
         
-        async def analyze_single_symbol(symbol: str) -> Optional[SignalResult]:
-            """Analyze a single symbol - runs concurrently"""
+        async def analyze_single_candidate(candidate: Dict) -> Optional[SignalResult]:
+            """Analyze a single candidate - runs concurrently"""
+            symbol = candidate['symbol']
+            
             async with semaphore:
                 try:
                     # Fetch target data (SCALPER MODE)
@@ -249,7 +253,7 @@ async def analyze_market(request: MarketAnalysisRequest):
                     )
 
                     # Run AI analysis concurrently (DeepSeek + Gemini)
-                    # Logic args: btc_data, target_4h, target_trigger(15m), balance, symbol
+                    # Logic args: btc_data, target_4h, target_trigger(15m), balance, symbol, metrics
                     logic_task = asyncio.create_task(
                         asyncio.to_thread(
                             ai_handler.analyze_logic,
@@ -257,7 +261,8 @@ async def analyze_market(request: MarketAnalysisRequest):
                             target_data.get('data_4h', {}),
                             target_data.get('data_15m', {}),
                             request.balance,
-                            symbol
+                            symbol,
+                            candidate # PASSING METRICS HERE (Alpha Data)
                         )
                     )
 
@@ -294,7 +299,7 @@ async def analyze_market(request: MarketAnalysisRequest):
                     return None
         
         # Run all symbol analyses in parallel
-        results = await asyncio.gather(*[analyze_single_symbol(s) for s in top_symbols])
+        results = await asyncio.gather(*[analyze_single_candidate(c) for c in top_candidates])
         valid_signals = [r for r in results if r is not None]
 
         # Calculate execution time

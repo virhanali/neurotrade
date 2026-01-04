@@ -30,12 +30,16 @@ CRITICAL WARNING (LOSS PREVENTION):
 - RSI < 30 is NOT a Long signal if the last candle is a big Red Marubozu (Dump).
 - YOU MUST SEE REJECTION (Long Wicks) or REVERSAL PATTERNS (Engulfing) before entry.
 
-STRATEGY MAP based on MARKET STRUCTURE:
-A. IF BANDS ARE FLAT (SIDEWAYS):
-   - **Action:** AGGRESSIVE Ping-Pong. Buy Low, Sell High. target opposite band.
+STRATEGY MAP based on QUANTITATIVE DATA (ADX):
+A. IF ADX < 25 (WEAK TREND / SIDEWAYS):
+   - **MODE:** PING-PONG SCALPER (Mean Reversion).
+   - **ACTION:** Buy at Lower Bollinger Band. Sell at Upper Bollinger Band.
+   - **FORBIDDEN:** Do NOT chase Breakouts here (Most are fakeouts).
 
-B. IF BANDS ARE ANGLED (TRENDING):
-   - **Action:** CONSERVATIVE Pullback. Only enter on retest of EMA 20.
+B. IF ADX > 25 (STRONG TREND):
+   - **MODE:** MOMENTUM RIDER (Trend Following).
+   - **ACTION:** Enter on Pullback to EMA 20 or Valid Breakout with Volume.
+   - **FORBIDDEN:** Do NOT Counter-Trade. (If Bullish Trend, NO SHORTS).
 
 C. IF PREDICTIVE ALPHA (THE "SMART MONEY" SETUP):
    - **Scenario:** Price is coiling tight (Bollinger Squeeze) or moving in a Channel.
@@ -53,14 +57,19 @@ C. IF PREDICTIVE ALPHA (THE "SMART MONEY" SETUP):
 D. IF EXTREME VOLATILITY (GOD CANDLE):
    - **Action:** HARD WAIT. Stop all trading. Let the dust settle.
 
-EXECUTION PARAMETERS:
-   - ENTRY: Limit Order.
-   - STOP LOSS: TIGHT.
+EXECUTION PARAMETERS (STRICT RISK MANAGEMENT):
+   - ENTRY: Limit Order at Current Price.
+   - STOP LOSS (SL) CALCULATION for High Leverage (20x):
+     - LONG: Low of previous candle MINUS (ATR * 0.5) buffer.
+     - SHORT: High of previous candle PLUS (ATR * 0.5) buffer.
+     - HARD CAP: SL distance MUST NOT exceed 1.5% price movement (to avoid liquidation).
+   - TAKE PROFIT (TP) CALCULATION:
+     - MINIMUM Risk-to-Reward (RR): 1:2 (TP distance must be 2x SL distance).
+     - AIM FOR: 3% - 5% price movement for Pump/Dump setups.
    - LEVERAGE: 
-      - Predictive Alpha (Sniper) -> 12x-20x (Tight Stop, Huge Reward).
-      - Sideways -> 10x-20x.
-      - Trending -> 5x-10x.
-      - God Candle -> 0x.
+      - Predictive Alpha (Sniper) -> 15x-20x.
+      - Trend Rider -> 10x-15x.
+      - Sideways Ping-Pong -> 20x (Tight SL).
 
 OUTPUT FORMAT (JSON ONLY):
 The final response content MUST be a valid raw JSON object. Do not use markdown blocks.
@@ -146,7 +155,8 @@ class AIHandler:
         target_4h: Dict,
         target_trigger: Dict,
         balance: float = 1000.0,
-        symbol: str = "UNKNOWN"
+        symbol: str = "UNKNOWN",
+        metrics: Optional[Dict] = None
     ) -> Dict:
         """
         Analyze trading logic using DeepSeek (SCALPER MODE ONLY)
@@ -157,6 +167,7 @@ class AIHandler:
             target_trigger: Target asset trigger data (15M)
             balance: Trading balance in USDT
             symbol: Trading symbol
+            metrics: Alpha metrics from screener (Optional)
 
         Returns:
             Dict with trading signal and parameters
@@ -165,8 +176,38 @@ class AIHandler:
             # Get SCALPER system prompt
             system_prompt = get_system_prompt()
             
+            # Prepare Metrics Text
+            metrics_txt = "N/A"
+            if metrics:
+                vol_ratio = metrics.get('vol_ratio', 0)
+                is_squeeze = metrics.get('is_squeeze', False)
+                score = metrics.get('score', 0)
+                adx = metrics.get('adx', 0)
+                atr_pct = metrics.get('atr_pct', 0)
+                
+                squeeze_str = "YES (EXPLOSION IMMINENT - PREPARE ENTRY)" if is_squeeze else "NO"
+                
+                vol_str = f"{vol_ratio:.2f}x"
+                if vol_ratio > 3.0: vol_str += " (WHALE ACTIVITY DETECTED - FOLLOW SMART MONEY)"
+                elif vol_ratio > 1.5: vol_str += " (Elevated)"
+                else: vol_str += " (Normal)"
+                
+                adx_str = f"{adx:.1f} (WEAK)" if adx < 25 else f"{adx:.1f} (STRONG)"
+                if adx > 50: adx_str = f"{adx:.1f} (SUPER TREND - DO NOT FADE)"
+                
+                metrics_txt = f"""
+QUANTITATIVE ALPHA METRICS (CRITICAL):
+- Volume Ratio (RVOL): {vol_str}
+- Bollinger Squeeze: {squeeze_str}
+- ADX (Trend Strength): {adx_str}
+- Volatility (ATR): {atr_pct:.2f}%
+- Screener Score: {score}/100
+"""
+
             # Build user message with market data (SCALPER FORMAT)
             user_message = f"""SCALPER ANALYSIS REQUEST (M15 Timeframe):
+
+{metrics_txt}
 
 GLOBAL MARKET (BTC/USDT):
 - Trend 4H: {btc_data.get('trend_4h', 'N/A')}
@@ -313,53 +354,73 @@ Analyze for SCALPER entry (Mean Reversion / Ping-Pong / Predictive Alpha). Provi
 
     def combine_analysis(self, logic_result: Dict, vision_result: Dict) -> Dict:
         """
-        Combine DeepSeek logic and Gemini vision results
-
-        Args:
-            logic_result: Result from DeepSeek
-            vision_result: Result from Gemini
-
-        Returns:
-            Combined analysis with final decision
+        Combine DeepSeek logic and Gemini vision results using HYBRID AGGRESSIVE VETO
+        
+        PHILOSOPHY: Balance Quality with Quantity for Small Cap Growth.
+        Allow 'Neutral' charts if Logic is strong (Mathematical Reversal).
         """
-        # Check if both agree or vision is neutral
         logic_signal = logic_result.get('signal', 'WAIT')
         vision_verdict = vision_result.get('verdict', 'NEUTRAL')
         logic_confidence = logic_result.get('confidence', 0)
         vision_confidence = vision_result.get('confidence', 0)
-        
-        # Check for SCALPER-specific vision validation
         setup_valid = vision_result.get('setup_valid', 'VALID_SETUP')
 
-        # Agreement logic
+        # === 1. HARD SAFETY CHECK ===
+        # If Vision explicitly says chart is garbage (Choppy/Unreadable), we SKIP.
+        # This protects you from burning fees in sideways noise.
+        if setup_valid != "VALID_SETUP":
+            return {
+                "final_signal": "WAIT",
+                "combined_confidence": 0,
+                "agreement": False,
+                "setup_valid": setup_valid,
+                "logic_analysis": logic_result,
+                "vision_analysis": vision_result,
+                "recommendation": "SKIP (Vision Veto: Invalid/Choppy Setup)"
+            }
+
+        # === 2. HYBRID AGREEMENT LOGIC ===
         agreement = False
-        if vision_verdict == "NEUTRAL":
-            agreement = True  # Neutral doesn't contradict
-        elif logic_signal == "LONG" and vision_verdict == "BULLISH":
+        
+        # Scenario A: PERFECT AGREEMENT (Best Quality)
+        if logic_signal == "LONG" and vision_verdict == "BULLISH":
             agreement = True
         elif logic_signal == "SHORT" and vision_verdict == "BEARISH":
             agreement = True
-        elif logic_signal == "WAIT":
-            agreement = True  # WAIT is always safe
-
-        # Calculate combined confidence
-        if agreement:
-            # Average confidence if both agree
-            combined_confidence = int((logic_confidence + vision_confidence) / 2) if vision_verdict != "NEUTRAL" else logic_confidence
-        else:
-            # Penalize confidence if they disagree
-            combined_confidence = max(0, logic_confidence - 30)
+            
+        # Scenario B: LOGIC OVERRIDE (Quantity Booster)
+        # If Vision is NEUTRAL (unsure), but DeepSeek is VERY CONFIDENT (>75%), we take it.
+        # DeepSeek sees math (RSI Div) that Vision might miss.
+        elif logic_signal != "WAIT" and vision_verdict == "NEUTRAL":
+            if logic_confidence > 75:
+                agreement = True
         
-        # Additional penalty for INVALID_CHOPPY setup in SCALPER mode
-        if setup_valid == "INVALID_CHOPPY":
-            combined_confidence = max(0, combined_confidence - 20)
+        # Scenario C: CONFLICT (Safety)
+        # DeepSeek says LONG, Vision says BEARISH -> HARD REJECT.
+        
+        # === 3. CONFIDENCE SYNTHESIS ===
+        combined_confidence = 0
+        if agreement:
+            if vision_verdict == "NEUTRAL":
+                # If Vision was neutral, rely mostly on Logic confidence
+                combined_confidence = logic_confidence
+            else:
+                # If both agreed, average them for stability
+                combined_confidence = int((logic_confidence + vision_confidence) / 2)
+        
+        # Final Decision
+        final_signal = logic_signal if agreement else "WAIT"
+        
+        recommendation = "SKIP"
+        if agreement and combined_confidence >= settings.MIN_CONFIDENCE:
+            recommendation = "EXECUTE"
 
         return {
-            "final_signal": logic_signal if agreement else "WAIT",
+            "final_signal": final_signal,
             "combined_confidence": combined_confidence,
             "agreement": agreement,
             "setup_valid": setup_valid,
             "logic_analysis": logic_result,
             "vision_analysis": vision_result,
-            "recommendation": "EXECUTE" if (agreement and combined_confidence >= settings.MIN_CONFIDENCE and setup_valid != "INVALID_CHOPPY") else "SKIP"
+            "recommendation": recommendation
         }

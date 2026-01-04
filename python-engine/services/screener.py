@@ -37,9 +37,10 @@ class MarketScreener:
             'session': session  # Use custom session with larger pool
         })
 
-    def get_top_opportunities(self) -> List[str]:
+    def get_top_opportunities(self) -> List[Dict]:
         """
         Screen market for top trading opportunities [PRO MODE]
+        Returns list of candidate dictionaries with metrics.
         
         New Logic (Resource Heavy):
         1. Fetch Top 30 Volatile Candidates
@@ -105,9 +106,9 @@ class MarketScreener:
                     })
 
             # Sort by volatility and take Top Candidates (Deep Scan)
-            # CAP at 80 to stay safely under Binance rate limits (per-second + per-minute)
-            # 80 coins * 2 req = 160 requests per scan, spread over 8 threads = ~20 req/sec
-            scan_limit = min(settings.TOP_COINS_LIMIT * 6, 80)
+            # We scan 150 raw candidates effectively to find the hidden gems.
+            # Processing is done locally (CPU), so it's cheap.
+            scan_limit = 150
             
             opportunities.sort(key=lambda x: x['volatility'], reverse=True)
             candidates = opportunities[:scan_limit]
@@ -161,8 +162,35 @@ class MarketScreener:
 
                     # D. RSI (15m)
                     rsi_val = ta.momentum.rsi(df_15m['close'], window=14).iloc[-1]
+
+                    # NEW: ADX (Trend Strength) - Critical for avoiding "Fake Reversals"
+                    try:
+                        adx_indicator = ta.trend.ADXIndicator(df_15m['high'], df_15m['low'], df_15m['close'], window=14)
+                        adx_val = adx_indicator.adx().iloc[-1]
+                    except:
+                        adx_val = 25 # Fallback
+
+                    # NEW: ATR % (Volatility Quality)
+                    try:
+                        atr_obj = ta.volatility.AverageTrueRange(df_15m['high'], df_15m['low'], df_15m['close'], window=14)
+                        atr_val = atr_obj.average_true_range().iloc[-1]
+                        atr_pct = (atr_val / df_15m['close'].iloc[-1]) * 100
+                    except:
+                        atr_pct = 0.5 # Fallback
+
+                    # FILTER LOGIC (QUALITY CONTROL):
+                    # 1. ADX Filter REMOVED -> We want to trade Sideways markets too (Ping Pong Strategy)
+                    # if adx_val < 20 and not is_squeeze: return None
                     
-                    # E. Scoring System (Hybrid: Volatility + Squeeze)
+                    # 2. Reject Dead Coins (Vol < 0.5x Avg) UNLESS it's a Squeeze (Accumulation)
+                    if vol_ratio < 0.5 and not is_squeeze:
+                        return None
+                    
+                    # 3. Reject EXTREMELY Low Volatility (ATR < 0.15%) - Dead coins
+                    if atr_pct < 0.15:
+                         return None
+                    
+                    # E. Scoring System (Hybrid: Volatility + Squeeze + Trend Strength)
                     score = 0
                     
                     # Scenario 1: Predictive Alpha (Squeeze) -> HIGHEST PRIORITY
@@ -176,7 +204,11 @@ class MarketScreener:
                     elif rsi_val > 65 and major_trend == "BEAR": # Overbought in Downtrend
                         score += (rsi_val - 65) * 2
                         
-                    # Scenario 3: Breakout Play (Volume Spike)
+                    # Scenario 3: Strong Trend Play (ADX > 40)
+                    if adx_val > 40:
+                        score += 15 # Bonus for strong trend currency
+                        
+                    # Scenario 4: Breakout Play (Volume Spike)
                     elif vol_ratio > 2.0:
                         score += 30
                     
@@ -190,6 +222,8 @@ class MarketScreener:
                         result['trend'] = major_trend
                         result['vol_ratio'] = vol_ratio
                         result['is_squeeze'] = is_squeeze
+                        result['adx'] = adx_val
+                        result['atr_pct'] = atr_pct
                         return result
                     
                     return None
@@ -212,11 +246,11 @@ class MarketScreener:
             # Sort by Confluence Score
             final_list.sort(key=lambda x: x['score'], reverse=True)
 
-            # Return Top N symbols based on ENV setting
-            top_symbols = [opp['symbol'] for opp in final_list[:settings.TOP_COINS_LIMIT]]
+            # Return Top N Candidates (Metrics Included)
+            top_candidates = final_list[:settings.TOP_COINS_LIMIT]
             
-            logging.info(f"[OK] Selected {len(top_symbols)} coins (from {len(candidates)} scanned) | Limit: {settings.TOP_COINS_LIMIT}")
-            return top_symbols
+            logging.info(f"[OK] Selected {len(top_candidates)} coins with Alpha Metrics")
+            return top_candidates
 
         except Exception as e:
             raise Exception(f"Failed to screen market: {str(e)}")
