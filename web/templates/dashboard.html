@@ -746,7 +746,7 @@
                         <!-- Left Column: Activity & Chart (2/3) -->
                         <div class="lg:col-span-2 space-y-8">
 
-                            <!-- Empty State / Chart Placeholder -->
+                            <!-- Performance Analytics Chart -->
                             <div
                                 class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm p-6">
                                 <div class="flex items-center justify-between mb-4">
@@ -774,7 +774,28 @@
                                         </div>
                                     </div>
                                 </div>
-                                <div id="chart-container" class="h-64 relative w-full">
+
+                                <!-- Summary Stats Box -->
+                                <div id="chart-summary" class="grid grid-cols-4 gap-3 mb-4">
+                                    <div class="bg-slate-50 dark:bg-slate-800/50 rounded-lg p-3 text-center">
+                                        <p class="text-[10px] uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1">Period PnL</p>
+                                        <p id="summary-pnl" class="text-sm font-bold text-slate-900 dark:text-white">--</p>
+                                    </div>
+                                    <div class="bg-slate-50 dark:bg-slate-800/50 rounded-lg p-3 text-center">
+                                        <p class="text-[10px] uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1">Best Trade</p>
+                                        <p id="summary-best" class="text-sm font-bold text-emerald-600 dark:text-emerald-400">--</p>
+                                    </div>
+                                    <div class="bg-slate-50 dark:bg-slate-800/50 rounded-lg p-3 text-center">
+                                        <p class="text-[10px] uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1">Worst Trade</p>
+                                        <p id="summary-worst" class="text-sm font-bold text-rose-600 dark:text-rose-400">--</p>
+                                    </div>
+                                    <div class="bg-slate-50 dark:bg-slate-800/50 rounded-lg p-3 text-center">
+                                        <p class="text-[10px] uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1">Trades</p>
+                                        <p id="summary-trades" class="text-sm font-bold text-slate-900 dark:text-white">--</p>
+                                    </div>
+                                </div>
+
+                                <div id="chart-container" class="h-80 relative w-full">
                                     <!-- Canvas for Chart.js -->
                                     <canvas id="performanceChart"></canvas>
                                 </div>
@@ -782,9 +803,45 @@
                                 <script>
                                     let performanceChartInstance = null;
 
+                                    function formatPnL(val) {
+                                        if (val === null || val === undefined) return '--';
+                                        return val < 0 ? '-$' + Math.abs(val).toFixed(2) : '$' + val.toFixed(2);
+                                    }
+
+                                    function updateSummaryStats(data) {
+                                        const summaryPnl = document.getElementById('summary-pnl');
+                                        const summaryBest = document.getElementById('summary-best');
+                                        const summaryWorst = document.getElementById('summary-worst');
+                                        const summaryTrades = document.getElementById('summary-trades');
+
+                                        if (!data || !data.data || data.data.length === 0) {
+                                            summaryPnl.textContent = '$0.00';
+                                            summaryBest.textContent = '--';
+                                            summaryWorst.textContent = '--';
+                                            summaryTrades.textContent = '0';
+                                            return;
+                                        }
+
+                                        // Calculate stats from individual trade PnLs
+                                        const tradePnls = data.individual_pnls || [];
+                                        const periodPnl = data.data[data.data.length - 1] || 0;
+                                        const bestTrade = tradePnls.length > 0 ? Math.max(...tradePnls) : null;
+                                        const worstTrade = tradePnls.length > 0 ? Math.min(...tradePnls) : null;
+                                        const tradeCount = tradePnls.length;
+
+                                        // Update DOM
+                                        summaryPnl.textContent = formatPnL(periodPnl);
+                                        summaryPnl.className = periodPnl >= 0
+                                            ? 'text-sm font-bold text-emerald-600 dark:text-emerald-400'
+                                            : 'text-sm font-bold text-rose-600 dark:text-rose-400';
+
+                                        summaryBest.textContent = bestTrade !== null ? formatPnL(bestTrade) : '--';
+                                        summaryWorst.textContent = worstTrade !== null ? formatPnL(worstTrade) : '--';
+                                        summaryTrades.textContent = tradeCount.toString();
+                                    }
+
                                     function loadPerformanceChart(period = '24h') {
                                         const container = document.getElementById('chart-container');
-                                        const ctx = document.getElementById('performanceChart');
 
                                         // Destroy existing chart
                                         if (performanceChartInstance) {
@@ -802,18 +859,52 @@
                                                 container.innerHTML = '<canvas id="performanceChart"></canvas>';
                                                 const newCtx = document.getElementById('performanceChart').getContext('2d');
 
+                                                // Update summary stats
+                                                updateSummaryStats(res.data);
+
                                                 if (res.data && res.data.labels && res.data.labels.length > 0) {
                                                     const isDark = document.documentElement.classList.contains('dark');
-                                                    const gridColor = isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)';
+                                                    const gridColor = isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.04)';
                                                     const textColor = isDark ? '#94a3b8' : '#64748b';
 
                                                     const lastVal = res.data.data.length > 0 ? res.data.data[res.data.data.length - 1] : 0;
                                                     const isProfit = lastVal >= 0;
                                                     const lineColor = isProfit ? '#10b981' : '#f43f5e';
-                                                    const bgColor = isProfit ? 'rgba(16, 185, 129, 0.1)' : 'rgba(244, 63, 94, 0.1)';
+                                                    const bgColor = isProfit ? 'rgba(16, 185, 129, 0.08)' : 'rgba(244, 63, 94, 0.08)';
+
+                                                    // Zero line plugin
+                                                    const zeroLinePlugin = {
+                                                        id: 'zeroLine',
+                                                        beforeDraw: (chart) => {
+                                                            const ctx = chart.ctx;
+                                                            const yScale = chart.scales.y;
+                                                            const xScale = chart.scales.x;
+
+                                                            if (yScale.min < 0 && yScale.max > 0) {
+                                                                const y = yScale.getPixelForValue(0);
+                                                                ctx.save();
+                                                                ctx.beginPath();
+                                                                ctx.moveTo(xScale.left, y);
+                                                                ctx.lineTo(xScale.right, y);
+                                                                ctx.lineWidth = 1;
+                                                                ctx.strokeStyle = isDark ? 'rgba(148, 163, 184, 0.3)' : 'rgba(100, 116, 139, 0.3)';
+                                                                ctx.setLineDash([4, 4]);
+                                                                ctx.stroke();
+                                                                ctx.restore();
+
+                                                                // Draw "Breakeven" label
+                                                                ctx.save();
+                                                                ctx.font = '10px Inter, sans-serif';
+                                                                ctx.fillStyle = isDark ? '#64748b' : '#94a3b8';
+                                                                ctx.fillText('$0', xScale.left + 4, y - 4);
+                                                                ctx.restore();
+                                                            }
+                                                        }
+                                                    };
 
                                                     performanceChartInstance = new Chart(newCtx, {
                                                         type: 'line',
+                                                        plugins: [zeroLinePlugin],
                                                         data: {
                                                             labels: res.data.labels,
                                                             datasets: [{
@@ -822,11 +913,13 @@
                                                                 borderColor: lineColor,
                                                                 backgroundColor: bgColor,
                                                                 borderWidth: 2,
-                                                                tension: 0.4,
-                                                                fill: 'start',
-                                                                pointRadius: 3,
-                                                                pointHoverRadius: 5,
-                                                                pointBackgroundColor: lineColor
+                                                                tension: 0.3,
+                                                                fill: 'origin',
+                                                                pointRadius: 0,
+                                                                pointHoverRadius: 6,
+                                                                pointBackgroundColor: lineColor,
+                                                                pointBorderColor: isDark ? '#0f172a' : '#ffffff',
+                                                                pointBorderWidth: 2
                                                             }]
                                                         },
                                                         options: {
@@ -842,19 +935,32 @@
                                                                     bodyColor: isDark ? '#cbd5e1' : '#334155',
                                                                     borderColor: isDark ? '#334155' : '#e2e8f0',
                                                                     borderWidth: 1,
+                                                                    padding: 12,
+                                                                    displayColors: false,
                                                                     callbacks: {
+                                                                        title: function(context) {
+                                                                            return context[0].label;
+                                                                        },
                                                                         label: function (context) {
                                                                             let val = context.parsed.y;
                                                                             let pnl = val < 0 ? '-$' + Math.abs(val).toFixed(2) : '$' + val.toFixed(2);
-                                                                            return ' PnL: ' + pnl;
+                                                                            return 'Cumulative PnL: ' + pnl;
                                                                         }
                                                                     }
                                                                 }
                                                             },
                                                             scales: {
                                                                 x: {
-                                                                    display: false,
-                                                                    grid: { display: false }
+                                                                    display: true,
+                                                                    grid: { display: false },
+                                                                    ticks: {
+                                                                        color: textColor,
+                                                                        font: { family: "'Inter', sans-serif", size: 10 },
+                                                                        maxRotation: 0,
+                                                                        autoSkip: true,
+                                                                        maxTicksLimit: 6
+                                                                    },
+                                                                    border: { display: false }
                                                                 },
                                                                 y: {
                                                                     grid: { color: gridColor },
@@ -863,7 +969,8 @@
                                                                         callback: function (value) {
                                                                             return value < 0 ? '-$' + Math.abs(value) : '$' + value;
                                                                         },
-                                                                        font: { family: "'Inter', sans-serif", size: 10 }
+                                                                        font: { family: "'Inter', sans-serif", size: 10 },
+                                                                        padding: 8
                                                                     },
                                                                     border: { display: false }
                                                                 }

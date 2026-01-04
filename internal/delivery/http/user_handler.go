@@ -330,6 +330,7 @@ func (h *UserHandler) GetAnalyticsPnL(c echo.Context) error {
 	// Process data for Chart.js
 	var labels []string
 	var data []float64
+	var individualPnls []float64
 	cumulative := 0.0
 
 	// Because history is ordered ASC, we can just accumulate
@@ -337,13 +338,15 @@ func (h *UserHandler) GetAnalyticsPnL(c echo.Context) error {
 		// Format label: "Jan 02 15:04"
 		labels = append(labels, entry.ClosedAt.Format("Jan 02 15:04"))
 
+		individualPnls = append(individualPnls, entry.PnL)
 		cumulative += entry.PnL
 		data = append(data, cumulative)
 	}
 
 	return SuccessResponse(c, map[string]interface{}{
-		"labels": labels,
-		"data":   data,
-		"period": period,
+		"labels":          labels,
+		"data":            data,
+		"individual_pnls": individualPnls,
+		"period":          period,
 	})
 }
