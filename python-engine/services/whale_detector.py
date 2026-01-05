@@ -678,57 +678,197 @@ async def start_whale_monitoring():
     await whale_detector.start_liquidation_stream()
 
 
-# Helper async function for sync wrapper - properly manages session lifecycle
-async def _detect_and_cleanup(symbol: str, current_price: float) -> WhaleSignal:
-    """Run detection with isolated session to avoid cross-event-loop issues"""
-    # Ensure we start fresh
-    whale_detector._session = None
+# Standalone async function with fully isolated session (no shared state)
+async def _detect_whale_isolated(symbol: str, current_price: float) -> Dict:
+    """
+    Completely isolated whale detection - creates own session, no shared state.
+    Safe to call from multiple threads via asyncio.run().
+    """
     connector = None
+    session = None
 
     try:
-        # Create connector and session specifically for this event loop
+        # Create completely isolated connector and session
         connector = aiohttp.TCPConnector(
-            limit=10,  # Max connections
+            limit=10,
             limit_per_host=5,
             enable_cleanup_closed=True,
-            force_close=True  # Force close connections to avoid reuse issues
+            force_close=True
         )
-        timeout = aiohttp.ClientTimeout(total=10, connect=5)
-        whale_detector._session = aiohttp.ClientSession(
-            timeout=timeout,
-            connector=connector
+        timeout = aiohttp.ClientTimeout(total=8, connect=3)
+        session = aiohttp.ClientSession(timeout=timeout, connector=connector)
+
+        normalized = symbol.replace('/', '').upper()
+
+        # Fetch all data in parallel using our isolated session
+        async def fetch_json(url: str) -> Optional[Dict]:
+            try:
+                async with session.get(url) as resp:
+                    if resp.status == 200:
+                        return await resp.json()
+            except Exception:
+                pass
+            return None
+
+        # Build URLs
+        base = "https://fapi.binance.com"
+        urls = {
+            'orderbook': f"{base}/fapi/v1/depth?symbol={normalized}&limit=20",
+            'trades': f"{base}/fapi/v1/trades?symbol={normalized}&limit=100",
+            'oi': f"{base}/fapi/v1/openInterest?symbol={normalized}",
+            'funding': f"{base}/fapi/v1/premiumIndex?symbol={normalized}",
+            'ls_ratio': f"{base}/futures/data/topLongShortAccountRatio?symbol={normalized}&period=5m&limit=1"
+        }
+
+        # Fetch all in parallel
+        results = await asyncio.gather(
+            fetch_json(urls['orderbook']),
+            fetch_json(urls['trades']),
+            fetch_json(urls['oi']),
+            fetch_json(urls['funding']),
+            fetch_json(urls['ls_ratio']),
+            return_exceptions=True
         )
 
-        signal = await whale_detector.detect_whale_activity(symbol, current_price)
-        return signal
+        orderbook_data, trades_data, oi_data, funding_data, ls_data = results
+
+        # Handle exceptions
+        if isinstance(orderbook_data, Exception): orderbook_data = None
+        if isinstance(trades_data, Exception): trades_data = None
+        if isinstance(oi_data, Exception): oi_data = None
+        if isinstance(funding_data, Exception): funding_data = None
+        if isinstance(ls_data, Exception): ls_data = None
+
+        # Parse funding rate
+        funding_rate = 0.0
+        if funding_data:
+            funding_rate = float(funding_data.get('lastFundingRate', 0)) * 100
+
+        # Parse L/S ratio
+        ls_ratio_val = 1.0
+        if ls_data and len(ls_data) > 0:
+            ls_ratio_val = float(ls_data[0].get('longShortRatio', 1.0))
+
+        # Parse order imbalance
+        order_imbalance = 0.0
+        if orderbook_data:
+            bids = orderbook_data.get('bids', [])
+            asks = orderbook_data.get('asks', [])
+            if bids and asks:
+                bid_val = sum(float(p) * float(q) for p, q in bids)
+                ask_val = sum(float(p) * float(q) for p, q in asks)
+                total = bid_val + ask_val
+                if total > 0:
+                    order_imbalance = ((bid_val - ask_val) / total) * 100
+
+        # Analyze large trades
+        trade_bias = 'MIXED'
+        if trades_data:
+            buy_vol = 0.0
+            sell_vol = 0.0
+            for t in trades_data:
+                val = float(t.get('price', 0)) * float(t.get('qty', 0))
+                if val >= 50000:  # Large trade threshold
+                    if t.get('isBuyerMaker', False):
+                        sell_vol += val
+                    else:
+                        buy_vol += val
+            if buy_vol + sell_vol >= 50000:
+                ratio = buy_vol / (sell_vol + 1)
+                if ratio > 1.5:
+                    trade_bias = 'BUYING'
+                elif ratio < 0.67:
+                    trade_bias = 'SELLING'
+
+        # Simple signal synthesis
+        signal = 'NEUTRAL'
+        confidence = 50
+        reasons = []
+
+        pump_score = 0
+        dump_score = 0
+
+        if order_imbalance > 15:
+            pump_score += 25
+            reasons.append(f"Buy-heavy orderbook: {order_imbalance:+.1f}%")
+        elif order_imbalance < -15:
+            dump_score += 25
+            reasons.append(f"Sell-heavy orderbook: {order_imbalance:+.1f}%")
+
+        if trade_bias == 'BUYING':
+            pump_score += 25
+            reasons.append("Large buyers active")
+        elif trade_bias == 'SELLING':
+            dump_score += 25
+            reasons.append("Large sellers active")
+
+        if funding_rate < -0.03:
+            pump_score += 20
+            reasons.append(f"Bearish funding {funding_rate:.3f}% (contrarian BULL)")
+        elif funding_rate > 0.05:
+            dump_score += 20
+            reasons.append(f"Bullish funding {funding_rate:.3f}% (contrarian BEAR)")
+
+        if ls_ratio_val < 0.7:
+            pump_score += 20
+            reasons.append(f"Short crowded L/S {ls_ratio_val:.2f}")
+        elif ls_ratio_val > 1.5:
+            dump_score += 20
+            reasons.append(f"Long crowded L/S {ls_ratio_val:.2f}")
+
+        if pump_score >= 50:
+            signal = 'PUMP_IMMINENT'
+            confidence = min(90, pump_score + 20)
+        elif dump_score >= 50:
+            signal = 'DUMP_IMMINENT'
+            confidence = min(90, dump_score + 20)
+
+        return {
+            'whale_signal': signal,
+            'whale_confidence': confidence,
+            'liquidation_pressure': 'NONE',
+            'order_imbalance': order_imbalance,
+            'large_trades_bias': trade_bias,
+            'funding_rate': funding_rate,
+            'ls_ratio': ls_ratio_val,
+            'whale_reasoning': ' | '.join(reasons) if reasons else 'No significant whale activity'
+        }
+
+    except Exception as e:
+        return {
+            'whale_signal': 'NEUTRAL',
+            'whale_confidence': 0,
+            'liquidation_pressure': 'NONE',
+            'order_imbalance': 0,
+            'large_trades_bias': 'MIXED',
+            'whale_reasoning': f'Detection error: {e}'
+        }
     finally:
-        # Always close session and connector
-        try:
-            if whale_detector._session and not whale_detector._session.closed:
-                await whale_detector._session.close()
-        except Exception:
-            pass
-        try:
-            if connector and not connector.closed:
+        # Cleanup - close session first, then connector
+        if session and not session.closed:
+            try:
+                await session.close()
+            except Exception:
+                pass
+        if connector and not connector.closed:
+            try:
                 await connector.close()
-        except Exception:
-            pass
-        whale_detector._session = None
+            except Exception:
+                pass
+        # Small delay to allow cleanup to complete
+        await asyncio.sleep(0.1)
 
 
 # Convenience function for synchronous code
 def get_whale_signal_sync(symbol: str, current_price: float = 0) -> Dict:
     """
-    Synchronous wrapper for whale detection
-    Use this from non-async code like screener.py
-
-    Handles being called from ThreadPoolExecutor threads which don't have event loops.
+    Synchronous wrapper for whale detection.
+    Uses completely isolated session - safe to call from ThreadPoolExecutor.
     """
     try:
-        # Check if we're in an async context with a running loop
+        # Check if we're in an async context
         try:
             asyncio.get_running_loop()
-            # We're in an async context - shouldn't happen, return neutral
             logger.warning("[WHALE] get_whale_signal_sync called from async context")
             return {
                 'whale_signal': 'NEUTRAL',
@@ -736,15 +876,14 @@ def get_whale_signal_sync(symbol: str, current_price: float = 0) -> Dict:
                 'liquidation_pressure': 'NONE',
                 'order_imbalance': 0,
                 'large_trades_bias': 'MIXED',
-                'whale_reasoning': 'Called from async context - use detect_whale_activity instead'
+                'whale_reasoning': 'Use detect_whale_activity in async context'
             }
         except RuntimeError:
-            # No running event loop - this is the expected case
             pass
 
-        # Use asyncio.run() with cleanup helper
-        signal = asyncio.run(_detect_and_cleanup(symbol, current_price))
-        return whale_detector.get_whale_metrics(signal)
+        # Run isolated detection - no shared state
+        return asyncio.run(_detect_whale_isolated(symbol, current_price))
+
     except Exception as e:
         logger.warning(f"[WHALE] Sync detection failed: {e}")
         return {
