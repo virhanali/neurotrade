@@ -681,22 +681,38 @@ def get_whale_signal_sync(symbol: str, current_price: float = 0) -> Dict:
     """
     Synchronous wrapper for whale detection
     Use this from non-async code like screener.py
+
+    Handles being called from ThreadPoolExecutor threads which don't have event loops.
     """
     try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            # If already in async context, create a new task
-            import concurrent.futures
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                future = executor.submit(
-                    asyncio.run,
-                    whale_detector.detect_whale_activity(symbol, current_price)
-                )
-                signal = future.result(timeout=5)
-        else:
-            signal = loop.run_until_complete(
-                whale_detector.detect_whale_activity(symbol, current_price)
-            )
+        # Check if we're in an async context with a running loop
+        try:
+            loop = asyncio.get_running_loop()
+            # We're in an async context - this shouldn't happen in normal usage
+            # but handle it gracefully by returning neutral
+            logger.warning("[WHALE] get_whale_signal_sync called from async context")
+            return {
+                'whale_signal': 'NEUTRAL',
+                'whale_confidence': 0,
+                'liquidation_pressure': 'NONE',
+                'order_imbalance': 0,
+                'large_trades_bias': 'MIXED',
+                'whale_reasoning': 'Called from async context - use detect_whale_activity instead'
+            }
+        except RuntimeError:
+            # No running event loop - this is the expected case
+            # Create a fresh event loop for this thread and run the async function
+            pass
+
+        # Reset the shared session to avoid cross-event-loop issues
+        # Each asyncio.run() creates a new event loop, so we need fresh sessions
+        whale_detector._session = None
+
+        # Use asyncio.run() which creates a new event loop, runs the coroutine, and closes it
+        # This is safe to call from ThreadPoolExecutor threads
+        signal = asyncio.run(
+            whale_detector.detect_whale_activity(symbol, current_price)
+        )
         return whale_detector.get_whale_metrics(signal)
     except Exception as e:
         logger.warning(f"[WHALE] Sync detection failed: {e}")
