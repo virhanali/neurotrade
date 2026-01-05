@@ -885,12 +885,14 @@
                                                         afterDatasetsDraw: (chart) => {
                                                             const ctx = chart.ctx;
                                                             const chartArea = chart.chartArea;
-                                                            const yScale = chart.scales.y;
                                                             const dataset = chart.data.datasets[0];
                                                             const data = dataset.data;
-                                                            const xScale = chart.scales.x;
 
                                                             if (!data || data.length === 0) return;
+
+                                                            // Get dataset meta once (outside loop for performance)
+                                                            const meta = chart.getDatasetMeta(0);
+                                                            if (!meta || !meta.data || meta.data.length === 0) return;
 
                                                             // Create gradient for fill area
                                                             const gradient = ctx.createLinearGradient(
@@ -906,8 +908,7 @@
 
                                                             // Create path from line to bottom
                                                             ctx.beginPath();
-                                                            for (let i = 0; i < data.length; i++) {
-                                                                const meta = chart.getDatasetMeta(0);
+                                                            for (let i = 0; i < meta.data.length; i++) {
                                                                 const point = meta.data[i];
                                                                 if (point && typeof point.x === 'number' && typeof point.y === 'number') {
                                                                     if (i === 0) {
@@ -918,12 +919,11 @@
                                                                 }
                                                             }
                                                             // Line to bottom right
-                                                            const lastMeta = chart.getDatasetMeta(0);
-                                                            if (lastMeta.data.length > 0) {
-                                                                const lastPoint = lastMeta.data[lastMeta.data.length - 1];
+                                                            if (meta.data.length > 0) {
+                                                                const lastPoint = meta.data[meta.data.length - 1];
                                                                 ctx.lineTo(lastPoint.x, chartArea.bottom);
                                                                 // Line to bottom left
-                                                                const firstPoint = lastMeta.data[0];
+                                                                const firstPoint = meta.data[0];
                                                                 ctx.lineTo(firstPoint.x, chartArea.bottom);
                                                             }
                                                             ctx.closePath();
