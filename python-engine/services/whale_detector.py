@@ -84,9 +84,11 @@ class WhaleDetector:
         self._session: Optional[aiohttp.ClientSession] = None
 
     async def get_session(self) -> aiohttp.ClientSession:
-        """Get or create HTTP session"""
+        """Get or create HTTP session with proper timeout config"""
         if self._session is None or self._session.closed:
-            self._session = aiohttp.ClientSession()
+            # Create session with explicit timeout to avoid "Timeout context manager" errors
+            timeout = aiohttp.ClientTimeout(total=10, connect=5)
+            self._session = aiohttp.ClientSession(timeout=timeout)
         return self._session
 
     async def close(self):
@@ -676,16 +678,41 @@ async def start_whale_monitoring():
     await whale_detector.start_liquidation_stream()
 
 
-# Helper async function for sync wrapper - properly closes session
+# Helper async function for sync wrapper - properly manages session lifecycle
 async def _detect_and_cleanup(symbol: str, current_price: float) -> WhaleSignal:
-    """Run detection and cleanup session to avoid unclosed connector errors"""
+    """Run detection with isolated session to avoid cross-event-loop issues"""
+    # Ensure we start fresh
+    whale_detector._session = None
+    connector = None
+
     try:
+        # Create connector and session specifically for this event loop
+        connector = aiohttp.TCPConnector(
+            limit=10,  # Max connections
+            limit_per_host=5,
+            enable_cleanup_closed=True,
+            force_close=True  # Force close connections to avoid reuse issues
+        )
+        timeout = aiohttp.ClientTimeout(total=10, connect=5)
+        whale_detector._session = aiohttp.ClientSession(
+            timeout=timeout,
+            connector=connector
+        )
+
         signal = await whale_detector.detect_whale_activity(symbol, current_price)
         return signal
     finally:
-        # Always close session to prevent "Unclosed connector" errors
-        if whale_detector._session and not whale_detector._session.closed:
-            await whale_detector._session.close()
+        # Always close session and connector
+        try:
+            if whale_detector._session and not whale_detector._session.closed:
+                await whale_detector._session.close()
+        except Exception:
+            pass
+        try:
+            if connector and not connector.closed:
+                await connector.close()
+        except Exception:
+            pass
         whale_detector._session = None
 
 
