@@ -872,7 +872,7 @@
                                                     const lineColor = isProfit ? '#10b981' : '#f43f5e';
 
                                                     // Create gradient for background fill
-                                                    const gradientColor = isProfit ? 'rgba(16, 185, 129, 0.15)' : 'rgba(244, 63, 94, 0.15)';
+                                                    const gradientColor = isProfit ? 'rgba(16, 185, 129, 0.25)' : 'rgba(244, 63, 94, 0.25)';
                                                     const gradientColorTransparent = isProfit ? 'rgba(16, 185, 129, 0)' : 'rgba(244, 63, 94, 0)';
                                                     let bgColor = gradientColor;
 
@@ -993,20 +993,25 @@
                                                         }
                                                     });
 
-                                                    // Apply proper gradient to chart background
+                                                    // Apply proper gradient to chart fill area
                                                     setTimeout(() => {
                                                         const canvas = document.getElementById('performanceChart');
                                                         const ctx = performanceChartInstance.ctx;
+                                                        const chartArea = performanceChartInstance.chartArea;
 
-                                                        // Create linear gradient from top to bottom
-                                                        const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+                                                        // Create linear gradient within chart area (from line to bottom)
+                                                        const gradient = ctx.createLinearGradient(
+                                                            0, chartArea.top,
+                                                            0, chartArea.bottom
+                                                        );
+
                                                         gradient.addColorStop(0, chartGradientInfo.gradientColor);
                                                         gradient.addColorStop(1, chartGradientInfo.gradientColorTransparent);
 
                                                         // Update dataset with gradient
                                                         performanceChartInstance.data.datasets[0].backgroundColor = gradient;
                                                         performanceChartInstance.update();
-                                                    }, 0);
+                                                    }, 50);
                                                 } else {
                                                     container.innerHTML = `
                                                     <div class="h-full flex flex-col items-center justify-center text-slate-400 dark:text-slate-600 bg-slate-50/50 dark:bg-slate-800/20 rounded-lg border border-dashed border-slate-200 dark:border-slate-700">
