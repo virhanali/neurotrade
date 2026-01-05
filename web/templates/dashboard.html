@@ -870,7 +870,14 @@
                                                     const lastVal = res.data.data.length > 0 ? res.data.data[res.data.data.length - 1] : 0;
                                                     const isProfit = lastVal >= 0;
                                                     const lineColor = isProfit ? '#10b981' : '#f43f5e';
-                                                    const bgColor = isProfit ? 'rgba(16, 185, 129, 0.08)' : 'rgba(244, 63, 94, 0.08)';
+
+                                                    // Create gradient for background fill
+                                                    const gradientColor = isProfit ? 'rgba(16, 185, 129, 0.15)' : 'rgba(244, 63, 94, 0.15)';
+                                                    const gradientColorTransparent = isProfit ? 'rgba(16, 185, 129, 0)' : 'rgba(244, 63, 94, 0)';
+                                                    let bgColor = gradientColor;
+
+                                                    // We'll update this after chart instance is created with proper gradient
+                                                    const chartGradientInfo = { isProfit, gradientColor, gradientColorTransparent };
 
                                                     // Zero line plugin
                                                     const zeroLinePlugin = {
@@ -902,25 +909,28 @@
                                                         }
                                                     };
 
+                                                    // Create chart first with placeholder, then apply gradient
+                                                    const tempDataset = {
+                                                        label: 'Cumulative PnL',
+                                                        data: res.data.data,
+                                                        borderColor: lineColor,
+                                                        backgroundColor: bgColor,
+                                                        borderWidth: 2,
+                                                        tension: 0.3,
+                                                        fill: 'origin',
+                                                        pointRadius: 0,
+                                                        pointHoverRadius: 6,
+                                                        pointBackgroundColor: lineColor,
+                                                        pointBorderColor: isDark ? '#0f172a' : '#ffffff',
+                                                        pointBorderWidth: 2
+                                                    };
+
                                                     performanceChartInstance = new Chart(newCtx, {
                                                         type: 'line',
                                                         plugins: [zeroLinePlugin],
                                                         data: {
                                                             labels: res.data.labels,
-                                                            datasets: [{
-                                                                label: 'Cumulative PnL',
-                                                                data: res.data.data,
-                                                                borderColor: lineColor,
-                                                                backgroundColor: bgColor,
-                                                                borderWidth: 2,
-                                                                tension: 0.3,
-                                                                fill: 'origin',
-                                                                pointRadius: 0,
-                                                                pointHoverRadius: 6,
-                                                                pointBackgroundColor: lineColor,
-                                                                pointBorderColor: isDark ? '#0f172a' : '#ffffff',
-                                                                pointBorderWidth: 2
-                                                            }]
+                                                            datasets: [tempDataset]
                                                         },
                                                         options: {
                                                             responsive: true,
@@ -982,6 +992,21 @@
                                                             }
                                                         }
                                                     });
+
+                                                    // Apply proper gradient to chart background
+                                                    setTimeout(() => {
+                                                        const canvas = document.getElementById('performanceChart');
+                                                        const ctx = performanceChartInstance.ctx;
+
+                                                        // Create linear gradient from top to bottom
+                                                        const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+                                                        gradient.addColorStop(0, chartGradientInfo.gradientColor);
+                                                        gradient.addColorStop(1, chartGradientInfo.gradientColorTransparent);
+
+                                                        // Update dataset with gradient
+                                                        performanceChartInstance.data.datasets[0].backgroundColor = gradient;
+                                                        performanceChartInstance.update();
+                                                    }, 0);
                                                 } else {
                                                     container.innerHTML = `
                                                     <div class="h-full flex flex-col items-center justify-center text-slate-400 dark:text-slate-600 bg-slate-50/50 dark:bg-slate-800/20 rounded-lg border border-dashed border-slate-200 dark:border-slate-700">
