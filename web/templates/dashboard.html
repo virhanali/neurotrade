@@ -879,10 +879,63 @@
                                                     // We'll update this after chart instance is created with proper gradient
                                                     const chartGradientInfo = { isProfit, gradientColor, gradientColorTransparent };
 
+                                                    // Gradient fill plugin - draws the fill area with proper gradient
+                                                    const gradientFillPlugin = {
+                                                        id: 'gradientFill',
+                                                        afterDatasetsDraw: (chart) => {
+                                                            const ctx = chart.ctx;
+                                                            const chartArea = chart.chartArea;
+                                                            const yScale = chart.scales.y;
+                                                            const dataset = chart.data.datasets[0];
+                                                            const data = dataset.data;
+                                                            const xScale = chart.scales.x;
+
+                                                            if (!data || data.length === 0) return;
+
+                                                            // Create gradient for fill area
+                                                            const gradient = ctx.createLinearGradient(
+                                                                0, chartArea.top,
+                                                                0, chartArea.bottom
+                                                            );
+                                                            gradient.addColorStop(0, chartGradientInfo.gradientColor);
+                                                            gradient.addColorStop(1, chartGradientInfo.gradientColorTransparent);
+
+                                                            // Draw fill area under curve
+                                                            ctx.save();
+                                                            ctx.fillStyle = gradient;
+
+                                                            // Create path from line to bottom
+                                                            ctx.beginPath();
+                                                            for (let i = 0; i < data.length; i++) {
+                                                                const meta = chart.getDatasetMeta(0);
+                                                                const point = meta.data[i];
+                                                                if (point && typeof point.x === 'number' && typeof point.y === 'number') {
+                                                                    if (i === 0) {
+                                                                        ctx.moveTo(point.x, point.y);
+                                                                    } else {
+                                                                        ctx.lineTo(point.x, point.y);
+                                                                    }
+                                                                }
+                                                            }
+                                                            // Line to bottom right
+                                                            const lastMeta = chart.getDatasetMeta(0);
+                                                            if (lastMeta.data.length > 0) {
+                                                                const lastPoint = lastMeta.data[lastMeta.data.length - 1];
+                                                                ctx.lineTo(lastPoint.x, chartArea.bottom);
+                                                                // Line to bottom left
+                                                                const firstPoint = lastMeta.data[0];
+                                                                ctx.lineTo(firstPoint.x, chartArea.bottom);
+                                                            }
+                                                            ctx.closePath();
+                                                            ctx.fill();
+                                                            ctx.restore();
+                                                        }
+                                                    };
+
                                                     // Zero line plugin
                                                     const zeroLinePlugin = {
                                                         id: 'zeroLine',
-                                                        beforeDraw: (chart) => {
+                                                        afterDatasetsDraw: (chart) => {
                                                             const ctx = chart.ctx;
                                                             const yScale = chart.scales.y;
                                                             const xScale = chart.scales.x;
@@ -909,15 +962,15 @@
                                                         }
                                                     };
 
-                                                    // Create chart first with placeholder, then apply gradient
+                                                    // Create chart - gradient fill is handled by gradientFillPlugin
                                                     const tempDataset = {
                                                         label: 'Cumulative PnL',
                                                         data: res.data.data,
                                                         borderColor: lineColor,
-                                                        backgroundColor: bgColor,
+                                                        backgroundColor: 'transparent',
                                                         borderWidth: 2,
                                                         tension: 0.3,
-                                                        fill: 'origin',
+                                                        fill: false,
                                                         pointRadius: 0,
                                                         pointHoverRadius: 6,
                                                         pointBackgroundColor: lineColor,
@@ -927,7 +980,7 @@
 
                                                     performanceChartInstance = new Chart(newCtx, {
                                                         type: 'line',
-                                                        plugins: [zeroLinePlugin],
+                                                        plugins: [gradientFillPlugin, zeroLinePlugin],
                                                         data: {
                                                             labels: res.data.labels,
                                                             datasets: [tempDataset]
@@ -993,25 +1046,6 @@
                                                         }
                                                     });
 
-                                                    // Apply proper gradient to chart fill area
-                                                    setTimeout(() => {
-                                                        const canvas = document.getElementById('performanceChart');
-                                                        const ctx = performanceChartInstance.ctx;
-                                                        const chartArea = performanceChartInstance.chartArea;
-
-                                                        // Create linear gradient within chart area (from line to bottom)
-                                                        const gradient = ctx.createLinearGradient(
-                                                            0, chartArea.top,
-                                                            0, chartArea.bottom
-                                                        );
-
-                                                        gradient.addColorStop(0, chartGradientInfo.gradientColor);
-                                                        gradient.addColorStop(1, chartGradientInfo.gradientColorTransparent);
-
-                                                        // Update dataset with gradient
-                                                        performanceChartInstance.data.datasets[0].backgroundColor = gradient;
-                                                        performanceChartInstance.update();
-                                                    }, 50);
                                                 } else {
                                                     container.innerHTML = `
                                                     <div class="h-full flex flex-col items-center justify-center text-slate-400 dark:text-slate-600 bg-slate-50/50 dark:bg-slate-800/20 rounded-lg border border-dashed border-slate-200 dark:border-slate-700">
