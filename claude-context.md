@@ -314,7 +314,8 @@ if whale_sig in ['PUMP_IMMINENT', 'DUMP_IMMINENT']:
 
 ### Current Commit Status
 ```
-77fc377 fix: add data validation to prevent zero-size array errors in chart generation ✅ HOTFIX
+6c093ba fix: add comprehensive data validation to comparison chart generation ✅ COMPLETE
+77fc377 fix: add data validation to prevent zero-size array errors in chart generation ✅ COMPLETE
 9eb4a8b feat: add 5-minute confirmation layer (Tier 2 - Option 2 enhancement)
 9eb1751 feat: implement tier 1 & 3 whale detection improvements (Option 2 strategy)
 5e46513 update: document performance optimization and final status
@@ -331,7 +332,7 @@ d667a97 perf: optimize gradient fill plugin to reduce redundant calls ✅
 
 ---
 
-## Critical Bug Fix: Chart Generation Validation (Commit 77fc377)
+## Critical Bug Fix: Chart Generation Validation (Commits 77fc377 & 6c093ba)
 
 ### Issue Identified
 **Error:** `zero-size array to reduction operation maximum which has no identity`
@@ -343,39 +344,57 @@ ERROR:root:Error analyzing ETH/USDT: Failed to generate chart for ETH/USDT: zero
 ```
 
 ### Root Cause
-**File:** `python-engine/services/charter.py` (lines 72-73)
+**File:** `python-engine/services/charter.py`
 
-When `plot_df` was empty or too small, `.min()` and `.max()` operations threw numpy error:
+When DataFrames were empty or too small, `.min()` and `.max()` NumPy operations threw cryptic error:
 ```python
 # BEFORE (unsafe)
 recent_low = plot_df['low'].min()    # ← ERROR if df empty
 recent_high = plot_df['high'].max()  # ← ERROR if df empty
 ```
 
-### Solution Implemented
-Added comprehensive data validation before chart operations:
+### Solution Implemented - Two Phase Fix
 
+#### Phase 1: generate_chart_image() (Commit 77fc377)
+Added data validation to main chart generation function:
 ```python
-# AFTER (safe)
+# generate_chart_image() - Lines 50-55
 if len(plot_df) < 2:
     raise Exception(f"Insufficient data for chart generation: {len(plot_df)} candles (need at least 2)")
 
 if 'low' not in plot_df.columns or 'high' not in plot_df.columns or 'volume' not in plot_df.columns:
     raise Exception("Missing required columns: low, high, volume")
+```
 
-# Safe operations (guaranteed data exists)
-recent_low = plot_df['low'].min()
-recent_high = plot_df['high'].max()
+#### Phase 2: generate_comparison_chart() (Commit 6c093ba)
+Extended validation to comparison chart function:
+```python
+# generate_comparison_chart() - Lines 164-176
+# VALIDATION: Check if we have enough data for both timeframes
+if df_4h is None or len(df_4h) < 2:
+    raise Exception(f"Insufficient 4H data: {len(df_4h) if df_4h is not None else 0} candles (need at least 2)")
+if df_1h is None or len(df_1h) < 2:
+    raise Exception(f"Insufficient 1H data: {len(df_1h) if df_1h is not None else 0} candles (need at least 2)")
+
+# Validate required columns
+required_cols = ['open', 'high', 'low', 'close', 'volume']
+for col in required_cols:
+    if col not in df_4h.columns:
+        raise Exception(f"Missing column in 4H data: {col}")
+    if col not in df_1h.columns:
+        raise Exception(f"Missing column in 1H data: {col}")
 ```
 
 ### Impact
 - ✅ Vision analysis now works for all pairs
+- ✅ BOTH chart functions protected with comprehensive validation
 - ✅ Clear error messages instead of cryptic numpy errors
-- ✅ Early detection of data issues
+- ✅ Early detection of data issues before NumPy operations
 - ✅ System continues gracefully instead of crashing
+- ✅ Robust against empty DataFrames and missing columns
 
 ### Files Modified
-- `python-engine/services/charter.py`: Added data validation layer
+- `python-engine/services/charter.py`: Added comprehensive validation to both chart functions
 
 ### Future Work Recommendations
 
