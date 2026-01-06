@@ -106,28 +106,37 @@ func (p *PaperPosition) CalculateGrossPnL(currentPrice float64) float64 {
 }
 
 // CalculatePnLPercent calculates the PnL percentage based on current price
-// This returns the LEVERAGED PnL percentage (matches Binance calculation)
+// Uses BINANCE FUTURES formula: PnL % = (PnL / Initial Margin) × 100
+// Initial Margin = Position Value / Leverage = (Size × Entry) / Leverage
 func (p *PaperPosition) CalculatePnLPercent(currentPrice float64) float64 {
-	if p.EntryPrice == 0 {
+	if p.EntryPrice == 0 || p.Size == 0 {
 		return 0
 	}
 
-	var pricePct float64
-	if p.IsLong() {
-		pricePct = ((currentPrice - p.EntryPrice) / p.EntryPrice) * 100
-	} else {
-		// Short
-		pricePct = ((p.EntryPrice - currentPrice) / p.EntryPrice) * 100
-	}
-
-	// Apply leverage to get actual PnL on margin
-	// If price moves 0.5% and leverage is 20x, actual PnL is 10%
 	leverage := p.Leverage
 	if leverage < 1 {
 		leverage = 1 // Safety: minimum 1x
 	}
 
-	return pricePct * leverage
+	// Calculate PnL (same as CalculateGrossPnL but inline for clarity)
+	var pnl float64
+	if p.IsLong() {
+		pnl = (currentPrice - p.EntryPrice) * p.Size
+	} else {
+		// Short
+		pnl = (p.EntryPrice - currentPrice) * p.Size
+	}
+
+	// Calculate Initial Margin (actual capital used)
+	positionValue := p.Size * p.EntryPrice
+	initialMargin := positionValue / leverage
+
+	// Binance style: PnL % = PnL / Margin × 100
+	if initialMargin == 0 {
+		return 0
+	}
+
+	return (pnl / initialMargin) * 100
 }
 
 // CheckSLTP checks if SL or TP is hit and returns how it was closed
