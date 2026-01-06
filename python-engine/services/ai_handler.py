@@ -14,11 +14,13 @@ from openai import OpenAI
 from config import settings
 
 # Import ML learner for predictions
+HAS_LEARNER = False
+learner = None
 try:
-    from services.learner import learner
-    HAS_LEARNER = True
+    from services.learner import learner as _learner
+    learner = _learner
+    HAS_LEARNER = learner is not None
 except ImportError:
-    HAS_LEARNER = False
     logging.warning("[AI_HANDLER] Learner module not available")
 
 
@@ -569,7 +571,7 @@ Analyze for SCALPER entry (Mean Reversion / Ping-Pong / Predictive Alpha). Provi
         ml_insights = []
         ml_is_trained = False  # Flag: Is ML model trained with real data?
 
-        if HAS_LEARNER and metrics:
+        if HAS_LEARNER and learner is not None and metrics:
             try:
                 prediction = learner.get_prediction(metrics)
                 ml_win_prob = prediction.win_probability
@@ -579,7 +581,7 @@ Analyze for SCALPER entry (Mean Reversion / Ping-Pong / Predictive Alpha). Provi
                 # Check if ML is actually trained (not just rule-based fallback)
                 # Rule-based fallback returns values between 0.3-0.7 typically
                 # ML model can be more extreme (closer to 0 or 1)
-                ml_is_trained = learner.model is not None and learner.scaler is not None
+                ml_is_trained = getattr(learner, 'model', None) is not None and getattr(learner, 'scaler', None) is not None
 
                 if ml_is_trained:
                     logging.info(f"[ML] TRAINED Model - Win Prob: {ml_win_prob:.0%}, Threshold: {ml_threshold}%")
@@ -715,10 +717,8 @@ Analyze for SCALPER entry (Mean Reversion / Ping-Pong / Predictive Alpha). Provi
 
         # === CACHE ANALYSIS FOR LEARNING ===
         # Save ALL analysis results (not just trades) to ai_analysis_cache
-        if HAS_LEARNER and metrics:
+        if HAS_LEARNER and learner is not None and metrics:
             try:
-                from services.learner import learner
-
                 # Build analysis cache data
                 cache_data = {
                     'symbol': metrics.get('symbol', 'UNKNOWN'),
@@ -729,7 +729,7 @@ Analyze for SCALPER entry (Mean Reversion / Ping-Pong / Predictive Alpha). Provi
                     'vision_confidence': vision_result.get('confidence', 0),
                     'vision_reasoning': vision_result.get('reasoning', ''),
                     'ml_win_probability': ml_win_prob,
-                    'ml_threshold': ml_threshold,
+                    'ml_threshold': int(ml_threshold),  # Ensure INT for database
                     'ml_is_trained': ml_is_trained,
                     'ml_insights': ml_insights,
                     'final_signal': final_signal,
@@ -749,7 +749,7 @@ Analyze for SCALPER entry (Mean Reversion / Ping-Pong / Predictive Alpha). Provi
                 learner.cache_analysis(cache_data)
 
             except Exception as e:
-                logging.warning(f"[AI] Failed to cache analysis: {e}")
+                logging.error(f"[LEARNER] Failed to cache analysis: {e}")
 
         return {
             "final_signal": final_signal,

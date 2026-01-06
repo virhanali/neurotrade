@@ -1915,50 +1915,30 @@
             // ===== HTMX Event Handlers for Settings Form =====
             const settingsForm = document.getElementById('settings-form');
             if (settingsForm) {
-                // Before request - Show loading toast
+                // Before request - Just update button state (no toast spam)
                 settingsForm.addEventListener('htmx:beforeRequest', function (evt) {
-                    showToast('Saving settings...', 'info');
-
-                    // Update button state
                     const saveBtn = document.getElementById('settings-save-btn');
                     const saveBtnText = document.getElementById('save-btn-text');
                     if (saveBtn) saveBtn.disabled = true;
                     if (saveBtnText) saveBtnText.textContent = 'Saving...';
                 });
 
-                // After request - Show result toast
+                // After request - Show result toast only
                 settingsForm.addEventListener('htmx:afterRequest', function (evt) {
                     const detail = evt.detail || {};
-
-                    if (detail.successful) {
-                        showToast('Settings saved successfully!', 'success');
-
-                        // Delay refresh so user can see the toast
-                        setTimeout(() => {
-                            htmx.ajax('GET', window.location.pathname, {
-                                target: 'body',
-                                swap: 'innerHTML'
-                            });
-                        }, 1500);
-                    } else {
-                        showToast('Failed to save settings. Please try again.', 'error');
-                    }
 
                     // Reset button state
                     const saveBtn = document.getElementById('settings-save-btn');
                     const saveBtnText = document.getElementById('save-btn-text');
                     if (saveBtn) saveBtn.disabled = false;
                     if (saveBtnText) saveBtnText.textContent = 'Save Configuration';
-                });
 
-                // On confirm - Show processing toast
-                settingsForm.addEventListener('htmx:confirm', function (evt) {
-                    showToast('Confirming...', 'info');
-                });
-
-                // On settle - Handle any remaining UI states
-                settingsForm.addEventListener('htmx:afterSettle', function (evt) {
-                    // Additional cleanup if needed
+                    if (detail.successful) {
+                        showToast('Settings saved successfully!', 'success');
+                        // No page refresh needed - settings are saved server-side
+                    } else {
+                        showToast('Failed to save settings. Please try again.', 'error');
+                    }
                 });
             }
         });

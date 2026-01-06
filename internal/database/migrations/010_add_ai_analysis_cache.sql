@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS ai_analysis_cache (
 
     -- === ML PREDICTION RESULTS ===
     ml_win_probability DECIMAL(5, 4), -- 0.0-1.0
-    ml_threshold DECIMAL(5, 4),       -- Recommended threshold
+    ml_threshold INT,                 -- Recommended threshold 0-100
     ml_is_trained BOOLEAN,             -- True if model trained, False if rule-based
     ml_insights JSONB,                 -- Array of insight strings
 
