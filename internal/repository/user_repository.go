@@ -192,3 +192,26 @@ func (r *UserRepositoryImpl) UpdateAutoTradeStatus(ctx context.Context, userID u
 
 	return nil
 }
+
+// UpdateSettings updates user trading settings
+func (r *UserRepositoryImpl) UpdateSettings(ctx context.Context, user *domain.User) error {
+	query := `
+		UPDATE users
+		SET mode = $1, fixed_order_size = $2, leverage = $3, is_auto_trade_enabled = $4, updated_at = NOW()
+		WHERE id = $5
+	`
+
+	_, err := r.db.Exec(ctx, query,
+		user.Mode,
+		user.FixedOrderSize,
+		user.Leverage,
+		user.IsAutoTradeEnabled,
+		user.ID,
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to update user settings: %w", err)
+	}
+
+	return nil
+}

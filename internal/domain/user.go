@@ -54,4 +54,7 @@ type UserRepository interface {
 
 	// UpdateAutoTradeStatus updates the auto-trade flag for a user
 	UpdateAutoTradeStatus(ctx context.Context, userID uuid.UUID, enabled bool) error
+
+	// UpdateSettings updates user trading settings
+	UpdateSettings(ctx context.Context, user *User) error
 }

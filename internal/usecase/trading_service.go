@@ -328,12 +328,33 @@ func (ts *TradingService) createPaperPositionForUser(ctx context.Context, user *
 		entrySizeUSDT = 30.0
 	}
 
-	// Apply Leverage from DB (User Setting)
 	leverage := user.Leverage
 	if leverage <= 0 {
 		leverage = 20.0 // Default fallback
 	}
+
+	// entrySizeUSDT is treated as INITIAL MARGIN (User's Equity)
+	// Calculate total position value (Notional)
+	totalNotionalValue := entrySizeUSDT * leverage
+
 	positionSize := (entrySizeUSDT * leverage) / signal.EntryPrice
+
+	// === REAL TRADING EXECUTION ===
+	if user.Mode == "REAL" {
+		log.Printf("[REAL] Executing Entry for %s: %s %s Notional: %.2f USDT (Margin: %.2f)",
+			user.Username, signal.Symbol, side, totalNotionalValue, entrySizeUSDT)
+
+		// Pass TOTAL NOTIONAL VALUE to Python Executor
+		execResult, err := ts.aiService.ExecuteEntry(ctx, signal.Symbol, side, totalNotionalValue, int(leverage))
+		if err != nil {
+			return fmt.Errorf("REAL ORDER FAILED for %s: %w", signal.Symbol, err)
+		}
+
+		// Update position details with REAL execution data
+		signal.EntryPrice = execResult.AvgPrice
+		positionSize = execResult.ExecutedQty
+		log.Printf("[REAL] Order Filled: %s | Price: %.4f | Qty: %.4f", execResult.OrderID, execResult.AvgPrice, execResult.ExecutedQty)
+	}
 
 	// Determine initial status based on Auto-Trade setting
 	initialStatus := domain.StatusPositionPendingApproval
@@ -388,17 +409,44 @@ func (ts *TradingService) ClosePosition(ctx context.Context, positionID uuid.UUI
 		return fmt.Errorf("unauthorized: position belongs to another user")
 	}
 
+	// Fetch user to check MODE (REAL/PAPER)
+	user, err := ts.userRepo.GetByID(ctx, position.UserID)
+	if err != nil {
+		return fmt.Errorf("failed to get user: %w", err)
+	}
+
 	// Check if already closed
 	if position.Status != domain.StatusOpen {
 		return fmt.Errorf("position is already closed")
 	}
 
 	// Calculate PnL
-	// Fetch real-time price for accurate PnL
-	currentPrice, err := ts.priceService.FetchSinglePrice(ctx, position.Symbol)
-	if err != nil {
-		log.Printf("WARNING: Failed to fetch price for closing %s, using entry price: %v", position.Symbol, err)
-		currentPrice = position.EntryPrice
+	currentPrice := 0.0
+
+	// === REAL TRADING CLOSE ===
+	if user.Mode == "REAL" {
+		// Determine opposite side for closing
+		closeSide := domain.SideShort // Close Long = Sell
+		if position.Side == domain.SideShort {
+			closeSide = domain.SideLong // Close Short = Buy
+		}
+
+		log.Printf("[REAL] Closing Position for %s: %s %s", user.Username, position.Symbol, closeSide)
+		execResult, err := ts.aiService.ExecuteClose(ctx, position.Symbol, closeSide, position.Size)
+		if err != nil {
+			return fmt.Errorf("REAL CLOSE FAILED for %s: %w", position.Symbol, err)
+		}
+
+		currentPrice = execResult.AvgPrice
+		log.Printf("[REAL] Close Filled: %s | Price: %.4f", execResult.OrderID, currentPrice)
+	} else {
+		// Paper Trading: Fetch real-time price
+		price, err := ts.priceService.FetchSinglePrice(ctx, position.Symbol)
+		if err != nil {
+			log.Printf("WARNING: Failed to fetch price for closing %s, using entry price: %v", position.Symbol, err)
+			price = position.EntryPrice
+		}
+		currentPrice = price
 	}
 
 	exitPrice := currentPrice
@@ -426,11 +474,8 @@ func (ts *TradingService) ClosePosition(ctx context.Context, positionID uuid.UUI
 		return fmt.Errorf("failed to update position: %w", err)
 	}
 
-	// Update user balance
-	user, err := ts.userRepo.GetByID(ctx, position.UserID)
-	if err != nil {
-		return fmt.Errorf("failed to get user: %w", err)
-	}
+	// Update user balance (user struct already fetched above)
+	// Re-fetch strictly not needed unless balance changed mid-process, but safe to use `user` from earlier
 
 	newBalance := user.PaperBalance + pnl
 	if err := ts.userRepo.UpdateBalance(ctx, position.UserID, newBalance, domain.ModePaper); err != nil {

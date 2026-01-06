@@ -25,6 +25,20 @@ type AIService interface {
 
 	// SendFeedback sends trade outcome to Python ML engine for learning
 	SendFeedback(ctx context.Context, feedback *FeedbackData) error
+
+	// ExecuteEntry executes a real entry order via Python Engine
+	ExecuteEntry(ctx context.Context, symbol, side string, amountUSDT float64, leverage int) (*ExecutionResult, error)
+
+	// ExecuteClose executes a real close order via Python Engine
+	ExecuteClose(ctx context.Context, symbol, side string, quantity float64) (*ExecutionResult, error)
+}
+
+// ExecutionResult represents the result of a real trade execution
+type ExecutionResult struct {
+	Status      string  `json:"status"`
+	OrderID     string  `json:"orderId"`
+	AvgPrice    float64 `json:"avgPrice"`
+	ExecutedQty float64 `json:"executedQty"`
 }
 
 // TradingService defines the interface for core trading logic

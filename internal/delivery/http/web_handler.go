@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"strconv"
 	"time"
 
 	"neurotrade/internal/domain"
@@ -677,6 +678,8 @@ func RegisterWebRoutes(e *echo.Echo, handler *WebHandler, authMiddleware echo.Mi
 	e.GET("/api/user/positions/html", handler.HandlePositionsHTML, authMiddleware)
 	e.GET("/api/user/history/html", handler.HandleHistoryHTML, authMiddleware)
 	e.GET("/api/user/positions/count", handler.HandlePositionsCount, authMiddleware)
+	e.GET("/api/settings/modal", handler.HandleSettingsModal, authMiddleware)
+	e.POST("/api/settings", handler.HandleUpdateSettings, authMiddleware)
 }
 
 // HandlePositionsCount returns the count of active positions as a plain string (for HTMX)
@@ -720,4 +723,77 @@ func (h *WebHandler) HandlePositionsCount(c echo.Context) error {
 	}
 
 	return c.String(http.StatusOK, fmt.Sprintf("%d", count))
+}
+
+// GET /api/settings/modal - Returns the settings modal HTML
+func (h *WebHandler) HandleSettingsModal(c echo.Context) error {
+	userID, ok := c.Get("user_id").(uuid.UUID)
+	if !ok {
+		return c.String(http.StatusUnauthorized, "Unauthorized")
+	}
+
+	user, err := h.userRepo.GetByID(c.Request().Context(), userID)
+	if err != nil {
+		return c.String(http.StatusInternalServerError, "Error loading user data")
+	}
+
+	return h.templates.ExecuteTemplate(c.Response().Writer, "settings_modal", user)
+}
+
+// POST /api/settings - Update user settings
+func (h *WebHandler) HandleUpdateSettings(c echo.Context) error {
+	userID, ok := c.Get("user_id").(uuid.UUID)
+	if !ok {
+		return c.String(http.StatusUnauthorized, "Unauthorized")
+	}
+
+	// Parse Form Data
+	mode := c.FormValue("mode")
+	fixedSizeStr := c.FormValue("fixed_order_size")
+	leverageStr := c.FormValue("leverage")
+	autoTradeStr := c.FormValue("is_auto_trade_enabled")
+
+	fixedSize, err := strconv.ParseFloat(fixedSizeStr, 64)
+	if err != nil {
+		fixedSize = 0
+	}
+
+	leverage, err := strconv.ParseFloat(leverageStr, 64)
+	if err != nil || leverage < 1 {
+		leverage = 20 // Default safe leverage
+	}
+
+	// Validate Mode
+	if mode != domain.ModePaper && mode != domain.ModeReal {
+		mode = domain.ModePaper
+	}
+
+	// Auto Trade Checkbox (HTML sends "on" if checked, nothing if unchecked)
+	isAutoTrade := autoTradeStr == "on" || autoTradeStr == "true"
+
+	// Fetch User
+	user, err := h.userRepo.GetByID(c.Request().Context(), userID)
+	if err != nil {
+		return c.String(http.StatusInternalServerError, "Failed to fetch user")
+	}
+
+	// Update Fields
+	user.Mode = mode
+	user.FixedOrderSize = fixedSize
+	user.Leverage = leverage
+	user.IsAutoTradeEnabled = isAutoTrade
+
+	// Persist
+	if err := h.userRepo.UpdateSettings(c.Request().Context(), user); err != nil {
+		return c.String(http.StatusInternalServerError, fmt.Sprintf("Failed to save settings: %v", err))
+	}
+
+	// Return success message with HX-Trigger to refresh specific UI parts if needed
+	c.Response().Header().Set("HX-Trigger", "settingsUpdated")
+	return c.HTML(http.StatusOK, `
+		<div class="p-3 bg-emerald-50 text-emerald-700 rounded-lg flex items-center animate-fade-in-down">
+			<i class="ri-checkbox-circle-line text-xl mr-2"></i>
+			<span class="font-medium">Settings saved successfully!</span>
+		</div>
+	`)
 }

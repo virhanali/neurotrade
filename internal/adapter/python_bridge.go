@@ -239,3 +239,88 @@ func (pb *PythonBridge) SendFeedback(ctx context.Context, feedback *domain.Feedb
 	log.Printf("[ML] Feedback sent: %s %s (PnL: %.2f%%)", feedback.Symbol, feedback.Outcome, feedback.PnL)
 	return nil
 }
+
+// ==========================================
+// REAL TRADING EXECUTION (v6.0)
+// ==========================================
+
+// ExecuteEntry executes a real entry order via Python Engine
+func (pb *PythonBridge) ExecuteEntry(ctx context.Context, symbol, side string, amountUSDT float64, leverage int) (*domain.ExecutionResult, error) {
+	reqBody := map[string]interface{}{
+		"symbol":      symbol,
+		"side":        side,
+		"amount_usdt": amountUSDT,
+		"leverage":    leverage,
+	}
+
+	jsonData, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal execute entry request: %w", err)
+	}
+
+	url := fmt.Sprintf("%s/execute/entry", pb.baseURL)
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := pb.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to call Python execution engine: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("Python execution failed: status=%d, body=%s", resp.StatusCode, string(body))
+	}
+
+	var result domain.ExecutionResult
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to decode execution response: %w", err)
+	}
+
+	return &result, nil
+}
+
+// ExecuteClose executes a real close order via Python Engine
+func (pb *PythonBridge) ExecuteClose(ctx context.Context, symbol, side string, quantity float64) (*domain.ExecutionResult, error) {
+	reqBody := map[string]interface{}{
+		"symbol":   symbol,
+		"side":     side,
+		"quantity": quantity,
+	}
+
+	jsonData, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal execute close request: %w", err)
+	}
+
+	url := fmt.Sprintf("%s/execute/close", pb.baseURL)
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := pb.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to call Python execution engine: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("Python execution failed: status=%d, body=%s", resp.StatusCode, string(body))
+	}
+
+	var result domain.ExecutionResult
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to decode execution response: %w", err)
+	}
+
+	return &result, nil
+}

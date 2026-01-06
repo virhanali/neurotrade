@@ -17,6 +17,7 @@ from services.screener import MarketScreener
 from services.charter import ChartGenerator
 from services.ai_handler import AIHandler
 from services.price_stream import price_stream
+from services.execution import executor
 
 # ML Learner (for learning context)
 try:
@@ -664,3 +665,53 @@ async def whale_liquidations(symbol: str):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
+
+# ============================================
+# Execution Endpoints (v6.0 - Real Trading)
+# ============================================
+
+class ExecuteEntryRequest(BaseModel):
+    symbol: str
+    side: str  # LONG/SHORT
+    amount_usdt: float
+    leverage: int = 20
+
+@app.post("/execute/entry")
+async def execute_entry(request: ExecuteEntryRequest):
+    """
+    Execute entry order on Binance Futures
+    """
+    logger.info(f"[EXEC] Request Entry: {request.symbol} {request.side} ${request.amount_usdt}")
+    result = await executor.execute_entry(
+        symbol=request.symbol,
+        side=request.side,
+        amount_usdt=request.amount_usdt,
+        leverage=request.leverage
+    )
+    
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+        
+    return result
+
+class ExecuteCloseRequest(BaseModel):
+    symbol: str
+    side: str  # SELL (if Long), BUY (if Short)
+    quantity: float
+
+@app.post("/execute/close")
+async def execute_close(request: ExecuteCloseRequest):
+    """
+    Execute closing order (ReduceOnly)
+    """
+    result = await executor.execute_close(
+        symbol=request.symbol,
+        side=request.side,
+        quantity=request.quantity
+    )
+    
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+        
+    return result
