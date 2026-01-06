@@ -1,9 +1,24 @@
 services:
+  redis:
+    image: redis:7-alpine
+    restart: always
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   python-engine:
     build:
       context: ./python-engine
       dockerfile: Dockerfile
     restart: always
+    depends_on:
+      redis:
+        condition: service_healthy
     command: [ "python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "${PYTHON_PORT}", "--workers", "6" ]
     environment:
       - DATABASE_URL=${DATABASE_URL}
@@ -14,6 +29,8 @@ services:
       - TOP_COINS_LIMIT=${TOP_COINS_LIMIT}
       - MAX_RISK_PERCENT=${MAX_RISK_PERCENT}
       - MIN_CONFIDENCE=${MIN_CONFIDENCE}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
       - PYTHONUNBUFFERED=1
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -57,3 +74,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 180s
+
+volumes:
+  redis_data:
