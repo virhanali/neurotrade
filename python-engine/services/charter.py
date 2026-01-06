@@ -161,6 +161,20 @@ class ChartGenerator:
             BytesIO buffer containing PNG image
         """
         try:
+            # VALIDATION: Check if we have enough data for both timeframes
+            if df_4h is None or len(df_4h) < 2:
+                raise Exception(f"Insufficient 4H data: {len(df_4h) if df_4h is not None else 0} candles (need at least 2)")
+            if df_1h is None or len(df_1h) < 2:
+                raise Exception(f"Insufficient 1H data: {len(df_1h) if df_1h is not None else 0} candles (need at least 2)")
+
+            # Validate required columns
+            required_cols = ['open', 'high', 'low', 'close', 'volume']
+            for col in required_cols:
+                if col not in df_4h.columns:
+                    raise Exception(f"Missing column in 4H data: {col}")
+                if col not in df_1h.columns:
+                    raise Exception(f"Missing column in 1H data: {col}")
+
             fig = plt.figure(figsize=(16, 10), facecolor='#1e222d')
 
             # 4H Chart (top)
