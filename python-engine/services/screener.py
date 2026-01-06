@@ -882,6 +882,24 @@ class MarketScreener:
                         else:
                             trade_action = "AVOID_SHORT"  # Might bounce
 
+                    # === FAKE PUMP/DUMP WARNING LOGGING ===
+                    # Log detailed fake detection for debugging
+                    if trade_action in ["AVOID_LONG", "AVOID_SHORT"]:
+                        risk_summary = ", ".join(risk_signals[:3])  # Top 3 reasons
+                        logging.warning(f"[FAKE DETECTED] {symbol} {pump_type} - Score={int(pump_score)} DumpRisk={int(dump_risk)}% Action={trade_action} Reasons: {risk_summary}")
+                    elif trade_action in ["CAUTIOUS_LONG", "CAUTIOUS_SHORT"]:
+                        risk_summary = ", ".join(risk_signals[:2])
+                        logging.info(f"[CAUTIOUS] {symbol} {pump_type} - Score={int(pump_score)} DumpRisk={int(dump_risk)}% Action={trade_action} Reasons: {risk_summary}")
+
+                    # === FAKE PUMP/DUMP WARNING LOGGING ===
+                    # Log detailed fake detection for debugging
+                    if trade_action in ["AVOID_LONG", "AVOID_SHORT"]:
+                        risk_summary = ", ".join(risk_signals[:3])  # Top 3 reasons
+                        logging.warning(f"[FAKE DETECTED] {symbol} {pump_type} - Score={int(pump_score)} DumpRisk={int(dump_risk)}% Action={trade_action} Reasons: {risk_summary}")
+                    elif trade_action in ["CAUTIOUS_LONG", "CAUTIOUS_SHORT"]:
+                        risk_summary = ", ".join(risk_signals[:2])
+                        logging.info(f"[CAUTIOUS] {symbol} {pump_type} - Score={int(pump_score)} DumpRisk={int(dump_risk)}% Action={trade_action} Reasons: {risk_summary}")
+
                     return {
                         'symbol': symbol,
                         'pump_type': pump_type,
@@ -890,12 +908,8 @@ class MarketScreener:
                         'vol_ratio': float(round(vol_ratio, 1)),
                         'pct_change_3c': float(round(pct_change_3c, 2)),
                         'pct_change_24h': float(round(cand['pct_change_24h'], 2)),
-                        'volume_24h': float(round(cand['volume_24h'] / 1_000_000, 2)),
-                        'current_price': float(current_price),
-                        'breakout': 'UP' if is_breakout_up else ('DOWN' if is_breakout_down else 'NONE'),
                         'dump_risk': int(dump_risk),
-                        'risk_signals': risk_signals,
-                        'trade_action': trade_action,
+                        'trade_action': trade_action
                     }
 
                 except Exception as e:
