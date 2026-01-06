@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"html/template"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -198,8 +199,8 @@ func (h *WebHandler) HandleRegisterPost(c echo.Context) error {
 		PaperBalance:       5000.0, // Default Paper Balance
 		MaxDailyLoss:       5.0,    // Default 5%
 		IsAutoTradeEnabled: false,  // Default disabled
-		FixedOrderSize:     10.0,   // Default $10
-		Leverage:           1.0,    // Default 1x
+		FixedOrderSize:     1.0,    // Default $1 (MINIMUM for safe testing)
+		Leverage:           1.0,    // Default 1x (safe)
 		CreatedAt:          time.Now(),
 		UpdatedAt:          time.Now(),
 	}
@@ -240,6 +241,7 @@ func (h *WebHandler) HandleDashboard(c echo.Context) error {
 	ctx := c.Request().Context()
 	user, err := h.userRepo.GetByID(ctx, userID)
 	if err != nil {
+		log.Printf("[WARN] User not found: %v", err)
 		return c.Redirect(http.StatusFound, "/login?error=User+not+found")
 	}
 
@@ -509,7 +511,7 @@ func (h *WebHandler) getSystemStats(c echo.Context) (map[string]interface{}, err
 	ctx := c.Request().Context()
 
 	// Get total users (just count known users for now - we have at least 1)
-	totalUsers := 1 // At least the default user exists
+	totalUsers := 1 // At least of default user exists
 
 	// Get all open positions across system
 	allOpenPositions, err := h.positionRepo.GetOpenPositions(ctx)
@@ -526,7 +528,7 @@ func (h *WebHandler) getSystemStats(c echo.Context) (map[string]interface{}, err
 			COUNT(*),
 			COUNT(*) FILTER (WHERE pnl > 0),
 			COUNT(*) FILTER (WHERE pnl <= 0)
-		FROM paper_positions
+		FROM positions
 		WHERE status IN ('CLOSED', 'CLOSED_WIN', 'CLOSED_LOSS', 'CLOSED_MANUAL')
 	`).Scan(&totalClosed, &wins, &losses)
 
@@ -537,7 +539,7 @@ func (h *WebHandler) getSystemStats(c echo.Context) (map[string]interface{}, err
 
 	// Calculate Total PnL
 	var totalPnL float64
-	h.db.QueryRow(ctx, "SELECT COALESCE(SUM(pnl), 0) FROM paper_positions WHERE pnl IS NOT NULL").Scan(&totalPnL)
+	h.db.QueryRow(ctx, "SELECT COALESCE(SUM(pnl), 0) FROM positions WHERE pnl IS NOT NULL").Scan(&totalPnL)
 
 	// Format PnL
 	formattedPnL := fmt.Sprintf("$%.2f", totalPnL)
@@ -754,22 +756,28 @@ func (h *WebHandler) HandleUpdateSettings(c echo.Context) error {
 	autoTradeStr := c.FormValue("is_auto_trade_enabled")
 
 	fixedSize, err := strconv.ParseFloat(fixedSizeStr, 64)
-	if err != nil {
-		fixedSize = 0
+	if err != nil || fixedSize < 1.0 {
+		log.Printf("[WARN] Invalid fixed_order_size '%s', setting to minimum $1.0", fixedSizeStr)
+		fixedSize = 1.0 // Minimum $1 for safe testing
 	}
 
 	leverage, err := strconv.ParseFloat(leverageStr, 64)
 	if err != nil || leverage < 1 {
-		leverage = 20 // Default safe leverage
+		log.Printf("[WARN] Invalid leverage '%s', defaulting to 20x", leverageStr)
+		leverage = 20.0 // Default safe leverage
 	}
 
 	// Validate Mode
 	if mode != domain.ModePaper && mode != domain.ModeReal {
+		log.Printf("[WARN] Invalid mode '%s', defaulting to PAPER", mode)
 		mode = domain.ModePaper
 	}
 
 	// Auto Trade Checkbox (HTML sends "on" if checked, nothing if unchecked)
 	isAutoTrade := autoTradeStr == "on" || autoTradeStr == "true"
+
+	log.Printf("[SETTINGS] User %s saving settings: Mode=%s, Margin=$%.2f, Leverage=%.0fx, AutoTrade=%t",
+		userID, mode, fixedSize, leverage, isAutoTrade)
 
 	// Fetch User
 	user, err := h.userRepo.GetByID(c.Request().Context(), userID)
@@ -783,9 +791,26 @@ func (h *WebHandler) HandleUpdateSettings(c echo.Context) error {
 	user.Leverage = leverage
 	user.IsAutoTradeEnabled = isAutoTrade
 
+	// Safety: Add validation for REAL mode
+	if user.Mode == domain.ModeReal {
+		if user.Leverage > 125.0 {
+			user.Leverage = 125.0 // Binance max
+			log.Printf("[WARN] Capped leverage to 125x for REAL mode")
+		}
+		if user.FixedOrderSize < 1.0 {
+			user.FixedOrderSize = 10.0 // Minimum safe amount
+			log.Printf("[WARN] Set minimum margin $10 for REAL mode")
+		}
+	}
+
 	// Persist
 	if err := h.userRepo.UpdateSettings(c.Request().Context(), user); err != nil {
 		return c.String(http.StatusInternalServerError, fmt.Sprintf("Failed to save settings: %v", err))
+	}
+
+	// Log important mode changes
+	if user.Mode == domain.ModeReal {
+		log.Printf("[IMPORTANT] User %s switched to REAL TRADING mode", user.Username)
 	}
 
 	// Return success message with HX-Trigger to refresh specific UI parts if needed

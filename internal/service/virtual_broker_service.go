@@ -11,8 +11,11 @@ import (
 )
 
 const (
-	// Binance spot trading fee (Maker/Taker)
-	TradingFeePercent = 0.05 // 0.05% = 0.0005 in decimal
+	// Binance Futures trading fee (Maker/Taker)
+	// Market orders use taker fee (0.04%)
+	// Limit orders use maker fee (0.02%)
+	TradingFeeTakerPercent = 0.04 // 0.04% = 0.0004 in decimal
+	TradingFeeMakerPercent = 0.02 // 0.02% = 0.0002 in decimal
 )
 
 // VirtualBrokerService simulates trade execution with realistic fees
@@ -192,8 +195,9 @@ func (s *VirtualBrokerService) calculateNetPnL(position *domain.Position, exitPr
 	// Calculate gross PnL
 	grossPnL := position.CalculateGrossPnL(exitPrice)
 
-	// Calculate fees (0.05% on both entry and exit)
-	feeRate := TradingFeePercent / 100.0 // Convert 0.05% to 0.0005
+	// Calculate fees using Binance Futures taker fee (0.04% for market orders)
+	// Both entry and exit are market orders, so use taker fee
+	feeRate := TradingFeeTakerPercent / 100.0 // Convert 0.04% to 0.0004
 	entryFee := position.Size * position.EntryPrice * feeRate
 	exitFee := position.Size * exitPrice * feeRate
 	totalFees := entryFee + exitFee
@@ -203,8 +207,8 @@ func (s *VirtualBrokerService) calculateNetPnL(position *domain.Position, exitPr
 
 	log.Printf("   PnL Calculation for %s:", position.Symbol)
 	log.Printf("   - Gross PnL: %.4f USDT", grossPnL)
-	log.Printf("   - Entry Fee (0.05%%): %.4f USDT", entryFee)
-	log.Printf("   - Exit Fee (0.05%%): %.4f USDT", exitFee)
+	log.Printf("   - Entry Fee (0.04%% taker): %.4f USDT", entryFee)
+	log.Printf("   - Exit Fee (0.04%% taker): %.4f USDT", exitFee)
 	log.Printf("   - Total Fees: %.4f USDT", totalFees)
 	log.Printf("   - Net PnL: %.4f USDT", netPnL)
 

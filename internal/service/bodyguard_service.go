@@ -160,8 +160,9 @@ func (s *BodyguardService) closePosition(ctx context.Context, pos *domain.Positi
 	// Calculate Net PnL (Gross - Fees)
 	grossPnL := pos.CalculateGrossPnL(exitPrice)
 
-	// Apply fees (0.05% maker + 0.05% taker = 0.1% total)
-	feeRate := TradingFeePercent / 100.0
+	// Apply fees using Binance Futures taker fee (0.04% for market orders)
+	// Both entry and exit are market orders, so use taker fee
+	feeRate := 0.04 / 100.0 // 0.04% = 0.0004
 	fees := (pos.EntryPrice * pos.Size * feeRate) + (exitPrice * pos.Size * feeRate)
 	pnl := grossPnL - fees
 

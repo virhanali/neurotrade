@@ -285,7 +285,13 @@ func (ts *TradingService) createPositionForUser(ctx context.Context, user *domai
 		requiredMargin = tradeParams.PositionSizeUSDT
 	}
 	if requiredMargin <= 0 {
-		requiredMargin = 30.0 // Default fallback
+		requiredMargin = 10.0 // Default fallback (safer than 30)
+	}
+
+	// Safety: Cap required margin to reasonable amount
+	if requiredMargin > 1000.0 {
+		log.Printf("[WARN] Warning: FixedOrderSize %.2f is unusually high, capping at 1000", requiredMargin)
+		requiredMargin = 1000.0
 	}
 
 	switch user.Mode {
@@ -298,7 +304,11 @@ func (ts *TradingService) createPositionForUser(ctx context.Context, user *domai
 		}
 	case "REAL":
 		// Real trading: Check real balance (cached from Binance)
-		if user.RealBalanceCache != nil && *user.RealBalanceCache < requiredMargin {
+		if user.RealBalanceCache == nil {
+			log.Printf("[WARN] REAL mode enabled but no balance cache for %s. Blocking order.", user.Username)
+			return fmt.Errorf("real balance not available, please sync from Binance first")
+		}
+		if *user.RealBalanceCache < requiredMargin {
 			log.Printf("[WARN] Insufficient REAL balance for %s: Balance=%.2f, Required=%.2f. Blocking order.",
 				user.Username, *user.RealBalanceCache, requiredMargin)
 			return fmt.Errorf("insufficient real balance: have %.2f, need %.2f", *user.RealBalanceCache, requiredMargin)
@@ -333,6 +343,18 @@ func (ts *TradingService) createPositionForUser(ctx context.Context, user *domai
 		leverage = 20.0 // Default fallback
 	}
 
+	// Safety: Cap leverage to Binance maximum (125x)
+	if leverage > 125.0 {
+		log.Printf("[WARN] Warning: Leverage %.2fx exceeds Binance max, capping at 125x", leverage)
+		leverage = 125.0
+	}
+
+	// Safety: Ensure minimum notional value ($5)
+	if entrySizeUSDT*leverage < 5.0 {
+		log.Printf("[WARN] Warning: Position value $%.2f (margin $%.2f x %.0fx) below Binance minimum $5", entrySizeUSDT*leverage, entrySizeUSDT, leverage)
+		return fmt.Errorf("position notional value ($%.2f) below Binance minimum ($5). Please increase margin or leverage", entrySizeUSDT*leverage)
+	}
+
 	// entrySizeUSDT is treated as INITIAL MARGIN (User's Equity)
 	// Calculate total position value (Notional)
 	totalNotionalValue := entrySizeUSDT * leverage
@@ -341,13 +363,23 @@ func (ts *TradingService) createPositionForUser(ctx context.Context, user *domai
 
 	// === REAL TRADING EXECUTION ===
 	if user.Mode == "REAL" {
-		log.Printf("[REAL] Executing Entry for %s: %s %s Notional: %.2f USDT (Margin: %.2f)",
-			user.Username, signal.Symbol, side, totalNotionalValue, entrySizeUSDT)
+		log.Printf("[REAL] Executing Entry for %s: %s %s Notional: %.2f USDT (Margin: %.2f, Leverage: %.0fx)",
+			user.Username, signal.Symbol, side, totalNotionalValue, entrySizeUSDT, leverage)
+
+		// Safety: Double-check minimum notional before execution
+		if totalNotionalValue < 5.0 {
+			return fmt.Errorf("position notional value ($%.2f) below Binance minimum ($5)", totalNotionalValue)
+		}
 
 		// Pass TOTAL NOTIONAL VALUE to Python Executor
 		execResult, err := ts.aiService.ExecuteEntry(ctx, signal.Symbol, side, totalNotionalValue, int(leverage))
 		if err != nil {
 			return fmt.Errorf("REAL ORDER FAILED for %s: %w", signal.Symbol, err)
+		}
+
+		// Verify execution result
+		if execResult == nil || execResult.Status != "FILLED" {
+			return fmt.Errorf("REAL ORDER NOT FILLED for %s: status=%s", signal.Symbol, execResult.Status)
 		}
 
 		// Update position details with REAL execution data
@@ -458,8 +490,9 @@ func (ts *TradingService) ClosePosition(ctx context.Context, positionID uuid.UUI
 		pnl = (position.EntryPrice - exitPrice) * position.Size
 	}
 
-	// Apply fees
-	feeRate := 0.0005 // 0.05%
+	// Apply fees using Binance Futures taker fee (0.04% for market orders)
+	// Both entry and exit are market orders, so use taker fee
+	feeRate := 0.0004 // 0.04% = 0.0004 in decimal
 	entryFee := position.Size * position.EntryPrice * feeRate
 	exitFee := position.Size * exitPrice * feeRate
 	pnl = pnl - entryFee - exitFee

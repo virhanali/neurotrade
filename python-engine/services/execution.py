@@ -92,11 +92,27 @@ class BinanceExecutor:
             return {"error": "Binance client not initialized"}
 
         try:
-            # 1. Ensure market rules loaded
+            # 1. Safety: Validate parameters
+            if amount_usdt <= 0:
+                return {"error": "Invalid amount USDT"}
+
+            # Safety: Cap leverage to Binance maximum
+            if leverage > 125:
+                logger.warning(f"[EXEC] Leverage {leverage}x exceeds Binance max, capping at 125x")
+                leverage = 125
+            elif leverage < 1:
+                logger.warning(f"[EXEC] Leverage {leverage}x invalid, defaulting to 20x")
+                leverage = 20
+
+            # Safety: Check minimum notional ($5)
+            if amount_usdt < 5.0:
+                return {"error": f"Order value ${amount_usdt:.2f} below Binance minimum ($5). Please increase margin."}
+
+            # 2. Ensure market rules loaded
             if symbol not in self.markets:
                 self.markets = await asyncio.to_thread(self.client.load_markets)
 
-            # 2. Map Side (LONG/SHORT -> BUY/SELL)
+            # 3. Map Side (LONG/SHORT -> BUY/SELL)
             order_side = side.upper()
             if order_side == 'LONG':
                 order_side = 'buy'
@@ -105,33 +121,35 @@ class BinanceExecutor:
             else:
                 order_side = side.lower() # Fallback
 
-            # 3. Calculate quantity
+            # 4. Calculate quantity
             # Fetch ticker in thread
             ticker = await asyncio.to_thread(self.client.fetch_ticker, symbol)
             current_price = ticker['last']
-            
+
             # Notional Value = Margin * Leverage
             notional_value = amount_usdt
-            
+
             raw_quantity = notional_value / current_price
-            
-            # 4. Apply Precision
+
+            # 5. Apply Precision
             qty_precision, price_precision = self._get_precision(symbol)
             quantity = self._round_down(raw_quantity, qty_precision)
-            
-            # Check Min Notional (Binance usually $5)
-            if quantity * current_price < 5.0:
-                return {"error": "Order value too small (Min $5)"}
 
-            logger.info(f"[EXEC] Placing Order: {side} ({order_side}) {symbol} | ${notional_value:.2f} | Qty: {quantity}")
+            # Double-check Min Notional after precision rounding
+            actual_notional = quantity * current_price
+            if actual_notional < 5.0:
+                logger.warning(f"[EXEC] Order value ${actual_notional:.2f} below $5 after rounding, rejecting")
+                return {"error": f"Order value ${actual_notional:.2f} below Binance minimum ($5) after precision rounding"}
 
-            # 5. Set Leverage First
+            logger.info(f"[EXEC] Placing Order: {side} ({order_side}) {symbol} | Notional: ${notional_value:.2f} | Leverage: {leverage}x | Margin: ${amount_usdt/leverage:.2f} | Qty: {quantity}")
+
+            # 6. Set Leverage First
             try:
                 await asyncio.to_thread(self.client.set_leverage, leverage, symbol)
             except Exception as e:
                 logger.warning(f"[EXEC] Leverage set failed (might be already set): {e}")
 
-            # 6. Send Order (IN THREAD)
+            # 7. Send Order (IN THREAD)
             order = await asyncio.to_thread(
                 self.client.create_order,
                 symbol,
@@ -144,7 +162,7 @@ class BinanceExecutor:
             )
 
             logger.info(f"[EXEC] Order Filled! ID: {order['id']} @ {order['average']}")
-            
+
             return {
                 "status": "FILLED",
                 "orderId": order['id'],
@@ -162,10 +180,19 @@ class BinanceExecutor:
         Close a position (Partial or Full).
         Side should be OPPOSITE to entry (e.g. if Long, side should be passed as SHORT/SELL).
         """
-        if not self.client: return {"error": "No client"}
-        
+        if not self.client:
+            return {"error": "Binance client not initialized"}
+
         try:
-            # Map Side (LONG/SHORT -> BUY/SELL)
+            # Safety: Validate parameters
+            if quantity <= 0:
+                return {"error": "Invalid quantity"}
+
+            # 1. Ensure market rules loaded
+            if symbol not in self.markets:
+                self.markets = await asyncio.to_thread(self.client.load_markets)
+
+            # 2. Map Side (LONG/SHORT -> BUY/SELL)
             order_side = side.upper()
             if order_side == 'LONG':
                 order_side = 'buy'
@@ -174,7 +201,13 @@ class BinanceExecutor:
             else:
                 order_side = side.lower()
 
-            # Send Market Order (IN THREAD)
+            # 3. Apply Precision for safety
+            qty_precision, price_precision = self._get_precision(symbol)
+            quantity = self._round_down(quantity, qty_precision)
+
+            logger.info(f"[EXEC] Closing Position: {symbol} | Side: {order_side} | Qty: {quantity} | ReduceOnly: True")
+
+            # 4. Send Market Order (IN THREAD) with reduceOnly
             order = await asyncio.to_thread(
                 self.client.create_order,
                 symbol,
@@ -183,8 +216,17 @@ class BinanceExecutor:
                 quantity,
                 {'reduceOnly': True}
             )
-            return {"status": "FILLED", "orderId": order['id'], "avgPrice": order['average']}
+
+            logger.info(f"[EXEC] Close Order Filled! ID: {order['id']} @ {order['average']}")
+
+            return {
+                "status": "FILLED",
+                "orderId": order['id'],
+                "avgPrice": order['average'] or 0.0,
+                "executedQty": order['filled'] or quantity
+            }
         except Exception as e:
+            logger.error(f"[EXEC] Close Order Failed: {e}")
             return {"error": str(e)}
 
     async def get_balance(self) -> Dict:

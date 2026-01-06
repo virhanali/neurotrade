@@ -2,16 +2,16 @@ package http
 
 import (
 	"context"
-	"fmt"
+	"log"
 	"net/http"
 	"time"
-
-	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
 
 	"neurotrade/internal/delivery/http/dto"
 	"neurotrade/internal/domain"
 	"neurotrade/internal/middleware"
+
+	"github.com/google/uuid"
+	"github.com/labstack/echo/v4"
 )
 
 // UserHandler handles user-related requests
@@ -59,8 +59,10 @@ func (h *UserHandler) GetMe(c echo.Context) error {
 		bgCtx, bgCancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer bgCancel()
 
+		log.Printf("[INFO] Fetching REAL balance from Binance for user %s", userID)
+
 		realBal, err := h.aiService.GetRealBalance(bgCtx)
-		if err == nil {
+		if err == nil && realBal > 0 {
 			// Update memory object
 			user.RealBalanceCache = &realBal
 
@@ -69,11 +71,22 @@ func (h *UserHandler) GetMe(c echo.Context) error {
 				dbCtx, dbCancel := context.WithTimeout(context.Background(), 2*time.Second)
 				defer dbCancel()
 				if err := h.userRepo.UpdateRealBalance(dbCtx, uid, bal); err != nil {
-					fmt.Printf("[ERROR] Failed to cache real balance: %v\n", err)
+					log.Printf("[ERROR] Failed to cache real balance for user %s: %v\n", uid, err)
+				} else {
+					log.Printf("[SUCCESS] Cached real balance for user %s: %.2f USDT\n", uid, bal)
 				}
 			}(user.ID, realBal)
 		} else {
-			fmt.Printf("[WARN] Failed to fetch real balance: %v\n", err)
+			errMsg := "unknown"
+			if err != nil {
+				errMsg = err.Error()
+			}
+			log.Printf("[ERROR] Failed to fetch real balance for user %s: %s (using cache: %.2f)\n", userID, errMsg, func() float64 {
+				if user.RealBalanceCache != nil {
+					return *user.RealBalanceCache
+				}
+				return 0
+			}())
 		}
 	}
 
@@ -83,7 +96,7 @@ func (h *UserHandler) GetMe(c echo.Context) error {
 		Role:         user.Role,
 		Mode:         user.Mode,
 		PaperBalance: user.PaperBalance,
-		RealBalance:  user.RealBalanceCache, // Add this field to DTO if not exists
+		RealBalance:  user.RealBalanceCache,
 	})
 }
 
