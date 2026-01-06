@@ -47,65 +47,36 @@ class ChartGenerator:
             # Focus on recent data (last 60 candles)
             plot_df = df.tail(60).copy() if len(df) > 60 else df.copy()
 
-            # VALIDATION: Check if we have enough data
+            # VALIDATION: Check required columns exist
+            required_cols = ['open', 'high', 'low', 'close', 'volume']
+            missing_cols = [col for col in required_cols if col not in plot_df.columns]
+            if missing_cols:
+                raise Exception(f"Missing required columns: {missing_cols}")
+
+            # CRITICAL FIX: Drop rows with NaN in OHLCV columns BEFORE any processing
+            # This prevents numpy "zero-size array" errors in mplfinance
+            plot_df = plot_df.dropna(subset=['open', 'high', 'low', 'close', 'volume'])
+
+            # VALIDATION: Check if we have enough clean data after dropping NaN
             if len(plot_df) < 2:
-                raise Exception(f"Insufficient data for chart generation: {len(plot_df)} candles (need at least 2)")
+                raise Exception(f"Insufficient clean data: {len(plot_df)} valid candles (need at least 2)")
 
-            if 'low' not in plot_df.columns or 'high' not in plot_df.columns or 'volume' not in plot_df.columns:
-                raise Exception("Missing required columns: low, high, volume")
-
-            # VALIDATION: Check if columns have valid (non-NaN) values
-            if plot_df['low'].isna().all() or plot_df['high'].isna().all():
-                raise Exception(f"Invalid data: 'low' or 'high' columns contain all NaN values")
-
-            # Count valid data points
-            valid_low = plot_df['low'].notna().sum()
-            valid_high = plot_df['high'].notna().sum()
-            if valid_low < 2 or valid_high < 2:
-                raise Exception(f"Insufficient valid OHLC data: {valid_low} low, {valid_high} high (need at least 2)")
-
-            # 1. VOLUME CLIMAX LOGIC
-            # Calculate Volume MA
+            # 1. VOLUME CLIMAX DETECTION (Vectorized for efficiency)
             vol_ma = plot_df['volume'].rolling(window=20).mean()
+            vol_ma = vol_ma.fillna(plot_df['volume'])  # Fill NaN with raw volume for early candles
 
-            # Define Volume Colors based on Relative Volume (RVOL)
-            # Default: Grey (Noise)
-            # High (>1.5x): Cyan (Activity)
-            # Climax (>2.5x): Yellow (Smart Money / Stopping Volume)
-            vol_colors = []
-            for i in range(len(plot_df)):
-                vol = plot_df['volume'].iloc[i]
-                avg = vol_ma.iloc[i] if pd.notna(vol_ma.iloc[i]) else vol
+            # Detect climax volume (>2.5x average) - vectorized operation
+            is_climax = plot_df['volume'] > (vol_ma * 2.5)
+            climax_signals = plot_df['low'].where(is_climax) * 0.995
 
-                if vol > 2.5 * avg:
-                    vol_colors.append('#ffd700')  # GOLD for Climax
-                elif vol > 1.5 * avg:
-                    vol_colors.append('#00e5ff')  # CYAN for High Activity
-                else:
-                    vol_colors.append('#363a45')  # GREY for Normal
-
-            # 2. STRUCTURE (Simulated Support/Resistance)
-            # Find recent significant Swing High/Low in the visible window
-            # Safe extraction (guaranteed to have data after validation above)
+            # 2. STRUCTURE - Support/Resistance levels
             recent_low = plot_df['low'].min()
             recent_high = plot_df['high'].max()
-            
-            add_plots = []
-            
-            # Add Volume Climax Overlay (We need to use 'volume' kwarg in plot, but we can pass colors)
-            # Actually, mpf handles volume colors via marketcolors, but that's global.
-            # To have specific bar colors, we might need a workaround or accept global styling.
-            # Workaround: We will use the 'volume' argument in mpf.plot and pass `volume_panel=1`. 
-            # MPF doesn't easily support per-bar volume colors without custom overrides. 
-            # SIMPLER ALTERNATIVE: We plot dots on the price chart to signal volume climax.
-            
-            # Add "Smart Money" Signal Dots on Price
-            # Yellow Dot below candle = Climax Volume (Attention!)
-            climax_signals = [plot_df['low'].iloc[i] * 0.995 if plot_df['volume'].iloc[i] > 2.5 * vol_ma.iloc[i] else float('nan') for i in range(len(plot_df))]
-            
-            add_plots.append(
-                 mpf.make_addplot(climax_signals, type='scatter', markersize=40, marker='^', color='#ffd700', panel=0)
-            )
+
+            # Build additional plot overlays
+            add_plots = [
+                mpf.make_addplot(climax_signals, type='scatter', markersize=40, marker='^', color='#ffd700', panel=0)
+            ]
 
             # Bollinger Bands
             if 'bb_upper' in plot_df.columns:
@@ -171,42 +142,34 @@ class ChartGenerator:
             BytesIO buffer containing PNG image
         """
         try:
-            # VALIDATION: Check if we have enough data for both timeframes
-            if df_4h is None or len(df_4h) < 2:
-                raise Exception(f"Insufficient 4H data: {len(df_4h) if df_4h is not None else 0} candles (need at least 2)")
-            if df_1h is None or len(df_1h) < 2:
-                raise Exception(f"Insufficient 1H data: {len(df_1h) if df_1h is not None else 0} candles (need at least 2)")
+            # VALIDATION: Check if DataFrames exist
+            if df_4h is None or df_1h is None:
+                raise Exception(f"Missing data: 4H={df_4h is not None}, 1H={df_1h is not None}")
 
             # Validate required columns
             required_cols = ['open', 'high', 'low', 'close', 'volume']
-            for col in required_cols:
-                if col not in df_4h.columns:
-                    raise Exception(f"Missing column in 4H data: {col}")
-                if col not in df_1h.columns:
-                    raise Exception(f"Missing column in 1H data: {col}")
+            for tf, df in [('4H', df_4h), ('1H', df_1h)]:
+                missing = [c for c in required_cols if c not in df.columns]
+                if missing:
+                    raise Exception(f"Missing {tf} columns: {missing}")
 
-            # VALIDATION: Check if columns have valid (non-NaN) values for 4H
-            if df_4h['low'].isna().all() or df_4h['high'].isna().all():
-                raise Exception(f"Invalid 4H data: 'low' or 'high' columns contain all NaN values")
-            valid_4h_low = df_4h['low'].notna().sum()
-            valid_4h_high = df_4h['high'].notna().sum()
-            if valid_4h_low < 2 or valid_4h_high < 2:
-                raise Exception(f"Insufficient valid 4H data: {valid_4h_low} low, {valid_4h_high} high (need at least 2)")
+            # CRITICAL FIX: Drop NaN rows and slice to needed data
+            ohlcv_cols = ['open', 'high', 'low', 'close', 'volume']
+            df_4h_clean = df_4h.dropna(subset=ohlcv_cols).tail(50)
+            df_1h_clean = df_1h.dropna(subset=ohlcv_cols).tail(100)
 
-            # VALIDATION: Check if columns have valid (non-NaN) values for 1H
-            if df_1h['low'].isna().all() or df_1h['high'].isna().all():
-                raise Exception(f"Invalid 1H data: 'low' or 'high' columns contain all NaN values")
-            valid_1h_low = df_1h['low'].notna().sum()
-            valid_1h_high = df_1h['high'].notna().sum()
-            if valid_1h_low < 2 or valid_1h_high < 2:
-                raise Exception(f"Insufficient valid 1H data: {valid_1h_low} low, {valid_1h_high} high (need at least 2)")
+            # VALIDATION: Check clean data length
+            if len(df_4h_clean) < 2:
+                raise Exception(f"Insufficient clean 4H data: {len(df_4h_clean)} candles")
+            if len(df_1h_clean) < 2:
+                raise Exception(f"Insufficient clean 1H data: {len(df_1h_clean)} candles")
 
             fig = plt.figure(figsize=(16, 10), facecolor='#1e222d')
 
             # 4H Chart (top)
             ax1 = plt.subplot(2, 1, 1)
             mpf.plot(
-                df_4h.tail(50),
+                df_4h_clean,
                 type='candle',
                 style=self.style,
                 ax=ax1,
@@ -218,7 +181,7 @@ class ChartGenerator:
             # 1H Chart (bottom)
             ax2 = plt.subplot(2, 1, 2)
             mpf.plot(
-                df_1h.tail(100),
+                df_1h_clean,
                 type='candle',
                 style=self.style,
                 ax=ax2,
