@@ -353,6 +353,29 @@ async def analyze_market(request: MarketAnalysisRequest):
         except Exception as e:
             logging.warning(f"[PUMP] Scanner skipped: {e}")
 
+        # Step 1.6: Priority Sort - Pump candidates first, then by score
+        # This ensures extreme movements get analyzed before the market moves further
+        def get_priority(candidate):
+            # Pump source candidates get highest priority
+            is_pump = candidate.get('pump_source', False)
+            pump_score = candidate.get('pump_score', 0)
+            pct_change = abs(candidate.get('pct_change_3c', 0))
+            regular_score = candidate.get('score', 0)
+            
+            if is_pump and pct_change >= 10:  # EXTREME pump
+                return (0, -pct_change)  # Priority 0 (highest), then by movement
+            elif is_pump:  # Standard pump
+                return (1, -pump_score)  # Priority 1, then by pump score
+            else:  # Regular screener candidate
+                return (2, -regular_score)  # Priority 2, then by screener score
+        
+        top_candidates.sort(key=get_priority)
+        
+        # Log the priority order
+        pump_count = sum(1 for c in top_candidates if c.get('pump_source', False))
+        if pump_count > 0:
+            logging.info(f"[PRIORITY] Processing order: {pump_count} pump candidates first, then {len(top_candidates) - pump_count} regular")
+
         if not top_candidates:
             # No opportunities found - this is normal, not an error
             logging.info("[EMPTY] No trading opportunities passed filters (market too quiet)")

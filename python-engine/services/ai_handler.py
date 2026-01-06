@@ -512,11 +512,13 @@ Analyze for SCALPER entry (Mean Reversion / Ping-Pong / Predictive Alpha). Provi
         """
         Combine DeepSeek logic and Gemini vision results using HYBRID AGGRESSIVE VETO
         Enhanced with ML-based win probability prediction (v4.0) + WHALE DETECTION VETO (Tier 1)
+        + PUMP FAST TRACK (v4.3) - Lower thresholds for extreme pump/dump signals
 
         PHILOSOPHY: Balance Quality with Quantity for Small Cap Growth.
         Allow 'Neutral' charts if Logic is strong (Mathematical Reversal).
         Use ML to boost confidence or veto low-probability trades.
         NEW: SQUEEZE VETO prevents trading into liquidation cascades.
+        NEW: PUMP FAST TRACK - Extreme movements get priority execution.
         """
         logic_signal = logic_result.get('signal', 'WAIT')
         vision_verdict = vision_result.get('verdict', 'NEUTRAL')
@@ -524,7 +526,29 @@ Analyze for SCALPER entry (Mean Reversion / Ping-Pong / Predictive Alpha). Provi
         vision_confidence = vision_result.get('confidence', 0)
         setup_valid = vision_result.get('setup_valid', 'VALID_SETUP')
 
-        # === 0. ML PREDICTION (if available) ===
+        # === 0. PUMP FAST TRACK DETECTION ===
+        # Check if this is a pump candidate with extreme movement
+        is_pump_source = metrics.get('pump_source', False) if metrics else False
+        pump_pct_change = abs(metrics.get('pct_change_3c', 0)) if metrics else 0
+        pump_vol_ratio = metrics.get('vol_ratio', 0) if metrics else 0
+        pump_score = metrics.get('pump_score', 0) if metrics else 0
+        dump_risk = metrics.get('dump_risk', 50) if metrics else 50
+        
+        # EXTREME PUMP/DUMP: >10% move in 3 candles with >5x volume
+        is_extreme_movement = pump_pct_change >= 10 and pump_vol_ratio >= 5
+        # Standard pump candidate from pump scanner
+        is_pump_candidate = is_pump_source or (pump_score >= 50)
+        
+        # Calculate adjusted threshold for pump signals
+        pump_threshold_reduction = 0
+        if is_extreme_movement:
+            pump_threshold_reduction = 20  # EXTREME: 75 -> 55 threshold
+            logging.info(f"[PUMP FAST TRACK] EXTREME movement detected: {pump_pct_change:.1f}% / {pump_vol_ratio:.1f}x vol")
+        elif is_pump_candidate:
+            pump_threshold_reduction = 15  # Standard pump: 75 -> 60 threshold
+            logging.info(f"[PUMP FAST TRACK] Pump candidate detected: score={pump_score}, dump_risk={dump_risk}%")
+
+        # === 1. ML PREDICTION (if available) ===
         ml_win_prob = 0.5
         ml_threshold = settings.MIN_CONFIDENCE
         ml_insights = []
@@ -648,9 +672,27 @@ Analyze for SCALPER entry (Mean Reversion / Ping-Pong / Predictive Alpha). Provi
                 combined_confidence = min(100, combined_confidence + boost)
                 logging.info(f"[ML] Confidence boosted by {boost} (Win Prob: {ml_win_prob:.0%})")
 
-        # Final Decision (use adaptive threshold from ML)
+        # === 7. PUMP CONFIDENCE BOOST ===
+        # For extreme movements, auto-boost confidence if direction matches
+        pump_boost = 0
+        if is_extreme_movement and agreement and dump_risk < 50:
+            # EXTREME movement + AI agrees + low dump risk = HIGH CONFIDENCE
+            pump_boost = min(15, int((pump_pct_change - 10) * 1.5))  # +15 max for 20%+ moves
+            combined_confidence = min(100, combined_confidence + pump_boost)
+            logging.info(f"[PUMP FAST TRACK] Confidence boosted +{pump_boost} (extreme movement)")
+        elif is_pump_candidate and agreement:
+            # Standard pump candidate gets small boost based on pump_score
+            pump_boost = min(10, int(pump_score / 10))  # +10 max for score 100
+            combined_confidence = min(100, combined_confidence + pump_boost)
+            logging.info(f"[PUMP FAST TRACK] Confidence boosted +{pump_boost} (pump candidate)")
+
+        # Final Decision (use adaptive threshold from ML, with pump adjustment)
         final_signal = logic_signal if agreement else "WAIT"
-        effective_threshold = ml_threshold if HAS_LEARNER else settings.MIN_CONFIDENCE
+        base_threshold = ml_threshold if HAS_LEARNER else settings.MIN_CONFIDENCE
+        effective_threshold = max(50, base_threshold - pump_threshold_reduction)  # Floor at 50%
+        
+        if pump_threshold_reduction > 0:
+            logging.info(f"[PUMP FAST TRACK] Threshold reduced: {base_threshold}% -> {effective_threshold}%")
 
         recommendation = "SKIP"
         if agreement and combined_confidence >= effective_threshold:
@@ -667,5 +709,10 @@ Analyze for SCALPER entry (Mean Reversion / Ping-Pong / Predictive Alpha). Provi
             "ml_win_probability": ml_win_prob,
             "ml_threshold": effective_threshold,
             "ml_insights": ml_insights,
-            "ml_is_trained": ml_is_trained
+            "ml_is_trained": ml_is_trained,
+            # Pump tracking metadata
+            "is_pump_candidate": is_pump_candidate,
+            "is_extreme_movement": is_extreme_movement,
+            "pump_boost_applied": pump_boost,
+            "pump_threshold_reduction": pump_threshold_reduction
         }
