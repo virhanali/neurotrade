@@ -1,4 +1,4 @@
-
+import asyncio
 import ccxt
 import os
 import json
@@ -41,7 +41,8 @@ class BinanceExecutor:
             
         try:
             logger.info("[EXEC] Fetching exchange rules from Binance...")
-            self.markets = self.client.load_markets()
+            # Run blocking call in thread
+            self.markets = await asyncio.to_thread(self.client.load_markets)
             logger.info(f"[EXEC] Loaded {len(self.markets)} markets rules.")
         except Exception as e:
             logger.error(f"[EXEC] Failed to load market rules: {e}")
@@ -65,6 +66,8 @@ class BinanceExecutor:
 
     def _round_down(self, value: float, decimals: int) -> float:
         """Round DOWN to specific decimal places (SAFE for quantity)"""
+        if decimals <= 0:
+            return math.floor(value)
         factor = 10 ** decimals
         return math.floor(value * factor) / factor
 
@@ -91,7 +94,7 @@ class BinanceExecutor:
         try:
             # 1. Ensure market rules loaded
             if symbol not in self.markets:
-                self.markets = self.client.load_markets()
+                self.markets = await asyncio.to_thread(self.client.load_markets)
 
             # 2. Map Side (LONG/SHORT -> BUY/SELL)
             order_side = side.upper()
@@ -103,7 +106,8 @@ class BinanceExecutor:
                 order_side = side.lower() # Fallback
 
             # 3. Calculate quantity
-            ticker = self.client.fetch_ticker(symbol)
+            # Fetch ticker in thread
+            ticker = await asyncio.to_thread(self.client.fetch_ticker, symbol)
             current_price = ticker['last']
             
             # Notional Value = Margin * Leverage
@@ -123,17 +127,18 @@ class BinanceExecutor:
 
             # 5. Set Leverage First
             try:
-                self.client.set_leverage(leverage, symbol)
+                await asyncio.to_thread(self.client.set_leverage, leverage, symbol)
             except Exception as e:
                 logger.warning(f"[EXEC] Leverage set failed (might be already set): {e}")
 
-            # 6. Send Order
-            order = self.client.create_order(
-                symbol=symbol,
-                type='market',
-                side=order_side,
-                amount=quantity,
-                params={
+            # 6. Send Order (IN THREAD)
+            order = await asyncio.to_thread(
+                self.client.create_order,
+                symbol,
+                'market',
+                order_side,
+                quantity,
+                {
                     'positionSide': 'BOTH'
                 }
             )
@@ -169,15 +174,16 @@ class BinanceExecutor:
             else:
                 order_side = side.lower()
 
-            # Send Market Order to Reduce Only
-            order = self.client.create_order(
-                symbol=symbol,
-                type='market',
-                side=order_side,
-                amount=quantity,
-                params={'reduceOnly': True}
+            # Send Market Order (IN THREAD)
+            order = await asyncio.to_thread(
+                self.client.create_order,
+                symbol,
+                'market',
+                order_side,
+                quantity,
+                {'reduceOnly': True}
             )
-            return {"status": "FILLED", "orderId": order['id']}
+            return {"status": "FILLED", "orderId": order['id'], "avgPrice": order['average']}
         except Exception as e:
             return {"error": str(e)}
 
@@ -189,8 +195,8 @@ class BinanceExecutor:
             return {"error": "Binance client not initialized"}
             
         try:
-            # fetch_balance returns a huge dict, we focus on USDT
-            balance = self.client.fetch_balance()
+            # Run in thread to avoid blocking loop
+            balance = await asyncio.to_thread(self.client.fetch_balance)
             
             # Futures balance structure can be tricky, check 'USDT'
             usdt = balance.get('USDT', {})

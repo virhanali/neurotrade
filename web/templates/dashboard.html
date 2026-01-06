@@ -1618,13 +1618,12 @@
                                     <input type="radio" name="mode" value="PAPER" class="peer sr-only" {{if eq
                                         .User.Mode "PAPER" }}checked{{end}}>
 
-                                    <!-- Radio Circle Indicator -->
-                                    <div class="mt-1 mr-4 flex-shrink-0">
-                                        <div
-                                            class="w-5 h-5 rounded-full border-2 border-slate-300 dark:border-slate-600 peer-checked:border-emerald-500 peer-checked:bg-emerald-500 flex items-center justify-center transition-colors">
-                                            {{if eq .User.Mode "PAPER"}}<div class="w-2.5 h-2.5 rounded-full bg-white">
-                                            </div>{{end}}
-                                        </div>
+                                    <!-- Visual Indicators (Flat Siblings) -->
+                                    <div
+                                        class="mt-1 mr-4 flex-shrink-0 w-5 h-5 rounded-full border-2 border-slate-300 dark:border-slate-600 peer-checked:border-emerald-500 peer-checked:bg-emerald-500 flex items-center justify-center transition-colors">
+                                    </div>
+                                    <div
+                                        class="absolute top-[22px] left-[22px] w-2.5 h-2.5 rounded-full bg-white opacity-0 peer-checked:opacity-100 transition-opacity pointer-events-none">
                                     </div>
 
                                     <div class="flex-1">
@@ -1641,7 +1640,7 @@
                                         </p>
                                     </div>
 
-                                    <!-- Active Border Highlight (for peer-checked) -->
+                                    <!-- Active Border Highlight -->
                                     <div
                                         class="absolute inset-0 border-2 border-transparent peer-checked:border-emerald-500 rounded-xl pointer-events-none">
                                     </div>
@@ -1655,13 +1654,12 @@
                                     <input type="radio" name="mode" value="REAL" class="peer sr-only" {{if eq
                                         .User.Mode "REAL" }}checked{{end}}>
 
-                                    <!-- Radio Circle Indicator -->
-                                    <div class="mt-1 mr-4 flex-shrink-0">
-                                        <div
-                                            class="w-5 h-5 rounded-full border-2 border-slate-300 dark:border-slate-600 peer-checked:border-rose-500 peer-checked:bg-rose-500 flex items-center justify-center transition-colors">
-                                            {{if eq .User.Mode "REAL"}}<div class="w-2.5 h-2.5 rounded-full bg-white">
-                                            </div>{{end}}
-                                        </div>
+                                    <!-- Visual Indicators -->
+                                    <div
+                                        class="mt-1 mr-4 flex-shrink-0 w-5 h-5 rounded-full border-2 border-slate-300 dark:border-slate-600 peer-checked:border-rose-500 peer-checked:bg-rose-500 flex items-center justify-center transition-colors">
+                                    </div>
+                                    <div
+                                        class="absolute top-[22px] left-[22px] w-2.5 h-2.5 rounded-full bg-white opacity-0 peer-checked:opacity-100 transition-opacity pointer-events-none">
                                     </div>
 
                                     <div class="flex-1">
@@ -1673,12 +1671,12 @@
                                                 MONEY</span>
                                         </div>
                                         <p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
-                                            Execute real orders on Binance Futures. Capital is at risk. Ensure your API
-                                            keys are configured.
+                                            Execute real orders on Binance Futures. High risk, high reward
+                                            implementation.
                                         </p>
                                     </div>
 
-                                    <!-- Active Border Highlight (for peer-checked) -->
+                                    <!-- Active Border Highlight -->
                                     <div
                                         class="absolute inset-0 border-2 border-transparent peer-checked:border-rose-500 rounded-xl pointer-events-none">
                                     </div>
