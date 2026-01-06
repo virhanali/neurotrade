@@ -46,6 +46,56 @@ class MarketScreener:
             'session': session  # Use custom session with larger pool
         })
 
+    def check_5min_confirmation(self, symbol: str, whale_signal: str) -> bool:
+        """
+        Check if 5-minute timeframe confirms the 15-minute whale signal.
+        (Tier 2 / Option 2 enhancement - 5-min confirmation layer)
+
+        Returns True if 5-min supports the signal, False if contradicts.
+        This reduces false signals and improves entry timing.
+        """
+        try:
+            # Only check confirmation for strong whale signals
+            if whale_signal not in ['PUMP_IMMINENT', 'DUMP_IMMINENT']:
+                return True  # Non-whale signals don't need 5-min confirmation
+
+            # Fetch last 5 candles of 5-minute timeframe
+            ohlcv = self.exchange.fetch_ohlcv(symbol, '5m', limit=5)
+            df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+
+            if len(df) < 2:
+                return True  # Not enough data, allow trade
+
+            # Simple 5-min breakout confirmation
+            current_close = df.iloc[-1]['close']
+            prev_open = df.iloc[-2]['open']
+            prev_high = df.iloc[-2]['high']
+            prev_low = df.iloc[-2]['low']
+
+            if whale_signal == 'PUMP_IMMINENT':
+                # For pump: 5-min should be breaking above previous candle high
+                confirmed = current_close > prev_high
+                if confirmed:
+                    logging.info(f"[5-MIN CONFIRM] {symbol}: 5-min breakout UP confirmed for PUMP_IMMINENT")
+                else:
+                    logging.info(f"[5-MIN] {symbol}: PUMP signal but 5-min NOT breaking (no confirmation)")
+                return confirmed
+
+            elif whale_signal == 'DUMP_IMMINENT':
+                # For dump: 5-min should be breaking below previous candle low
+                confirmed = current_close < prev_low
+                if confirmed:
+                    logging.info(f"[5-MIN CONFIRM] {symbol}: 5-min breakout DOWN confirmed for DUMP_IMMINENT")
+                else:
+                    logging.info(f"[5-MIN] {symbol}: DUMP signal but 5-min NOT breaking (no confirmation)")
+                return confirmed
+
+            return True
+
+        except Exception as e:
+            logging.warning(f"[5-MIN CONFIRM] Failed for {symbol}: {e}")
+            return True  # On error, allow trade (don't block)
+
     def get_top_opportunities(self) -> List[Dict]:
         """
         Screen market for top trading opportunities [PRO MODE]
@@ -275,13 +325,26 @@ class MarketScreener:
                                 whale_conf = result['whale_confidence']
                                 whale_boost = 0
 
+                                # Tier 2: 5-Minute Confirmation Check (Optional 2 enhancement)
+                                # Only check for strong PUMP/DUMP signals to confirm entry timing
+                                if whale_sig in ['PUMP_IMMINENT', 'DUMP_IMMINENT']:
+                                    m5_confirmed = self.check_5min_confirmation(symbol, whale_sig)
+                                    result['5min_confirmed'] = m5_confirmed
+                                    if not m5_confirmed:
+                                        logging.info(f"[5-MIN] {symbol}: {whale_sig} signal rejected - 5-min confirmation failed")
+                                        result['whale_signal'] = 'NEUTRAL'  # Downgrade to neutral
+                                        whale_sig = 'NEUTRAL'
+                                        whale_conf = 0
+                                else:
+                                    result['5min_confirmed'] = True
+
                                 # Tier 3: Progressive Whale Scoring (non-linear, confidence-based)
                                 if whale_sig in ['PUMP_IMMINENT', 'DUMP_IMMINENT']:
                                     # Scale from +25 (60% conf) to +50 (95% conf)
                                     # Formula: 25 + (confidence - 60) * 0.5
                                     if whale_conf >= 60:
                                         whale_boost = min(50, 25 + int((whale_conf - 60) * 0.5))
-                                        logging.info(f"[WHALE] {symbol}: {whale_sig} detected! Progressive boost +{whale_boost} (conf: {whale_conf}%)")
+                                        logging.info(f"[WHALE] {symbol}: {whale_sig} detected + 5-min confirmed! Progressive boost +{whale_boost} (conf: {whale_conf}%)")
                                 elif whale_sig in ['SQUEEZE_LONGS', 'SQUEEZE_SHORTS']:
                                     # Scale from +10 (50% conf) to +25 (80% conf)
                                     # Formula: 10 + (confidence - 50) * 0.5
