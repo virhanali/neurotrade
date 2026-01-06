@@ -173,7 +173,7 @@
             if (event) event.preventDefault();
 
             // Hide all tabs
-            ['tab-dashboard', 'tab-brain-health', 'tab-live', 'tab-history'].forEach(id => {
+            ['tab-dashboard', 'tab-brain-health', 'tab-live', 'tab-history', 'tab-settings'].forEach(id => {
                 const el = document.getElementById(id);
                 if (el) el.classList.add('hidden');
             });
@@ -187,7 +187,7 @@
             const inactiveClass = ['text-slate-600', 'dark:text-slate-400', 'hover:bg-slate-50', 'dark:hover:bg-slate-800'];
 
             // Reset all navs
-            ['dashboard', 'brain', 'live', 'history'].forEach(id => {
+            ['dashboard', 'brain', 'live', 'history', 'settings'].forEach(id => {
                 const el = document.getElementById('nav-' + id);
                 if (el) {
                     el.classList.remove(...activeClass);
@@ -210,7 +210,8 @@
                 'dashboard': { title: 'Market Overview', subtitle: 'Aggressive Scalping • M15 Timeframe' },
                 'brain-health': { title: 'Brain Health Center', subtitle: 'AI Neural Status & Feature Analysis' },
                 'live': { title: 'Live Position', subtitle: 'Real-time Position Tracking & PnL' },
-                'history': { title: 'Trade History', subtitle: 'Historical Performance & Analytics' }
+                'history': { title: 'Trade History', subtitle: 'Historical Performance & Analytics' },
+                'settings': { title: 'User Settings', subtitle: 'Trading Preferences & Risk Management' }
             };
 
             const info = headers[tabName] || headers['dashboard'];
@@ -554,11 +555,11 @@
                     <span>Trade History</span>
                 </a>
 
-                <!-- Settings (New Location) -->
-                <a href="#" hx-get="/api/settings/modal" hx-target="body" hx-swap="beforeend"
+                <!-- Settings (New Location - Tab) -->
+                <a href="#settings" onclick="switchTab('settings')" id="nav-settings"
                     class="flex items-center px-3 py-2.5 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100 font-medium rounded-lg transition-colors group whitespace-nowrap">
                     <i class="ri-settings-3-line mr-3 text-lg group-hover:text-emerald-500 flex-shrink-0"></i>
-                    <span>Settings</span>
+                    <span>User Settings</span>
                 </a>
             </nav>
 
@@ -1586,6 +1587,170 @@
                     </div>
                 </div>
             </div>
+
+            <!-- TAB: USER SETTINGS -->
+            <div id="tab-settings" class="hidden animate-fade-in">
+                <div class="max-w-3xl mx-auto">
+                    <form hx-post="/api/settings" hx-trigger="submit" hx-swap="none" class="space-y-6"
+                        _="on htmx:afterRequest if event.detail.successful then showToast('Settings saved successfully', 'success') end">
+
+                        <!-- Trading Mode -->
+                        <div
+                            class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm overflow-hidden relative">
+                            <div class="flex items-center gap-3 mb-6">
+                                <div
+                                    class="p-2 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg text-indigo-600 dark:text-indigo-400">
+                                    <i class="ri-gamepad-line text-xl"></i>
+                                </div>
+                                <div>
+                                    <h3 class="text-lg font-bold text-slate-900 dark:text-white">Trading Mode</h3>
+                                    <p class="text-sm text-slate-500 dark:text-slate-400">Select your operation
+                                        environment</p>
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <!-- Paper Mode Option -->
+                                <label class="relative flex items-center p-4 border rounded-xl cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-all group
+                                    {{if eq .User.Mode " PAPER"}}border-emerald-500 bg-emerald-50/10
+                                    dark:bg-emerald-900/10 ring-1 ring-emerald-500{{else}}border-slate-200
+                                    dark:border-slate-700{{end}}">
+                                    <input type="radio" name="mode" value="PAPER" class="peer sr-only" {{if eq
+                                        .User.Mode "PAPER" }}checked{{end}}>
+                                    <div class="flex-1">
+                                        <div class="flex items-center justify-between mb-1">
+                                            <span
+                                                class="font-bold text-slate-900 dark:text-white group-hover:text-emerald-500 transition-colors">Switch
+                                                Information</span>
+                                            {{if eq .User.Mode "PAPER"}}<i
+                                                class="ri-checkbox-circle-fill text-emerald-500 text-xl"></i>{{end}}
+                                        </div>
+                                        <div class="font-medium text-emerald-600 dark:text-emerald-400 mb-1">Paper
+                                            Trading</div>
+                                        <p class="text-xs text-slate-500 dark:text-slate-400">Zero risk. Simulate trades
+                                            with virtual balance.</p>
+                                    </div>
+                                </label>
+
+                                <!-- Real Mode Option -->
+                                <label class="relative flex items-center p-4 border rounded-xl cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-all group
+                                    {{if eq .User.Mode " REAL"}}border-rose-500 bg-rose-50/10 dark:bg-rose-900/10
+                                    ring-1 ring-rose-500{{else}}border-slate-200 dark:border-slate-700{{end}}">
+                                    <input type="radio" name="mode" value="REAL" class="peer sr-only" {{if eq
+                                        .User.Mode "REAL" }}checked{{end}}>
+                                    <div class="flex-1">
+                                        <div class="flex items-center justify-between mb-1">
+                                            <span
+                                                class="font-bold text-slate-900 dark:text-white group-hover:text-rose-500 transition-colors">Live
+                                                Production</span>
+                                            {{if eq .User.Mode "REAL"}}<i
+                                                class="ri-checkbox-circle-fill text-rose-500 text-xl"></i>{{end}}
+                                        </div>
+                                        <div class="font-medium text-rose-600 dark:text-rose-400 mb-1">Real Money</div>
+                                        <p class="text-xs text-slate-500 dark:text-slate-400">High risk. Direct Binance
+                                            Futures execution.</p>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Risk Management -->
+                        <div
+                            class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm">
+                            <div class="flex items-center gap-3 mb-6">
+                                <div
+                                    class="p-2 bg-amber-50 dark:bg-amber-900/20 rounded-lg text-amber-600 dark:text-amber-400">
+                                    <i class="ri-shield-check-line text-xl"></i>
+                                </div>
+                                <div>
+                                    <h3 class="text-lg font-bold text-slate-900 dark:text-white">Risk Configuration</h3>
+                                    <p class="text-sm text-slate-500 dark:text-slate-400">Manage your sizing and
+                                        leverage</p>
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                                        Fixed Margin (USDT)
+                                    </label>
+                                    <div class="relative">
+                                        <div
+                                            class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                            <span class="text-slate-500">$</span>
+                                        </div>
+                                        <input type="number" name="fixed_order_size" step="0.1" min="1" required
+                                            value="{{printf " %.2f" .User.FixedOrderSize}}"
+                                            class="w-full pl-7 pr-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-slate-900 dark:text-white">
+                                    </div>
+                                    <p class="mt-1 text-xs text-slate-500">Your initial capital per trade.</p>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                                        Leverage
+                                    </label>
+                                    <div class="relative">
+                                        <select name="leverage" required
+                                            class="w-full pl-3 pr-10 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-slate-900 dark:text-white appearance-none">
+                                            <option value="1" {{if eq .User.Leverage 1.0}}selected{{end}}>1x (No
+                                                Leverage)</option>
+                                            <option value="5" {{if eq .User.Leverage 5.0}}selected{{end}}>5x</option>
+                                            <option value="10" {{if eq .User.Leverage 10.0}}selected{{end}}>10x</option>
+                                            <option value="20" {{if eq .User.Leverage 20.0}}selected{{end}}>20x
+                                                (Recommended)</option>
+                                            <option value="50" {{if eq .User.Leverage 50.0}}selected{{end}}>50x (High
+                                                Risk)</option>
+                                            <option value="75" {{if eq .User.Leverage 75.0}}selected{{end}}>75x (Degen)
+                                            </option>
+                                        </select>
+                                        <div
+                                            class="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none text-slate-500">
+                                            <i class="ri-arrow-down-s-line"></i>
+                                        </div>
+                                    </div>
+                                    <p class="mt-1 text-xs text-slate-500">Multiplier for your position size.</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Auto Trade -->
+                        <div
+                            class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center gap-3">
+                                    <div
+                                        class="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-blue-600 dark:text-blue-400">
+                                        <i class="ri-robot-2-line text-xl"></i>
+                                    </div>
+                                    <div>
+                                        <h3 class="text-lg font-bold text-slate-900 dark:text-white">Auto Trading</h3>
+                                        <p class="text-sm text-slate-500 dark:text-slate-400">Automatically execute AI
+                                            signals</p>
+                                    </div>
+                                </div>
+
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" name="is_auto_trade_enabled" class="sr-only peer" {{if
+                                        .User.IsAutoTradeEnabled}}checked{{end}}>
+                                    <div
+                                        class="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-emerald-300 dark:peer-focus:ring-emerald-800 rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-emerald-600">
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Save Button -->
+                        <div class="flex justify-end pt-4">
+                            <button type="submit"
+                                class="px-6 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white font-medium rounded-lg shadow-lg shadow-emerald-500/30 transition-all flex items-center gap-2">
+                                <i class="ri-save-3-line"></i>
+                                Save Configuration
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
             <!-- Spacer for scroll -->
             <div class="h-24 w-full shrink-0"></div>
     </div>
@@ -1895,113 +2060,5 @@
 {{end}}
 
 {{define "settings_modal"}}
-<div id="settings-modal"
-    class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fade-in"
-    onclick="if(event.target === this) this.remove()">
-    <div
-        class="bg-white dark:bg-slate-900 rounded-xl shadow-2xl w-full max-w-md border border-slate-200 dark:border-slate-800 overflow-hidden relative transform transition-all scale-100">
-        <!-- Close Button -->
-        <button onclick="document.getElementById('settings-modal').remove()"
-            class="absolute top-4 right-4 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors z-10">
-            <i class="ri-close-line text-2xl"></i>
-        </button>
-
-        <div class="p-6">
-            <h3 class="text-xl font-bold text-slate-900 dark:text-white mb-1 flex items-center">
-                <i class="ri-equalizer-line mr-2 text-emerald-500"></i>
-                Trading Settings
-            </h3>
-            <p class="text-sm text-slate-500 dark:text-slate-400 mb-6">Customize user-specific trading parameters.</p>
-
-            <form hx-post="/api/settings" hx-swap="outerHTML" hx-target="#settings-response">
-
-                <!-- Response Area -->
-                <div id="settings-response" class="mb-4"></div>
-
-                <!-- Trading Mode -->
-                <div class="mb-5">
-                    <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Trading
-                        Mode</label>
-                    <div class="grid grid-cols-2 gap-3">
-                        <label class="cursor-pointer">
-                            <input type="radio" name="mode" value="PAPER" class="peer sr-only" {{if eq .Mode "PAPER"
-                                }}checked{{end}}>
-                            <div
-                                class="text-center py-2.5 rounded-lg border border-slate-200 dark:border-slate-700 peer-checked:bg-emerald-50 dark:peer-checked:bg-emerald-900/20 peer-checked:border-emerald-500 dark:peer-checked:border-emerald-500 peer-checked:text-emerald-700 dark:peer-checked:text-emerald-400 text-slate-500 dark:text-slate-400 transition-all hover:bg-slate-50 dark:hover:bg-slate-800 font-medium">
-                                <i class="ri-file-list-3-line mr-1 align-middle"></i> Paper
-                            </div>
-                        </label>
-                        <label class="cursor-pointer">
-                            <input type="radio" name="mode" value="REAL" class="peer sr-only" {{if eq .Mode "REAL"
-                                }}checked{{end}}>
-                            <div
-                                class="text-center py-2.5 rounded-lg border border-slate-200 dark:border-slate-700 peer-checked:bg-rose-50 dark:peer-checked:bg-rose-900/20 peer-checked:border-rose-500 dark:peer-checked:border-rose-500 peer-checked:text-rose-700 dark:peer-checked:text-rose-400 text-slate-500 dark:text-slate-400 transition-all hover:bg-slate-50 dark:hover:bg-slate-800 font-medium">
-                                <i class="ri-fire-line mr-1 align-middle"></i> Real
-                            </div>
-                        </label>
-                    </div>
-                </div>
-
-                <!-- Order Size (Margin) -->
-                <div class="mb-5">
-                    <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                        Fixed Margin
-                        <span class="text-xs text-slate-400 ml-1">(Initial Capital per Trade)</span>
-                    </label>
-                    <div class="relative">
-                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                            <span class="text-slate-500 font-bold">$</span>
-                        </div>
-                        <input type="number" name="fixed_order_size" value="{{printf " %.2f" .FixedOrderSize}}"
-                            step="0.1" min="1"
-                            class="pl-7 block w-full rounded-lg bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm py-2.5 transition-colors">
-                    </div>
-                </div>
-
-                <!-- Leverage -->
-                <div class="mb-5">
-                    <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Leverage</label>
-                    <div class="relative">
-                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                            <span class="text-slate-500 font-bold">x</span>
-                        </div>
-                        <select name="leverage"
-                            class="pl-7 block w-full rounded-lg bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm py-2.5 transition-colors appearance-none">
-                            <option value="5" {{if eq .Leverage 5.0}}selected{{end}}>5</option>
-                            <option value="10" {{if eq .Leverage 10.0}}selected{{end}}>10</option>
-                            <option value="20" {{if eq .Leverage 20.0}}selected{{end}}>20 (Standard)</option>
-                            <option value="50" {{if eq .Leverage 50.0}}selected{{end}}>50 (High Risk)</option>
-                            <option value="100" {{if eq .Leverage 100.0}}selected{{end}}>100 (Degen)</option>
-                        </select>
-                        <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-                            <i class="ri-arrow-down-s-line text-slate-400"></i>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Auto Trade -->
-                <div
-                    class="mb-8 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-100 dark:border-slate-700/50 flex items-center justify-between">
-                    <div>
-                        <label class="text-sm font-medium text-slate-700 dark:text-slate-300 block">Auto Trading</label>
-                        <p class="text-xs text-slate-500 mt-0.5">Automatically execute AI signals</p>
-                    </div>
-                    <label class="relative inline-flex items-center cursor-pointer">
-                        <input type="checkbox" name="is_auto_trade_enabled" class="sr-only peer" {{if
-                            .IsAutoTradeEnabled}}checked{{end}}>
-                        <div
-                            class="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-emerald-300 dark:peer-focus:ring-emerald-800/30 rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-emerald-500">
-                        </div>
-                    </label>
-                </div>
-
-                <!-- Save Button -->
-                <button type="submit"
-                    class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-lg transition-all shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/40 flex items-center justify-center transform active:scale-95">
-                    <i class="ri-save-3-line mr-2 text-xl"></i> Save Configuration
-                </button>
-            </form>
-        </div>
-    </div>
-</div>
+<!-- Modal moved to dedicated Tab User Settings -->
 {{end}}

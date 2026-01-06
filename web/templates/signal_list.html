@@ -49,7 +49,10 @@
                 <span class="w-px h-2.5 bg-current opacity-20 mx-1 shrink-0"></span>
                 <span class="w-[48px] text-right truncate shrink-0">{{printf "%.2f" .PnlVal}}%</span>
                 <span class="w-px h-2.5 bg-current opacity-20 mx-1 shrink-0"></span>
-                <span class="w-[48px] text-right truncate shrink-0">${{printf "%.2f" .PnlDollar}}</span>
+                <span class="w-[48px] text-right truncate shrink-0">
+                    {{if lt .PnlDollar 0.0}}-${{printf "%.2f" .PnlDollar | slice 1}}{{else}}${{printf "%.2f"
+                    .PnlDollar}}{{end}}
+                </span>
             </div>
             {{end}}
         </div>
