@@ -37,47 +37,45 @@ func (s *Scheduler) Start() error {
 	log.Printf("Starting scheduler... [Mode: %s]", s.mode)
 
 	// OPTIMIZED for API cost & performance:
-	// Overlap (London+NY): 13:00-16:00 UTC → AGGRESSIVE (every 5s) - REDUCED from 10s
-	// Golden Hours: 00:00-04:00, 07:00-11:00, 13:00-18:00 UTC → NORMAL (every 30s) - increased from 15s
-	// Dead Hours: Everything else → SLOW (every 2 min) - increased from 60s to catch more moves
+	// Overlap (London+NY): 13:00-16:00 UTC → AGGRESSIVE (every 10s)
+	// Golden Hours: 00:00-04:00, 07:00-11:00, 13:00-18:00 UTC → NORMAL (every 30s)
+	// Dead Hours: Everything else → SLOW (every 2 min)
 
-	_, err := s.cron.AddFunc("*/5 * * * * *", func() {
+	_, err := s.cron.AddFunc("*/10 * * * * *", func() {
 		ctx := context.Background()
 		now := time.Now().UTC()
 		hour := now.Hour()
 		second := now.Second()
 
 		// === SESSION CLASSIFICATION (UTC) ===
-		// Overlap (London+NY): 13:00-16:00 UTC → AGGRESSIVE (every 5s)
+		// Overlap (London+NY): 13:00-16:00 UTC → AGGRESSIVE (every 10s)
 		// Golden Hours: 00:00-04:00, 07:00-11:00, 13:00-18:00 UTC → NORMAL (every 30s)
-		// Dead Hours: Everything else → SLOW (every 2 min) - still catch pumps!
+		// Dead Hours: Everything else → SLOW (every 2 min)
 
 		isOverlapHour := hour >= 13 && hour < 16
 		isGoldenHour := (hour >= 0 && hour < 4) || (hour >= 7 && hour < 11) || (hour >= 13 && hour < 18)
 
 		// DYNAMIC FREQUENCY:
 		if isOverlapHour {
-			// Overlap hours: run EVERY 5 seconds (REDUCED from 10s)
-			// (this cron fires every 5s, so just run)
+			// Overlap hours: run EVERY 10 seconds
 		} else if isGoldenHour {
-			// Golden hours: run at :00, :30 (every 30s)
-			if second != 0 && second != 30 {
+			// Golden hours: run at :00, :15, :30, :45 (every 15s)
+			if second != 0 && second != 15 && second != 30 && second != 45 {
 				return
 			}
 		} else {
 			// Dead hours: run only at :00, :05 of each minute (every 2 min)
-			// This is 120s interval - increased from 60s to catch more moves
-			if second != 0 && second != 30 {
+			if second != 0 && second != 59 {
 				return
 			}
 		}
 
 		// Log with frequency indicator
-		freq := "2m [SLOW]"
+		freq := "10s [NORMAL]"
 		if isOverlapHour {
-			freq = "5s [AGGRESSIVE]"
+			freq = "10s [AGGRESSIVE]"
 		} else if isGoldenHour {
-			freq = "30s [NORMAL]"
+			freq = "10s [NORMAL]"
 		}
 
 		log.Printf("[CRON] Scan triggered (%s) [Mode: %s]", freq, s.mode)

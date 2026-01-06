@@ -623,9 +623,8 @@
                 <div id="tab-dashboard" class="hidden">
                     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
 
-                    <!-- Balance Card -->
-                        <div
-                            class="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden group hover:border-emerald-500/30 transition-colors"
+                        <!-- Balance Card -->
+                        <div class="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden group hover:border-emerald-500/30 transition-colors"
                             data-balance-display="true">
                             <div class="flex justify-between items-start">
                                 <div>
@@ -633,7 +632,7 @@
                                     <h3 class="text-2xl font-bold text-slate-900 dark:text-white mt-1">
                                         {{if eq .User.Mode "REAL"}}
                                         {{if .User.RealBalanceCache}}
-                                        ${{printf "%.2f" .User.RealBalanceCache}}
+                                        {{with .User.RealBalanceCache}}${{printf "%.2f" .}}{{end}}
                                         <span
                                             class="text-xs font-normal text-rose-500 ml-1 border border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-900/20 px-1 rounded">REAL</span>
                                         {{else}}
@@ -1600,7 +1599,8 @@
             <!-- TAB: USER SETTINGS -->
             <div id="tab-settings" class="hidden animate-fade-in">
                 <div class="max-w-3xl mx-auto">
-                    <form id="settings-form" hx-post="/api/settings" hx-trigger="submit" hx-swap="none" class="space-y-6">
+                    <form id="settings-form" hx-post="/api/settings" hx-trigger="submit" hx-swap="none"
+                        class="space-y-6">
 
                         <!-- Trading Mode -->
                         <div
@@ -1620,7 +1620,7 @@
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <!-- Paper Mode Option -->
                                 <label class="relative flex items-start p-4 border-2 rounded-xl cursor-pointer transition-all duration-200 group
-                                    {{if eq .User.Mode "PAPER"}}border-emerald-500 bg-emerald-50/30
+                                    {{if eq .User.Mode " PAPER"}}border-emerald-500 bg-emerald-50/30
                                     dark:bg-emerald-900/10{{else}}border-slate-200 dark:border-slate-700
                                     hover:border-emerald-200 dark:hover:border-emerald-800{{end}}">
                                     <input type="radio" name="mode" value="PAPER" class="peer sr-only" {{if eq
@@ -1656,7 +1656,7 @@
 
                                 <!-- Real Mode Option -->
                                 <label class="relative flex items-start p-4 border-2 rounded-xl cursor-pointer transition-all duration-200 group
-                                    {{if eq .User.Mode "REAL"}}border-rose-500 bg-rose-50/30
+                                    {{if eq .User.Mode " REAL"}}border-rose-500 bg-rose-50/30
                                     dark:bg-rose-900/10{{else}}border-slate-200 dark:border-slate-700
                                     hover:border-rose-200 dark:hover:border-rose-800{{end}}">
                                     <input type="radio" name="mode" value="REAL" class="peer sr-only" {{if eq
@@ -1717,13 +1717,14 @@
                                             class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                                             <span class="text-slate-500">$</span>
                                         </div>
-                                        <input type="number" name="fixed_order_size" step="0.01" min="1" max="1000" required
-                                            value="{{printf " %.2f" .User.FixedOrderSize}}"
+                                        <input type="number" name="fixed_order_size" step="0.01" min="1" max="1000"
+                                            required value="{{printf " %.2f" .User.FixedOrderSize}}"
                                             id="fixed-margin-input"
                                             class="w-full pl-7 pr-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-slate-900 dark:text-white">
                                     </div>
                                     <p class="mt-1 text-xs text-slate-500">
-                                        Your initial capital per trade. <span class="text-rose-500 font-medium">Minimum: $1.00</span>
+                                        Your initial capital per trade. <span class="text-rose-500 font-medium">Minimum:
+                                            $1.00</span>
                                         {{if eq .User.Mode "REAL"}}
                                         <span id="notional-warning" class="text-slate-500"> | Min Notional: $5.00</span>
                                         {{end}}
@@ -1795,14 +1796,13 @@
                         </div>
 
                         <!-- Save Button -->
-                            <div class="flex justify-end pt-4">
-                                <button type="submit"
-                                    id="settings-save-btn"
-                                    class="px-6 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white font-medium rounded-lg shadow-lg shadow-emerald-500/30 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
-                                    <i class="ri-save-3-line"></i>
-                                    <span id="save-btn-text">Save Configuration</span>
-                                </button>
-                            </div>
+                        <div class="flex justify-end pt-4">
+                            <button type="submit" id="settings-save-btn"
+                                class="px-6 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white font-medium rounded-lg shadow-lg shadow-emerald-500/30 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+                                <i class="ri-save-3-line"></i>
+                                <span id="save-btn-text">Save Configuration</span>
+                            </button>
+                        </div>
                     </form>
                 </div>
             </div>
@@ -1916,9 +1916,9 @@
             const settingsForm = document.getElementById('settings-form');
             if (settingsForm) {
                 // Before request - Show loading toast
-                settingsForm.addEventListener('htmx:beforeRequest', function(evt) {
+                settingsForm.addEventListener('htmx:beforeRequest', function (evt) {
                     showToast('Saving settings...', 'info');
-                    
+
                     // Update button state
                     const saveBtn = document.getElementById('settings-save-btn');
                     const saveBtnText = document.getElementById('save-btn-text');
@@ -1927,21 +1927,23 @@
                 });
 
                 // After request - Show result toast
-                settingsForm.addEventListener('htmx:afterRequest', function(evt) {
+                settingsForm.addEventListener('htmx:afterRequest', function (evt) {
                     const detail = evt.detail || {};
-                    
+
                     if (detail.successful) {
                         showToast('Settings saved successfully!', 'success');
-                        
-                        // Refresh user data
-                        htmx.ajax('GET', window.location.pathname, {
-                            target: 'body',
-                            swap: 'innerHTML'
-                        });
+
+                        // Delay refresh so user can see the toast
+                        setTimeout(() => {
+                            htmx.ajax('GET', window.location.pathname, {
+                                target: 'body',
+                                swap: 'innerHTML'
+                            });
+                        }, 1500);
                     } else {
                         showToast('Failed to save settings. Please try again.', 'error');
                     }
-                    
+
                     // Reset button state
                     const saveBtn = document.getElementById('settings-save-btn');
                     const saveBtnText = document.getElementById('save-btn-text');
@@ -1950,83 +1952,12 @@
                 });
 
                 // On confirm - Show processing toast
-                settingsForm.addEventListener('htmx:confirm', function(evt) {
+                settingsForm.addEventListener('htmx:confirm', function (evt) {
                     showToast('Confirming...', 'info');
                 });
 
                 // On settle - Handle any remaining UI states
-                settingsForm.addEventListener('htmx:afterSettle', function(evt) {
-                    // Additional cleanup if needed
-                });
-            }
-        });
-            // Initial validation
-            setTimeout(validateSettingsForm, 100);
-
-            // Validate on margin change
-            const marginInput = document.getElementById('fixed-margin-input');
-            if (marginInput) {
-                marginInput.addEventListener('input', validateSettingsForm);
-            }
-
-            // Validate on leverage change
-            const leverageSelect = document.querySelector('select[name="leverage"]');
-            if (leverageSelect) {
-                leverageSelect.addEventListener('change', validateSettingsForm);
-            }
-
-            // Validate on mode change
-            document.querySelectorAll('input[name="mode"]').forEach(el => {
-                el.addEventListener('change', () => {
-                    // Small delay to let the DOM update first
-                    setTimeout(validateSettingsForm, 100);
-                });
-            });
-
-            // ===== HTMX Event Handlers for Settings Form =====
-            const settingsForm = document.getElementById('settings-form');
-            if (settingsForm) {
-                // Before request - Show loading toast
-                settingsForm.addEventListener('htmx:beforeRequest', function(evt) {
-                    showToast('Saving settings...', 'info');
-                    
-                    // Update button state
-                    const saveBtn = document.getElementById('settings-save-btn');
-                    const saveBtnText = document.getElementById('save-btn-text');
-                    if (saveBtn) saveBtn.disabled = true;
-                    if (saveBtnText) saveBtnText.textContent = 'Saving...';
-                });
-
-                // After request - Show result toast
-                settingsForm.addEventListener('htmx:afterRequest', function(evt) {
-                    const detail = evt.detail || {};
-                    
-                    if (detail.successful) {
-                        showToast('Settings saved successfully!', 'success');
-                        
-                        // Refresh user data
-                        htmx.ajax('GET', window.location.pathname, {
-                            target: 'body',
-                            swap: 'innerHTML'
-                        });
-                    } else {
-                        showToast('Failed to save settings. Please try again.', 'error');
-                    }
-                    
-                    // Reset button state
-                    const saveBtn = document.getElementById('settings-save-btn');
-                    const saveBtnText = document.getElementById('save-btn-text');
-                    if (saveBtn) saveBtn.disabled = false;
-                    if (saveBtnText) saveBtnText.textContent = 'Save Configuration';
-                });
-
-                // On confirm - Show processing toast
-                settingsForm.addEventListener('htmx:confirm', function(evt) {
-                    showToast('Confirming...', 'info');
-                });
-
-                // On settle - Handle any remaining UI states
-                settingsForm.addEventListener('htmx:afterSettle', function(evt) {
+                settingsForm.addEventListener('htmx:afterSettle', function (evt) {
                     // Additional cleanup if needed
                 });
             }
@@ -2093,14 +2024,14 @@
             const toast = document.createElement('div');
 
             let bgClass = type === 'success' ? 'bg-slate-900 dark:bg-slate-800 text-white' :
-                         type === 'error' ? 'bg-rose-600 text-white' :
-                         type === 'info' ? 'bg-blue-600 text-white' :
-                         'bg-slate-900 dark:bg-slate-800 text-white';
+                type === 'error' ? 'bg-rose-600 text-white' :
+                    type === 'info' ? 'bg-blue-600 text-white' :
+                        'bg-slate-900 dark:bg-slate-800 text-white';
 
             let icon = type === 'success' ? '<i class="ri-checkbox-circle-fill text-emerald-400 text-lg"></i>' :
-                       type === 'error' ? '<i class="ri-error-warning-fill text-white text-lg"></i>' :
-                       type === 'info' ? '<i class="ri-loader-4-line text-white text-lg"></i>' :
-                       '<i class="ri-information-fill text-blue-400 text-lg"></i>';
+                type === 'error' ? '<i class="ri-error-warning-fill text-white text-lg"></i>' :
+                    type === 'info' ? '<i class="ri-loader-4-line text-white text-lg"></i>' :
+                        '<i class="ri-information-fill text-blue-400 text-lg"></i>';
 
             toast.className = `flex items-center gap-3 px-4 py-3 rounded-lg shadow-lg transform transition-all duration-300 translate-y-2 opacity-0 ${bgClass}`;
             toast.innerHTML = `
