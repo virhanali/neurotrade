@@ -13,7 +13,6 @@ class BinanceExecutor:
     def __init__(self):
         self.api_key = os.getenv("BINANCE_API_KEY")
         self.api_secret = os.getenv("BINANCE_API_SECRET")
-        self.dry_run = os.getenv("BINANCE_DRY_RUN", "false").lower() == "true"
         
         if not self.api_key or not self.api_secret:
             logger.warning("[EXEC] Binance credentials not found. Real trading disabled.")
@@ -122,16 +121,6 @@ class BinanceExecutor:
                 self.client.set_leverage(leverage, symbol)
             except Exception as e:
                 logger.warning(f"[EXEC] Leverage set failed (might be already set): {e}")
-
-            if self.dry_run:
-                logger.info("[EXEC] DRY RUN MODE: Order simulated.")
-                return {
-                    "status": "FILLED",
-                    "orderId": "SIMULATED",
-                    "avgPrice": current_price,
-                    "executedQty": quantity,
-                    "dry_run": True
-                }
 
             # 5. Send Order
             # CCXT create_order(symbol, type, side, amount, price, params)
