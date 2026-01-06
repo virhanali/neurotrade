@@ -631,8 +631,7 @@
                                     <p class="text-sm font-medium text-slate-500 dark:text-slate-400">Total Equity</p>
                                     <h3 class="text-2xl font-bold text-slate-900 dark:text-white mt-1">
                                         {{if eq .User.Mode "REAL"}}
-                                        {{if .User.RealBalanceCache}}
-                                        {{with .User.RealBalanceCache}}${{printf "%.2f" .}}{{end}}
+                                        {{if .User.RealBalanceCache}}${{printf "%.2f" (index (list .User.RealBalanceCache) 0)}}
                                         <span
                                             class="text-xs font-normal text-rose-500 ml-1 border border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-900/20 px-1 rounded">REAL</span>
                                         {{else}}
