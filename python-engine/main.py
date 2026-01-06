@@ -682,7 +682,7 @@ async def execute_entry(request: ExecuteEntryRequest):
     """
     Execute entry order on Binance Futures
     """
-    logger.info(f"[EXEC] Request Entry: {request.symbol} {request.side} ${request.amount_usdt}")
+    logging.info(f"[EXEC] Request Entry: {request.symbol} {request.side} ${request.amount_usdt}")
     result = await executor.execute_entry(
         symbol=request.symbol,
         side=request.side,
