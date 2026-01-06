@@ -289,6 +289,13 @@ func (h *WebHandler) HandleDashboard(c echo.Context) error {
 	data["TodayPnL"] = todayPnL
 	data["TodayPnLPercent"] = todayPnLPercent
 
+	// Add real balance as float64 (not pointer) for template use
+	realBalance := 0.0
+	if user.RealBalanceCache != nil {
+		realBalance = *user.RealBalanceCache
+	}
+	data["RealBalance"] = realBalance
+
 	// If admin, load system statistics and settings
 	if user.Role == domain.RoleAdmin {
 		// Load strategies from database

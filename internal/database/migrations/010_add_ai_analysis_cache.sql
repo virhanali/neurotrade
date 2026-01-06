@@ -37,6 +37,11 @@ CREATE TABLE IF NOT EXISTS ai_analysis_cache (
     -- === WHALE DETECTION ===
     whale_signal VARCHAR(20),   -- 'PUMP_IMMINENT', 'DUMP_IMMINENT', etc
     whale_confidence INT,
+    whale_score INT,            -- Overall whale score 0-100
+
+    -- === ADDITIONAL METRICS ===
+    funding_rate DECIMAL(10, 6),
+    ls_ratio DECIMAL(10, 4),
 
     -- === MARKET CONTEXT ===
     btc_trend VARCHAR(10),      -- 'UP', 'DOWN', 'SIDEWAYS'
@@ -48,7 +53,10 @@ CREATE TABLE IF NOT EXISTS ai_analysis_cache (
     outcome VARCHAR(10),        -- 'WIN', 'LOSS', or NULL
     pnl DECIMAL(18, 2),        -- Actual PnL if trade executed
 
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+
+    -- Unique constraint for ON CONFLICT
+    CONSTRAINT uq_ai_cache_symbol_created_at UNIQUE (symbol, created_at)
 
     -- === OPTIMIZATION: INDEXES ===
     -- For quick lookup of analyzed symbols

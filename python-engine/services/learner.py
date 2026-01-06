@@ -220,13 +220,16 @@ class DeepLearner:
 
             # 2. Update ai_analysis_cache with outcome (link analysis to result)
             # Find most recent analysis for this symbol and update outcome
+            # PostgreSQL doesn't support ORDER BY + LIMIT in UPDATE, use subquery
             stmt_update = text("""
                 UPDATE ai_analysis_cache
                 SET outcome = :outcome, pnl = :pnl
-                WHERE symbol = :symbol
-                AND outcome IS NULL
-                ORDER BY created_at DESC
-                LIMIT 1
+                WHERE id = (
+                    SELECT id FROM ai_analysis_cache
+                    WHERE symbol = :symbol AND outcome IS NULL
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                )
             """)
 
             with self.engine.connect() as conn:
@@ -249,39 +252,27 @@ class DeepLearner:
     def _fetch_training_data(self) -> Optional[List[Dict]]:
         """
         Fetch historical data for ML training.
-        Combines data from BOTH ai_learning_logs and ai_analysis_cache.
-        This uses ALL analysis results, not just traded ones.
+        Uses ai_learning_logs as primary source (most compatible).
         """
         if not self.engine:
             return None
 
         try:
             with self.engine.connect() as conn:
-                # Fetch from BOTH tables with UNION
-                # ai_analysis_cache: All analysis results (including non-traded)
-                # ai_learning_logs: Legacy data (only traded)
+                # Use EXTRACT from timestamp for hour/day - always works
                 result = conn.execute(text("""
-                    SELECT outcome, adx, vol_z_score, ker, is_squeeze, score,
-                           funding_rate, ls_ratio, whale_score,
-                           hour_of_day, day_of_week, pnl
-                    FROM (
-                        -- From ai_analysis_cache (NEW: includes ALL analysis)
-                        SELECT outcome, adx, vol_z_score, ker, is_squeeze, screener_score,
-                               funding_rate, ls_ratio, whale_score,
-                               hour_of_day, day_of_week, pnl
-                        FROM ai_analysis_cache
-                        WHERE outcome IS NOT NULL
-
-                        UNION ALL
-
-                        -- From ai_learning_logs (LEGACY: only traded)
-                        SELECT outcome, adx, vol_z_score, ker, is_squeeze, score,
-                               funding_rate, ls_ratio, whale_score,
-                               hour_of_day, day_of_week, pnl
-                        FROM ai_learning_logs
-                        WHERE outcome IN ('WIN', 'LOSS')
-                    ) combined_data
-                    ORDER BY RANDOM()
+                    SELECT outcome, 
+                           COALESCE(adx, 0) as adx, 
+                           COALESCE(vol_z_score, 0) as vol_z_score, 
+                           COALESCE(ker, 0) as ker, 
+                           COALESCE(is_squeeze, false) as is_squeeze, 
+                           COALESCE(score, 0) as score,
+                           COALESCE(pnl, 0) as pnl,
+                           EXTRACT(HOUR FROM timestamp)::int as hour_of_day,
+                           EXTRACT(DOW FROM timestamp)::int as day_of_week
+                    FROM ai_learning_logs
+                    WHERE outcome IN ('WIN', 'LOSS')
+                    ORDER BY timestamp DESC
                     LIMIT 1000
                 """))
 
@@ -294,33 +285,18 @@ class DeepLearner:
                         'ker': float(row[3] or 0),
                         'is_squeeze': bool(row[4]),
                         'score': float(row[5] or 0),
-                        'funding_rate': float(row[6] or 0),
-                        'ls_ratio': float(row[7] or 0),
-                        'whale_score': float(row[8] or 0),
-                        'hour': float(row[9] or 12),
-                        'dow': float(row[10] or 0),
-                        'pnl': float(row[11] or 0),
+                        'pnl': float(row[6] or 0),
+                        'hour': float(row[7] or 12),
+                        'dow': float(row[8] or 0),
+                        # Default values for optional columns
+                        'funding_rate': 0.0,
+                        'ls_ratio': 1.0,
+                        'whale_score': 50.0,
                     })
 
-                logging.info(f"[LEARNER] Fetched {len(data)} training samples from COMBINED sources")
+                logging.info(f"[LEARNER] Fetched {len(data)} training samples from ai_learning_logs")
                 return data
 
-        except Exception as e:
-            logging.error(f"[LEARNER] Failed to fetch training data: {e}")
-            return None
-
-        try:
-            with self.engine.connect() as conn:
-                result = conn.execute(text("""
-                    SELECT outcome, adx, vol_z_score, ker, is_squeeze, score, pnl,
-                           funding_rate, ls_ratio, whale_score,
-                           EXTRACT(HOUR FROM timestamp) as hour,
-                           EXTRACT(DOW FROM timestamp) as dow
-                    FROM ai_learning_logs
-                    ORDER BY timestamp DESC
-                    LIMIT 2000
-                """))
-                return [dict(row._mapping) for row in result]
         except Exception as e:
             logging.error(f"[LEARNER] Failed to fetch training data: {e}")
             return None
