@@ -7,8 +7,8 @@ import (
 	"github.com/google/uuid"
 )
 
-// PaperPosition represents a paper trading position
-type PaperPosition struct {
+// Position represents a trading position (Real or Paper)
+type Position struct {
 	ID         uuid.UUID  `json:"id"`
 	UserID     uuid.UUID  `json:"user_id"`
 	SignalID   *uuid.UUID `json:"signal_id,omitempty"`
@@ -52,22 +52,22 @@ const (
 	ClosedByManual   = "MANUAL"   // Manually closed by user
 )
 
-// PaperPositionRepository defines the interface for paper position operations
-type PaperPositionRepository interface {
-	// Save creates a new paper position
-	Save(ctx context.Context, position *PaperPosition) error
+// PositionRepository defines the interface for position operations
+type PositionRepository interface {
+	// Save creates a new position
+	Save(ctx context.Context, position *Position) error
 
 	// GetByUserID retrieves all positions for a user
-	GetByUserID(ctx context.Context, userID uuid.UUID) ([]*PaperPosition, error)
+	GetByUserID(ctx context.Context, userID uuid.UUID) ([]*Position, error)
 
 	// GetOpenPositions retrieves all open positions (across all users or specific user)
-	GetOpenPositions(ctx context.Context) ([]*PaperPosition, error)
+	GetOpenPositions(ctx context.Context) ([]*Position, error)
 
 	// Update updates position status, exit price, and PnL
-	Update(ctx context.Context, position *PaperPosition) error
+	Update(ctx context.Context, position *Position) error
 
 	// GetByID retrieves a position by ID
-	GetByID(ctx context.Context, id uuid.UUID) (*PaperPosition, error)
+	GetByID(ctx context.Context, id uuid.UUID) (*Position, error)
 
 	// GetTodayRealizedPnL retrieves the realized PnL for positions closed today (WIB)
 	GetTodayRealizedPnL(ctx context.Context, userID uuid.UUID, startOfDay time.Time) (float64, error)
@@ -82,7 +82,7 @@ type PaperPositionRepository interface {
 	GetClosedPositionsHistorySince(ctx context.Context, userID uuid.UUID, since time.Time, limit int) ([]PnLHistoryEntry, error)
 
 	// GetClosedPositions retrieves detailed closed positions
-	GetClosedPositions(ctx context.Context, userID uuid.UUID, limit int) ([]*PaperPosition, error)
+	GetClosedPositions(ctx context.Context, userID uuid.UUID, limit int) ([]*Position, error)
 }
 
 // MetricResult holds PnL and Percent data
@@ -98,12 +98,12 @@ type PnLHistoryEntry struct {
 }
 
 // IsLong checks if the position is a LONG position
-func (p *PaperPosition) IsLong() bool {
+func (p *Position) IsLong() bool {
 	return p.Side == SideLong || p.Side == "BUY"
 }
 
 // CalculateGrossPnL calculates the gross PnL (before fees) based on current price
-func (p *PaperPosition) CalculateGrossPnL(currentPrice float64) float64 {
+func (p *Position) CalculateGrossPnL(currentPrice float64) float64 {
 	if p.IsLong() {
 		return (currentPrice - p.EntryPrice) * p.Size
 	}
@@ -114,7 +114,7 @@ func (p *PaperPosition) CalculateGrossPnL(currentPrice float64) float64 {
 // CalculatePnLPercent calculates the PnL percentage based on current price
 // Uses BINANCE FUTURES formula: PnL % = (PnL / Initial Margin) × 100
 // Initial Margin = Position Value / Leverage = (Size × Entry) / Leverage
-func (p *PaperPosition) CalculatePnLPercent(currentPrice float64) float64 {
+func (p *Position) CalculatePnLPercent(currentPrice float64) float64 {
 	if p.EntryPrice == 0 || p.Size == 0 {
 		return 0
 	}
@@ -146,7 +146,7 @@ func (p *PaperPosition) CalculatePnLPercent(currentPrice float64) float64 {
 }
 
 // CheckSLTP checks if SL or TP is hit and returns how it was closed
-func (p *PaperPosition) CheckSLTP(currentPrice float64) (shouldClose bool, status string, closedBy string) {
+func (p *Position) CheckSLTP(currentPrice float64) (shouldClose bool, status string, closedBy string) {
 	if p.IsLong() {
 		if currentPrice <= p.SLPrice {
 			return true, StatusClosedLoss, ClosedBySL

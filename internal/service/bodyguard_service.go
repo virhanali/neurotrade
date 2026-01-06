@@ -24,7 +24,7 @@ func getEnvFloat(key string, defaultValue float64) float64 {
 // BodyguardService provides fast position monitoring (10-second interval)
 // This is the "safety net" that checks SL/TP more frequently than the 1-minute Virtual Broker
 type BodyguardService struct {
-	positionRepo domain.PaperPositionRepository
+	positionRepo domain.PositionRepository
 	userRepo     domain.UserRepository
 	priceService *MarketPriceService
 	signalRepo   domain.SignalRepository
@@ -34,7 +34,7 @@ type BodyguardService struct {
 
 // NewBodyguardService creates a new BodyguardService
 func NewBodyguardService(
-	positionRepo domain.PaperPositionRepository,
+	positionRepo domain.PositionRepository,
 	userRepo domain.UserRepository,
 	priceService *MarketPriceService,
 	signalRepo domain.SignalRepository,
@@ -128,7 +128,7 @@ func (s *BodyguardService) CheckPositionsFast(ctx context.Context) error {
 }
 
 // closePosition closes a position and updates all related records
-func (s *BodyguardService) closePosition(ctx context.Context, pos *domain.PaperPosition, exitPrice float64, status string, closedBy string) error {
+func (s *BodyguardService) closePosition(ctx context.Context, pos *domain.Position, exitPrice float64, status string, closedBy string) error {
 	// Calculate Net PnL (Gross - Fees)
 	grossPnL := pos.CalculateGrossPnL(exitPrice)
 
@@ -220,7 +220,7 @@ func (s *BodyguardService) GetBulkPrices(ctx context.Context, symbols []string) 
 }
 
 // applyTrailingStop updates SL dynamically to lock in profits
-func (s *BodyguardService) applyTrailingStop(ctx context.Context, pos *domain.PaperPosition, currentPrice float64) {
+func (s *BodyguardService) applyTrailingStop(ctx context.Context, pos *domain.Position, currentPrice float64) {
 	// 1. Activation Check: Must be in Profit > configured % (default 1.0%)
 	activationThreshold := getEnvFloat("TRAILING_ACTIVATE_PCT", 1.0)
 	pnlPct := pos.CalculatePnLPercent(currentPrice)

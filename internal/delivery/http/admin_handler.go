@@ -30,13 +30,13 @@ type AdminHandler struct {
 	db              *pgxpool.Pool
 	scheduler       MarketScanScheduler
 	signalRepo      domain.SignalRepository
-	positionRepo    domain.PaperPositionRepository
+	positionRepo    domain.PositionRepository
 	templates       *template.Template
 	pythonEngineURL string
 }
 
 // NewAdminHandler creates a new AdminHandler
-func NewAdminHandler(db *pgxpool.Pool, scheduler MarketScanScheduler, signalRepo domain.SignalRepository, positionRepo domain.PaperPositionRepository, templates *template.Template, pythonEngineURL string) *AdminHandler {
+func NewAdminHandler(db *pgxpool.Pool, scheduler MarketScanScheduler, signalRepo domain.SignalRepository, positionRepo domain.PositionRepository, templates *template.Template, pythonEngineURL string) *AdminHandler {
 	return &AdminHandler{
 		db:              db,
 		scheduler:       scheduler,

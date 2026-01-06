@@ -22,7 +22,7 @@ type NotificationService interface {
 type TradingService struct {
 	aiService           domain.AIService
 	signalRepo          domain.SignalRepository
-	positionRepo        domain.PaperPositionRepository
+	positionRepo        domain.PositionRepository
 	userRepo            domain.UserRepository
 	notificationService NotificationService
 	priceService        domain.MarketPriceService
@@ -35,7 +35,7 @@ type TradingService struct {
 func NewTradingService(
 	aiService domain.AIService,
 	signalRepo domain.SignalRepository,
-	positionRepo domain.PaperPositionRepository,
+	positionRepo domain.PositionRepository,
 	userRepo domain.UserRepository,
 	notificationService NotificationService,
 	priceService domain.MarketPriceService,
@@ -170,7 +170,7 @@ func (ts *TradingService) ProcessMarketScan(ctx context.Context, balance float64
 
 			// Auto-create paper position for this user
 			// We pass the specific user object now
-			if err := ts.createPaperPositionForUser(ctx, user, signal, aiSignal.TradeParams); err != nil {
+			if err := ts.createPositionForUser(ctx, user, signal, aiSignal.TradeParams); err != nil {
 				log.Printf("WARNING: Failed to create paper position for user %s (%s): %v", user.Username, signal.Symbol, err)
 			}
 		}
@@ -268,8 +268,8 @@ func (ts *TradingService) GetSignalsBySymbol(ctx context.Context, symbol string,
 	return ts.signalRepo.GetBySymbol(ctx, symbol, limit)
 }
 
-// createPaperPositionForUser automatically creates a paper trading position for a specific user
-func (ts *TradingService) createPaperPositionForUser(ctx context.Context, user *domain.User, signal *domain.Signal, tradeParams *domain.TradeParams) error {
+// createPositionForUser automatically creates a paper trading position for a specific user
+func (ts *TradingService) createPositionForUser(ctx context.Context, user *domain.User, signal *domain.Signal, tradeParams *domain.TradeParams) error {
 	if tradeParams == nil {
 		return fmt.Errorf("trade params not available")
 	}
@@ -363,7 +363,7 @@ func (ts *TradingService) createPaperPositionForUser(ctx context.Context, user *
 	}
 
 	// Create paper position
-	position := &domain.PaperPosition{
+	position := &domain.Position{
 		ID:         uuid.New(),
 		UserID:     user.ID,
 		SignalID:   &signal.ID,

@@ -16,7 +16,7 @@ import (
 // UserHandler handles user-related requests
 type UserHandler struct {
 	userRepo       domain.UserRepository
-	positionRepo   domain.PaperPositionRepository
+	positionRepo   domain.PositionRepository
 	tradingService domain.TradingService
 	aiService      domain.AIService
 }
@@ -24,7 +24,7 @@ type UserHandler struct {
 // NewUserHandler creates a new UserHandler
 func NewUserHandler(
 	userRepo domain.UserRepository,
-	positionRepo domain.PaperPositionRepository,
+	positionRepo domain.PositionRepository,
 	tradingService domain.TradingService,
 	aiService domain.AIService,
 ) *UserHandler {

@@ -11,20 +11,20 @@ import (
 	"neurotrade/internal/domain"
 )
 
-// PaperPositionRepositoryImpl implements the PaperPositionRepository interface
-type PaperPositionRepositoryImpl struct {
+// PositionRepositoryImpl implements the PositionRepository interface
+type PositionRepositoryImpl struct {
 	db *pgxpool.Pool
 }
 
-// NewPaperPositionRepository creates a new PaperPositionRepository
-func NewPaperPositionRepository(db *pgxpool.Pool) domain.PaperPositionRepository {
-	return &PaperPositionRepositoryImpl{db: db}
+// NewPositionRepository creates a new PositionRepository
+func NewPositionRepository(db *pgxpool.Pool) domain.PositionRepository {
+	return &PositionRepositoryImpl{db: db}
 }
 
-// Save creates a new paper position
-func (r *PaperPositionRepositoryImpl) Save(ctx context.Context, position *domain.PaperPosition) error {
+// Save creates a new position
+func (r *PositionRepositoryImpl) Save(ctx context.Context, position *domain.Position) error {
 	query := `
-		INSERT INTO paper_positions (
+		INSERT INTO positions (
 			id, user_id, signal_id, symbol, side, entry_price,
 			sl_price, tp_price, size, leverage, status, created_at
 		) VALUES (
@@ -48,19 +48,19 @@ func (r *PaperPositionRepositoryImpl) Save(ctx context.Context, position *domain
 	)
 
 	if err != nil {
-		return fmt.Errorf("failed to save paper position: %w", err)
+		return fmt.Errorf("failed to save position: %w", err)
 	}
 
 	return nil
 }
 
 // GetByUserID retrieves all positions for a user
-func (r *PaperPositionRepositoryImpl) GetByUserID(ctx context.Context, userID uuid.UUID) ([]*domain.PaperPosition, error) {
+func (r *PositionRepositoryImpl) GetByUserID(ctx context.Context, userID uuid.UUID) ([]*domain.Position, error) {
 	query := `
 		SELECT id, user_id, signal_id, symbol, side, entry_price,
 		       sl_price, tp_price, size, leverage, exit_price, pnl, status,
 		       created_at, closed_at
-		FROM paper_positions
+		FROM positions
 		WHERE user_id = $1
 		ORDER BY created_at DESC
 	`
@@ -71,9 +71,9 @@ func (r *PaperPositionRepositoryImpl) GetByUserID(ctx context.Context, userID uu
 	}
 	defer rows.Close()
 
-	var positions []*domain.PaperPosition
+	var positions []*domain.Position
 	for rows.Next() {
-		position := &domain.PaperPosition{}
+		position := &domain.Position{}
 		err := rows.Scan(
 			&position.ID,
 			&position.UserID,
@@ -105,12 +105,12 @@ func (r *PaperPositionRepositoryImpl) GetByUserID(ctx context.Context, userID uu
 }
 
 // GetOpenPositions retrieves all open positions across all users
-func (r *PaperPositionRepositoryImpl) GetOpenPositions(ctx context.Context) ([]*domain.PaperPosition, error) {
+func (r *PositionRepositoryImpl) GetOpenPositions(ctx context.Context) ([]*domain.Position, error) {
 	query := `
 		SELECT id, user_id, signal_id, symbol, side, entry_price,
 		       sl_price, tp_price, size, leverage, exit_price, pnl, status,
 		       created_at, closed_at
-		FROM paper_positions
+		FROM positions
 		WHERE status = 'OPEN'
 		ORDER BY created_at ASC
 	`
@@ -121,9 +121,9 @@ func (r *PaperPositionRepositoryImpl) GetOpenPositions(ctx context.Context) ([]*
 	}
 	defer rows.Close()
 
-	var positions []*domain.PaperPosition
+	var positions []*domain.Position
 	for rows.Next() {
-		position := &domain.PaperPosition{}
+		position := &domain.Position{}
 		err := rows.Scan(
 			&position.ID,
 			&position.UserID,
@@ -155,9 +155,9 @@ func (r *PaperPositionRepositoryImpl) GetOpenPositions(ctx context.Context) ([]*
 }
 
 // Update updates position status, exit price, PnL, and SL price (for trailing stop)
-func (r *PaperPositionRepositoryImpl) Update(ctx context.Context, position *domain.PaperPosition) error {
+func (r *PositionRepositoryImpl) Update(ctx context.Context, position *domain.Position) error {
 	query := `
-		UPDATE paper_positions
+		UPDATE positions
 		SET exit_price = $1,
 		    pnl = $2,
 		    status = $3,
@@ -182,23 +182,23 @@ func (r *PaperPositionRepositoryImpl) Update(ctx context.Context, position *doma
 	)
 
 	if err != nil {
-		return fmt.Errorf("failed to update paper position: %w", err)
+		return fmt.Errorf("failed to update position: %w", err)
 	}
 
 	return nil
 }
 
 // GetByID retrieves a position by ID
-func (r *PaperPositionRepositoryImpl) GetByID(ctx context.Context, id uuid.UUID) (*domain.PaperPosition, error) {
+func (r *PositionRepositoryImpl) GetByID(ctx context.Context, id uuid.UUID) (*domain.Position, error) {
 	query := `
 		SELECT id, user_id, signal_id, symbol, side, entry_price,
 		       sl_price, tp_price, size, leverage, exit_price, pnl, status,
 		       created_at, closed_at
-		FROM paper_positions
+		FROM positions
 		WHERE id = $1
 	`
 
-	position := &domain.PaperPosition{}
+	position := &domain.Position{}
 	err := r.db.QueryRow(ctx, query, id).Scan(
 		&position.ID,
 		&position.UserID,
@@ -225,10 +225,10 @@ func (r *PaperPositionRepositoryImpl) GetByID(ctx context.Context, id uuid.UUID)
 }
 
 // GetTodayRealizedPnL retrieves the realized PnL for positions closed today (WIB)
-func (r *PaperPositionRepositoryImpl) GetTodayRealizedPnL(ctx context.Context, userID uuid.UUID, startOfDay time.Time) (float64, error) {
+func (r *PositionRepositoryImpl) GetTodayRealizedPnL(ctx context.Context, userID uuid.UUID, startOfDay time.Time) (float64, error) {
 	query := `
 		SELECT COALESCE(SUM(pnl), 0) 
-		FROM paper_positions 
+		FROM positions 
 		WHERE user_id = $1 
 		AND closed_at >= $2 
 		AND status IN ('CLOSED_WIN', 'CLOSED_LOSS', 'CLOSED_MANUAL')
@@ -244,7 +244,7 @@ func (r *PaperPositionRepositoryImpl) GetTodayRealizedPnL(ctx context.Context, u
 }
 
 // GetPnLBySignalIDs retrieves metrics for a list of signal IDs
-func (r *PaperPositionRepositoryImpl) GetPnLBySignalIDs(ctx context.Context, signalIDs []uuid.UUID) (map[uuid.UUID]domain.MetricResult, error) {
+func (r *PositionRepositoryImpl) GetPnLBySignalIDs(ctx context.Context, signalIDs []uuid.UUID) (map[uuid.UUID]domain.MetricResult, error) {
 	if len(signalIDs) == 0 {
 		return make(map[uuid.UUID]domain.MetricResult), nil
 	}
@@ -257,7 +257,7 @@ func (r *PaperPositionRepositoryImpl) GetPnLBySignalIDs(ctx context.Context, sig
 
 	query := `
 		SELECT signal_id::text, COALESCE(pnl, 0), entry_price, size, leverage
-		FROM paper_positions
+		FROM positions
 		WHERE signal_id = ANY($1::uuid[])
 	`
 
@@ -309,10 +309,10 @@ func (r *PaperPositionRepositoryImpl) GetPnLBySignalIDs(ctx context.Context, sig
 }
 
 // GetClosedPositionsHistory retrieves closed positions for chart data
-func (r *PaperPositionRepositoryImpl) GetClosedPositionsHistory(ctx context.Context, userID uuid.UUID, limit int) ([]domain.PnLHistoryEntry, error) {
+func (r *PositionRepositoryImpl) GetClosedPositionsHistory(ctx context.Context, userID uuid.UUID, limit int) ([]domain.PnLHistoryEntry, error) {
 	query := `
 		SELECT closed_at, COALESCE(pnl, 0)
-		FROM paper_positions
+		FROM positions
 		WHERE user_id = $1 
 		AND status IN ('CLOSED_WIN', 'CLOSED_LOSS', 'CLOSED_MANUAL')
 		AND closed_at IS NOT NULL
@@ -343,10 +343,10 @@ func (r *PaperPositionRepositoryImpl) GetClosedPositionsHistory(ctx context.Cont
 }
 
 // GetClosedPositionsHistorySince retrieves closed positions since a specific time
-func (r *PaperPositionRepositoryImpl) GetClosedPositionsHistorySince(ctx context.Context, userID uuid.UUID, since time.Time, limit int) ([]domain.PnLHistoryEntry, error) {
+func (r *PositionRepositoryImpl) GetClosedPositionsHistorySince(ctx context.Context, userID uuid.UUID, since time.Time, limit int) ([]domain.PnLHistoryEntry, error) {
 	query := `
 		SELECT closed_at, COALESCE(pnl, 0)
-		FROM paper_positions
+		FROM positions
 		WHERE user_id = $1 
 		AND status IN ('CLOSED_WIN', 'CLOSED_LOSS', 'CLOSED_MANUAL')
 		AND closed_at IS NOT NULL
@@ -378,12 +378,12 @@ func (r *PaperPositionRepositoryImpl) GetClosedPositionsHistorySince(ctx context
 }
 
 // GetClosedPositions retrieves closed positions for a user with all details
-func (r *PaperPositionRepositoryImpl) GetClosedPositions(ctx context.Context, userID uuid.UUID, limit int) ([]*domain.PaperPosition, error) {
+func (r *PositionRepositoryImpl) GetClosedPositions(ctx context.Context, userID uuid.UUID, limit int) ([]*domain.Position, error) {
 	query := `
 		SELECT id, user_id, signal_id, symbol, side, entry_price,
 		       sl_price, tp_price, size, leverage, exit_price, pnl, pnl_percent, status, closed_by,
 		       created_at, closed_at
-		FROM paper_positions
+		FROM positions
 		WHERE user_id = $1 AND status IN ('CLOSED_WIN', 'CLOSED_LOSS', 'CLOSED_MANUAL')
 		ORDER BY closed_at DESC
 		LIMIT $2
@@ -395,9 +395,9 @@ func (r *PaperPositionRepositoryImpl) GetClosedPositions(ctx context.Context, us
 	}
 	defer rows.Close()
 
-	var positions []*domain.PaperPosition
+	var positions []*domain.Position
 	for rows.Next() {
-		var p domain.PaperPosition
+		var p domain.Position
 		if err := rows.Scan(
 			&p.ID, &p.UserID, &p.SignalID, &p.Symbol, &p.Side, &p.EntryPrice,
 			&p.SLPrice, &p.TPPrice, &p.Size, &p.Leverage, &p.ExitPrice, &p.PnL, &p.PnLPercent, &p.Status, &p.ClosedBy,

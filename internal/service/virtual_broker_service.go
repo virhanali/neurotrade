@@ -17,7 +17,7 @@ const (
 
 // VirtualBrokerService simulates trade execution with realistic fees
 type VirtualBrokerService struct {
-	positionRepo        domain.PaperPositionRepository
+	positionRepo        domain.PositionRepository
 	userRepo            domain.UserRepository
 	priceService        *MarketPriceService
 	signalRepo          domain.SignalRepository
@@ -26,7 +26,7 @@ type VirtualBrokerService struct {
 
 // NewVirtualBrokerService creates a new VirtualBrokerService
 func NewVirtualBrokerService(
-	positionRepo domain.PaperPositionRepository,
+	positionRepo domain.PositionRepository,
 	userRepo domain.UserRepository,
 	priceService *MarketPriceService,
 	signalRepo domain.SignalRepository,
@@ -171,7 +171,7 @@ func (s *VirtualBrokerService) CheckPositions(ctx context.Context) error {
 // - EntryFee = Size * EntryPrice * 0.0005
 // - ExitFee = Size * ExitPrice * 0.0005
 // - NetPnL = GrossPnL - EntryFee - ExitFee
-func (s *VirtualBrokerService) calculateNetPnL(position *domain.PaperPosition, exitPrice float64) float64 {
+func (s *VirtualBrokerService) calculateNetPnL(position *domain.Position, exitPrice float64) float64 {
 	// Calculate gross PnL
 	grossPnL := position.CalculateGrossPnL(exitPrice)
 

@@ -28,7 +28,7 @@ type MarketPriceService interface {
 type WebHandler struct {
 	templates      *template.Template
 	userRepo       domain.UserRepository
-	positionRepo   domain.PaperPositionRepository
+	positionRepo   domain.PositionRepository
 	marketPriceSvc MarketPriceService
 	db             *pgxpool.Pool
 }
@@ -36,7 +36,7 @@ type WebHandler struct {
 func NewWebHandler(
 	templates *template.Template,
 	userRepo domain.UserRepository,
-	positionRepo domain.PaperPositionRepository,
+	positionRepo domain.PositionRepository,
 	db *pgxpool.Pool,
 	marketPriceSvc MarketPriceService,
 ) *WebHandler {

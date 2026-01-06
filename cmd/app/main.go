@@ -75,7 +75,7 @@ func main() {
 		SET status = 'EXECUTED' 
 		WHERE id IN (
 			SELECT signal_id 
-			FROM paper_positions 
+			FROM positions 
 			WHERE signal_id IS NOT NULL
 		) 
 		AND status = 'PENDING'
@@ -89,7 +89,7 @@ func main() {
 	// Initialize repositories
 	signalRepo := repository.NewSignalRepository(db)
 	userRepo := repository.NewUserRepository(db)
-	positionRepo := repository.NewPaperPositionRepository(db)
+	positionRepo := repository.NewPositionRepository(db)
 	// settingsRepo removed as part of Scalper-Only lock
 
 	// Initialize Telegram notification service (Phase 5)

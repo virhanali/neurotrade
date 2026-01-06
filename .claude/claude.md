@@ -156,7 +156,7 @@ Located in `internal/`. Handles state, money management, and safety.
 | `mode` | String | 'PAPER' or 'REAL'. |
 | `real_balance_cache` | Decimal | Cached wallet balance to reduce API calls. |
 
-### `paper_positions` table (Naming to be Refactored)
+### `positions` table (Unified)
 | Column | Type | Purpose |
 |--------|------|---------|
 | `size` | Decimal | Quantity of coins. |
@@ -188,10 +188,12 @@ Located in `internal/`. Handles state, money management, and safety.
 **Current Status:** "PaperPosition" tables handle both Real and Paper trades using the `User.Mode` flag.
 
 **Future Refactor Plan:**
-1.  **Rename Tables:** `paper_positions` -> `positions`.
-2.  **Rename Repository:** `PaperPositionRepository` -> `PositionRepository`.
-3.  **Rename Structs:** `PaperPosition` -> `Position`.
-4.  **Multi-Tenant Keys:** Move API Key from `.env` to encrypted DB column (`users.api_key`) to allow multiple users to trade with their own accounts.
+1.  **Multi-Tenant Keys:** Move API Key from `.env` to encrypted DB column (`users.api_key`) to allow multiple users to trade with their own accounts. (Planned v6.0)
+
+**Completed Refactors (v5.1):**
+*   [x] Rename Tables: `paper_positions` -> `positions`.
+*   [x] Rename Repository: `PaperPositionRepository` -> `PositionRepository`.
+*   [x] Rename Structs: `PaperPosition` -> `Position`.
 
 ---
 
@@ -222,3 +224,18 @@ Located in `internal/`. Handles state, money management, and safety.
 *   **Access Control:** Settings protected by JWT. Fail-safe defaults.
 
 **System Status:** READY FOR LIVE TRADING 🚀
+
+### Session: 2026-01-07 (v5.1 - Codebase Refactor)
+**Cleanup:** Refactored entire codebase to standardize naming for Hybrid Trading.
+
+#### ✅ Refactoring & Migration:
+1.  **Naming Refactor:**
+    *   Renamed `PaperPosition` -> `Position` across Domain, Repository, and Services.
+    *   Renamed `internal/domain/paper_position.go` to `position.go`.
+    *   Established `PositionRepository` as the single source for all trading records.
+2.  **Database Migration:**
+    *   Table `paper_positions` renamed to `positions`.
+    *   **Auto-Migration:** Added `009_rename_paper_positions.sql` to automatically rename the table on startup.
+    *   Updated all Backend SQL queries to use `positions` table.
+
+**Status:** Codebase is Clean & Consistent. Database is Auto-Migrated.
