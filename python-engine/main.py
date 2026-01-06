@@ -371,8 +371,16 @@ async def analyze_market(request: MarketAnalysisRequest):
 
                     logic_result, vision_result = await asyncio.gather(logic_task, vision_task)
 
-                    # Combine results (pass metrics for ML prediction)
-                    combined = ai_handler.combine_analysis(logic_result, vision_result, metrics=candidate)
+                    # Combine results (pass metrics for ML prediction + whale data for Tier 1 veto)
+                    whale_signal = candidate.get('whale_signal', 'NEUTRAL')
+                    whale_confidence = candidate.get('whale_confidence', 0)
+                    combined = ai_handler.combine_analysis(
+                        logic_result,
+                        vision_result,
+                        metrics=candidate,
+                        whale_signal=whale_signal,
+                        whale_confidence=whale_confidence
+                    )
 
                     if combined.get('recommendation') == 'EXECUTE':
                         ml_prob = combined.get('ml_win_probability', 0.5)
