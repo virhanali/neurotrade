@@ -715,3 +715,15 @@ async def execute_close(request: ExecuteCloseRequest):
         raise HTTPException(status_code=400, detail=result["error"])
         
     return result
+
+@app.get("/execute/balance")
+async def get_real_balance():
+    """
+    Get real USDT balance from Binance
+    """
+    result = await executor.get_balance()
+    
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+        
+    return result

@@ -23,9 +23,10 @@ type PositionOutput struct {
 
 // UserOutput represents user details in API responses
 type UserOutput struct {
-	ID           string  `json:"id"`
-	Username     string  `json:"username"`
-	Role         string  `json:"role"`
-	Mode         string  `json:"mode"`
-	PaperBalance float64 `json:"paper_balance"`
+	ID           string   `json:"id"`
+	Username     string   `json:"username"`
+	Role         string   `json:"role"`
+	Mode         string   `json:"mode"`
+	PaperBalance float64  `json:"paper_balance"`
+	RealBalance  *float64 `json:"real_balance,omitempty"`
 }

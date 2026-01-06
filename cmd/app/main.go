@@ -300,7 +300,7 @@ func main() {
 
 	// Initialize HTTP handlers
 	authHandler := httpdelivery.NewAuthHandler(userRepo)
-	userHandler := httpdelivery.NewUserHandler(userRepo, positionRepo, tradingService)
+	userHandler := httpdelivery.NewUserHandler(userRepo, positionRepo, tradingService, aiService)
 	adminHandler := httpdelivery.NewAdminHandler(db, marketScanScheduler, signalRepo, positionRepo, templates, cfg.Python.URL)
 
 	// Initialize web handler (Phase 5 - HTML pages)

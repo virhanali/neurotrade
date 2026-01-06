@@ -277,8 +277,8 @@ func (h *AdminHandler) GetLatestScanResults(c echo.Context) error {
 	}
 
 	// Pre-fetch PnL dollar values from paper_positions for all signals in one query
-	// Build a map of signal_id -> pnl dollar
-	pnlMap := make(map[string]float64)
+	// Build a map of signal_id -> MetricResult
+	metricsMap := make(map[string]domain.MetricResult)
 	if len(signals) > 0 {
 		var signalIDs []uuid.UUID
 		for _, s := range signals {
@@ -289,7 +289,7 @@ func (h *AdminHandler) GetLatestScanResults(c echo.Context) error {
 			idMap, err := h.positionRepo.GetPnLBySignalIDs(ctx, signalIDs)
 			if err == nil {
 				for id, val := range idMap {
-					pnlMap[id.String()] = val
+					metricsMap[id.String()] = val
 				}
 			}
 		}
@@ -299,6 +299,7 @@ func (h *AdminHandler) GetLatestScanResults(c echo.Context) error {
 	loc := utils.GetLocation()
 
 	for _, signal := range signals {
+		// ... (colors logic)
 		// 1. Determine Side Badge Color
 		sideBg := "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400"
 		if signal.Type == "LONG" {
@@ -322,7 +323,7 @@ func (h *AdminHandler) GetLatestScanResults(c echo.Context) error {
 		resColor := "bg-slate-50 text-slate-700 dark:bg-slate-800/50 dark:text-slate-400 border-slate-200 dark:border-slate-700"
 		var pnlVal, pnlDollar float64
 
-		// Use actual ReviewResult from signal
+		// ... (ReviewResult logic)
 		if signal.ReviewResult != nil {
 			switch *signal.ReviewResult {
 			case "WIN":
@@ -337,18 +338,21 @@ func (h *AdminHandler) GetLatestScanResults(c echo.Context) error {
 				isRunning = true
 			}
 		} else {
-			// No review result yet = still running/pending
 			isRunning = true
 		}
 
-		// Use actual ReviewPnL (percentage) from signal
+		// Use actual ReviewPnL (percentage) from signal if available
 		if signal.ReviewPnL != nil {
 			pnlVal = *signal.ReviewPnL
 		}
 
-		// Use actual PnL dollar from paper_positions
-		if pnl, exists := pnlMap[signal.ID.String()]; exists {
-			pnlDollar = pnl
+		// Use PnL data from positions table (OVERRIDE percentage if calculated)
+		if metrics, exists := metricsMap[signal.ID.String()]; exists {
+			pnlDollar = metrics.PnL
+			// If ReviewPnL is 0/nil but we have calculated percent from repo, use it!
+			if pnlVal == 0 && metrics.PnLPercent != 0 {
+				pnlVal = metrics.PnLPercent
+			}
 		}
 
 		viewModels = append(viewModels, dto.SignalViewModel{

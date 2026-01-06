@@ -31,6 +31,9 @@ type AIService interface {
 
 	// ExecuteClose executes a real close order via Python Engine
 	ExecuteClose(ctx context.Context, symbol, side string, quantity float64) (*ExecutionResult, error)
+
+	// GetRealBalance fetches real wallet balance from Python Engine
+	GetRealBalance(ctx context.Context) (float64, error)
 }
 
 // ExecutionResult represents the result of a real trade execution

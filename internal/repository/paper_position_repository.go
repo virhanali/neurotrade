@@ -243,10 +243,10 @@ func (r *PaperPositionRepositoryImpl) GetTodayRealizedPnL(ctx context.Context, u
 	return todayPnL, nil
 }
 
-// GetPnLBySignalIDs retrieves PnL values for a list of signal IDs
-func (r *PaperPositionRepositoryImpl) GetPnLBySignalIDs(ctx context.Context, signalIDs []uuid.UUID) (map[uuid.UUID]float64, error) {
+// GetPnLBySignalIDs retrieves metrics for a list of signal IDs
+func (r *PaperPositionRepositoryImpl) GetPnLBySignalIDs(ctx context.Context, signalIDs []uuid.UUID) (map[uuid.UUID]domain.MetricResult, error) {
 	if len(signalIDs) == 0 {
-		return make(map[uuid.UUID]float64), nil
+		return make(map[uuid.UUID]domain.MetricResult), nil
 	}
 
 	// Convert UUIDs to strings for array query
@@ -256,7 +256,7 @@ func (r *PaperPositionRepositoryImpl) GetPnLBySignalIDs(ctx context.Context, sig
 	}
 
 	query := `
-		SELECT signal_id::text, COALESCE(pnl, 0)
+		SELECT signal_id::text, COALESCE(pnl, 0), entry_price, size, leverage
 		FROM paper_positions
 		WHERE signal_id = ANY($1::uuid[])
 	`
@@ -267,22 +267,45 @@ func (r *PaperPositionRepositoryImpl) GetPnLBySignalIDs(ctx context.Context, sig
 	}
 	defer rows.Close()
 
-	pnlMap := make(map[uuid.UUID]float64)
+	metricsMap := make(map[uuid.UUID]domain.MetricResult)
 	for rows.Next() {
-		var signalIDStr string
-		var pnl float64
-		if err := rows.Scan(&signalIDStr, &pnl); err == nil {
-			if id, err := uuid.Parse(signalIDStr); err == nil {
-				pnlMap[id] = pnl
-			}
+		var sigIDStr string
+		var pnl, entryPrice, size, leverage float64
+		if err := rows.Scan(&sigIDStr, &pnl, &entryPrice, &size, &leverage); err != nil {
+			continue // Skip bad rows
+		}
+
+		sigID, err := uuid.Parse(sigIDStr)
+		if err != nil {
+			continue
+		}
+
+		// Calculate Percent
+		// Initial Margin = (Size * Entry) / Leverage
+		// PnL % = (PnL / Initial Margin) * 100
+
+		var percent float64
+		if leverage < 1 {
+			leverage = 1
+		}
+		positionValue := size * entryPrice
+		initialMargin := positionValue / leverage
+
+		if initialMargin > 0 {
+			percent = (pnl / initialMargin) * 100
+		}
+
+		metricsMap[sigID] = domain.MetricResult{
+			PnL:        pnl,
+			PnLPercent: percent,
 		}
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating pnl rows: %w", err)
+		return nil, fmt.Errorf("error iterating PnL rows: %w", err)
 	}
 
-	return pnlMap, nil
+	return metricsMap, nil
 }
 
 // GetClosedPositionsHistory retrieves closed positions for chart data

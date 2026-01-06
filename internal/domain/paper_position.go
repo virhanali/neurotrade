@@ -72,8 +72,8 @@ type PaperPositionRepository interface {
 	// GetTodayRealizedPnL retrieves the realized PnL for positions closed today (WIB)
 	GetTodayRealizedPnL(ctx context.Context, userID uuid.UUID, startOfDay time.Time) (float64, error)
 
-	// GetPnLBySignalIDs retrieves PnL values for a list of signal IDs
-	GetPnLBySignalIDs(ctx context.Context, signalIDs []uuid.UUID) (map[uuid.UUID]float64, error)
+	// GetPnLBySignalIDs retrieves metrics for a list of signal IDs
+	GetPnLBySignalIDs(ctx context.Context, signalIDs []uuid.UUID) (map[uuid.UUID]MetricResult, error)
 
 	// GetClosedPositionsHistory retrieves closed positions for chart data
 	GetClosedPositionsHistory(ctx context.Context, userID uuid.UUID, limit int) ([]PnLHistoryEntry, error)
@@ -83,6 +83,12 @@ type PaperPositionRepository interface {
 
 	// GetClosedPositions retrieves detailed closed positions
 	GetClosedPositions(ctx context.Context, userID uuid.UUID, limit int) ([]*PaperPosition, error)
+}
+
+// MetricResult holds PnL and Percent data
+type MetricResult struct {
+	PnL        float64
+	PnLPercent float64
 }
 
 // PnLHistoryEntry represents a data point for PnL charting

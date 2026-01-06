@@ -18,6 +18,7 @@ type UserHandler struct {
 	userRepo       domain.UserRepository
 	positionRepo   domain.PaperPositionRepository
 	tradingService domain.TradingService
+	aiService      domain.AIService
 }
 
 // NewUserHandler creates a new UserHandler
@@ -25,11 +26,13 @@ func NewUserHandler(
 	userRepo domain.UserRepository,
 	positionRepo domain.PaperPositionRepository,
 	tradingService domain.TradingService,
+	aiService domain.AIService,
 ) *UserHandler {
 	return &UserHandler{
 		userRepo:       userRepo,
 		positionRepo:   positionRepo,
 		tradingService: tradingService,
+		aiService:      aiService,
 	}
 }
 
@@ -49,12 +52,33 @@ func (h *UserHandler) GetMe(c echo.Context) error {
 		return InternalServerErrorResponse(c, "Failed to get user details", err)
 	}
 
+	// For REAL mode, try to fetch fresh balance from Binance
+	if user.Mode == domain.ModeReal {
+		// We use a short timeout for this external call
+		bgCtx, bgCancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer bgCancel()
+
+		realBal, err := h.aiService.GetRealBalance(bgCtx)
+		if err == nil {
+			// Update memory object
+			user.RealBalanceCache = &realBal
+
+			// Async update DB to not block UI
+			go func(uid uuid.UUID, bal float64) {
+				// We need specific UpdateRealBalance repo method, but for now we might skip DB persistence
+				// or reuse UpdateBalance but that updates PaperBalance specifically in current impl.
+				// TODO: Add UpdateRealBalance to repo. For now, we return fresh data to UI at least.
+			}(user.ID, realBal)
+		}
+	}
+
 	return SuccessResponse(c, dto.UserOutput{
 		ID:           user.ID.String(),
 		Username:     user.Username,
 		Role:         user.Role,
 		Mode:         user.Mode,
 		PaperBalance: user.PaperBalance,
+		RealBalance:  user.RealBalanceCache, // Add this field to DTO if not exists
 	})
 }
 

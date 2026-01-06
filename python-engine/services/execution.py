@@ -179,5 +179,35 @@ class BinanceExecutor:
         except Exception as e:
             return {"error": str(e)}
 
+    async def get_balance(self) -> Dict:
+        """
+        Fetch USDT balance from Binance Futures
+        """
+        if not self.client:
+            return {"error": "Binance client not initialized"}
+            
+        try:
+            # fetch_balance returns a huge dict, we focus on USDT
+            balance = self.client.fetch_balance()
+            
+            # Futures balance structure can be tricky, check 'USDT'
+            usdt = balance.get('USDT', {})
+            total = usdt.get('total', 0.0)
+            free = usdt.get('free', 0.0)
+            
+            # Fallback check 'total' key if needed
+            if total == 0 and 'total' in balance:
+                total = balance['total'].get('USDT', 0.0)
+                free = balance['free'].get('USDT', 0.0)
+                
+            return {
+                "asset": "USDT",
+                "total": float(total),
+                "free": float(free)
+            }
+        except Exception as e:
+            logger.error(f"[EXEC] Failed to get balance: {e}")
+            return {"error": str(e)}
+
 # Global Instance
 executor = BinanceExecutor()
