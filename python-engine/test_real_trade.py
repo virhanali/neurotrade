@@ -4,8 +4,8 @@ import json
 import time
 
 # Endpoint URL (Pastikan Python Engine running di port 8000)
-url_entry = "http://localhost:8000/execute/entry"
-url_close = "http://localhost:8000/execute/close"
+url_entry = "http://127.0.0.1:8000/execute/entry"
+url_close = "http://127.0.0.1:8000/execute/close"
 
 # 1. SETUP PARAMETER (Margin $1)
 margin_usdt = 1.0

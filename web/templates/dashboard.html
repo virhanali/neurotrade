@@ -1611,44 +1611,76 @@
 
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <!-- Paper Mode Option -->
-                                <label class="relative flex items-center p-4 border rounded-xl cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-all group
-                                    {{if eq .User.Mode " PAPER"}}border-emerald-500 bg-emerald-50/10
-                                    dark:bg-emerald-900/10 ring-1 ring-emerald-500{{else}}border-slate-200
-                                    dark:border-slate-700{{end}}">
+                                <label class="relative flex items-start p-4 border-2 rounded-xl cursor-pointer transition-all duration-200 group
+                                    {{if eq .User.Mode " PAPER"}}border-emerald-500 bg-emerald-50/30
+                                    dark:bg-emerald-900/10{{else}}border-slate-200 dark:border-slate-700
+                                    hover:border-emerald-200 dark:hover:border-emerald-800{{end}}">
                                     <input type="radio" name="mode" value="PAPER" class="peer sr-only" {{if eq
                                         .User.Mode "PAPER" }}checked{{end}}>
+
+                                    <!-- Radio Circle Indicator -->
+                                    <div class="mt-1 mr-4 flex-shrink-0">
+                                        <div
+                                            class="w-5 h-5 rounded-full border-2 border-slate-300 dark:border-slate-600 peer-checked:border-emerald-500 peer-checked:bg-emerald-500 flex items-center justify-center transition-colors">
+                                            {{if eq .User.Mode "PAPER"}}<div class="w-2.5 h-2.5 rounded-full bg-white">
+                                            </div>{{end}}
+                                        </div>
+                                    </div>
+
                                     <div class="flex-1">
                                         <div class="flex items-center justify-between mb-1">
+                                            <span class="font-bold text-slate-900 dark:text-white text-lg">Simulation
+                                                Mode</span>
                                             <span
-                                                class="font-bold text-slate-900 dark:text-white group-hover:text-emerald-500 transition-colors">Switch
-                                                Information</span>
-                                            {{if eq .User.Mode "PAPER"}}<i
-                                                class="ri-checkbox-circle-fill text-emerald-500 text-xl"></i>{{end}}
+                                                class="px-2 py-0.5 rounded text-xs font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400">RISK
+                                                FREE</span>
                                         </div>
-                                        <div class="font-medium text-emerald-600 dark:text-emerald-400 mb-1">Paper
-                                            Trading</div>
-                                        <p class="text-xs text-slate-500 dark:text-slate-400">Zero risk. Simulate trades
-                                            with virtual balance.</p>
+                                        <p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
+                                            Practice your strategies with virtual funds. Perfect for testing without
+                                            risking real capital.
+                                        </p>
+                                    </div>
+
+                                    <!-- Active Border Highlight (for peer-checked) -->
+                                    <div
+                                        class="absolute inset-0 border-2 border-transparent peer-checked:border-emerald-500 rounded-xl pointer-events-none">
                                     </div>
                                 </label>
 
                                 <!-- Real Mode Option -->
-                                <label class="relative flex items-center p-4 border rounded-xl cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-all group
-                                    {{if eq .User.Mode " REAL"}}border-rose-500 bg-rose-50/10 dark:bg-rose-900/10
-                                    ring-1 ring-rose-500{{else}}border-slate-200 dark:border-slate-700{{end}}">
+                                <label class="relative flex items-start p-4 border-2 rounded-xl cursor-pointer transition-all duration-200 group
+                                    {{if eq .User.Mode " REAL"}}border-rose-500 bg-rose-50/30
+                                    dark:bg-rose-900/10{{else}}border-slate-200 dark:border-slate-700
+                                    hover:border-rose-200 dark:hover:border-rose-800{{end}}">
                                     <input type="radio" name="mode" value="REAL" class="peer sr-only" {{if eq
                                         .User.Mode "REAL" }}checked{{end}}>
+
+                                    <!-- Radio Circle Indicator -->
+                                    <div class="mt-1 mr-4 flex-shrink-0">
+                                        <div
+                                            class="w-5 h-5 rounded-full border-2 border-slate-300 dark:border-slate-600 peer-checked:border-rose-500 peer-checked:bg-rose-500 flex items-center justify-center transition-colors">
+                                            {{if eq .User.Mode "REAL"}}<div class="w-2.5 h-2.5 rounded-full bg-white">
+                                            </div>{{end}}
+                                        </div>
+                                    </div>
+
                                     <div class="flex-1">
                                         <div class="flex items-center justify-between mb-1">
+                                            <span class="font-bold text-slate-900 dark:text-white text-lg">Live
+                                                Trading</span>
                                             <span
-                                                class="font-bold text-slate-900 dark:text-white group-hover:text-rose-500 transition-colors">Live
-                                                Production</span>
-                                            {{if eq .User.Mode "REAL"}}<i
-                                                class="ri-checkbox-circle-fill text-rose-500 text-xl"></i>{{end}}
+                                                class="px-2 py-0.5 rounded text-xs font-bold bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-400">REAL
+                                                MONEY</span>
                                         </div>
-                                        <div class="font-medium text-rose-600 dark:text-rose-400 mb-1">Real Money</div>
-                                        <p class="text-xs text-slate-500 dark:text-slate-400">High risk. Direct Binance
-                                            Futures execution.</p>
+                                        <p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
+                                            Execute real orders on Binance Futures. Capital is at risk. Ensure your API
+                                            keys are configured.
+                                        </p>
+                                    </div>
+
+                                    <!-- Active Border Highlight (for peer-checked) -->
+                                    <div
+                                        class="absolute inset-0 border-2 border-transparent peer-checked:border-rose-500 rounded-xl pointer-events-none">
                                     </div>
                                 </label>
                             </div>
@@ -1691,22 +1723,32 @@
                                         Leverage
                                     </label>
                                     <div class="relative">
+                                        <!-- Leading Icon -->
+                                        <div
+                                            class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                            <span class="text-slate-500 font-bold text-sm">x</span>
+                                        </div>
+
                                         <select name="leverage" required
-                                            class="w-full pl-3 pr-10 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-slate-900 dark:text-white appearance-none">
-                                            <option value="1" {{if eq .User.Leverage 1.0}}selected{{end}}>1x (No
+                                            class="w-full pl-8 pr-10 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-slate-900 dark:text-white appearance-none cursor-pointer transition-colors hover:bg-slate-100 dark:hover:bg-slate-700">
+                                            <option value="1" {{if eq .User.Leverage 1.0}}selected{{end}}>1x (Spot / No
                                                 Leverage)</option>
-                                            <option value="5" {{if eq .User.Leverage 5.0}}selected{{end}}>5x</option>
-                                            <option value="10" {{if eq .User.Leverage 10.0}}selected{{end}}>10x</option>
+                                            <option value="5" {{if eq .User.Leverage 5.0}}selected{{end}}>5x (Low Risk)
+                                            </option>
+                                            <option value="10" {{if eq .User.Leverage 10.0}}selected{{end}}>10x
+                                                (Moderate)</option>
                                             <option value="20" {{if eq .User.Leverage 20.0}}selected{{end}}>20x
-                                                (Recommended)</option>
+                                                (Standard)</option>
                                             <option value="50" {{if eq .User.Leverage 50.0}}selected{{end}}>50x (High
                                                 Risk)</option>
-                                            <option value="75" {{if eq .User.Leverage 75.0}}selected{{end}}>75x (Degen)
-                                            </option>
+                                            <option value="75" {{if eq .User.Leverage 75.0}}selected{{end}}>75x (Degen
+                                                Mode)</option>
                                         </select>
+
+                                        <!-- Trailing Arrow -->
                                         <div
-                                            class="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none text-slate-500">
-                                            <i class="ri-arrow-down-s-line"></i>
+                                            class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-slate-500">
+                                            <i class="ri-arrow-down-s-line text-lg"></i>
                                         </div>
                                     </div>
                                     <p class="mt-1 text-xs text-slate-500">Multiplier for your position size.</p>
