@@ -2172,16 +2172,19 @@
                 const response = await fetch('/api/user/me');
                 if (response.ok) {
                     const data = await response.json();
-                    if (data.data && data.data.user) {
+                    if (data.status === 'success' && data.data) {
                         // Update balance display
-                        const user = data.data.user;
+                        const user = data.data;
                         const balanceEl = document.querySelector('[data-balance-display]');
 
-                        // If REAL mode, the balance card might need update
+                        // If REAL mode, trigger full page refresh to update balance
                         if (user.mode === 'REAL') {
-                            // Update only if we have the element with data-balance attribute
-                            // This is handled by HTMX refresh mostly
-                            console.log('[INFO] Balance refreshed:', user.real_balance_cache || 'Loading...');
+                            console.log('[INFO] Balance refreshed:', user.real_balance || 'Loading...');
+                            // Trigger HTMX refresh to update balance display
+                            htmx.ajax('GET', window.location.pathname, {
+                                target: 'body',
+                                swap: 'innerHTML'
+                            });
                         }
                     }
                 }

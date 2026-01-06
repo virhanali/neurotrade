@@ -798,8 +798,8 @@ func (h *WebHandler) HandleUpdateSettings(c echo.Context) error {
 			log.Printf("[WARN] Capped leverage to 125x for REAL mode")
 		}
 		if user.FixedOrderSize < 1.0 {
-			user.FixedOrderSize = 10.0 // Minimum safe amount
-			log.Printf("[WARN] Set minimum margin $10 for REAL mode")
+			user.FixedOrderSize = 1.0 // Minimum $1 for safe testing
+			log.Printf("[WARN] Set minimum margin $1.00 for REAL mode")
 		}
 	}
 
