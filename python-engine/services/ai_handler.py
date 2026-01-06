@@ -60,17 +60,26 @@ CONTEXT: Candidate PASSED screener filters (volatility, volume, 4H trend, RSI ac
 - Whale + Technical CONFLICT → WHALE WINS (smart money priority)
 - No clear signal → WAIT (preserve capital)
 
+=== STRICT TREND RULES ===
+1. If 4H Trend is DOWN:
+   - DO NOT LONG (even if M15 is oversold/sideways)
+   - EXCEPTION: Whale Signal is PUMP_IMMINENT/SQUEEZE_SHORTS or RSI < 25 (Extreme Reversal)
+
+2. If 4H Trend is UP:
+   - DO NOT SHORT (even if M15 is overbought)
+   - EXCEPTION: Whale Signal is DUMP_IMMINENT/SQUEEZE_LONGS or RSI > 75 (Extreme Reversal)
+
 === EXECUTION PARAMS ===
 - SL: Previous candle low/high ± ATR*0.5 buffer. MAX 1.5% distance.
 - TP: Minimum 1:2 RR. Whale signals aim 3-5%.
-- Leverage: 20x (pump/dump), 15x (trend), 20x (sideways tight SL)
+- Leverage: 20x (pump/dump), 15x (trend), 20x (sideways-scalp)
 
 === OUTPUT (JSON ONLY) ===
 {
   "symbol": "string",
   "signal": "LONG" | "SHORT" | "WAIT",
   "confidence": 0-100,
-  "reasoning": "Brief: [Whale] + [Technical] = [Decision]",
+  "reasoning": "Brief: [Whale] + [Trend Check] + [Technical] = [Decision]",
   "trade_params": {
     "entry_price": float,
     "stop_loss": float,
