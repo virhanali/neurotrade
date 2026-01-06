@@ -128,7 +128,14 @@ func main() {
 
 	// Initialize services
 	priceService := service.NewMarketPriceService()
-	virtualBroker := service.NewVirtualBrokerService(positionRepo, userRepo, priceService, signalRepo, notificationService)
+	virtualBroker := service.NewVirtualBrokerService(
+		positionRepo,
+		userRepo,
+		priceService,
+		signalRepo,
+		notificationService,
+		aiService, // Injected for Real Trading
+	)
 	reviewService := service.NewReviewService(signalRepo, priceService, notificationService)
 	bodyguard := service.NewBodyguardService(positionRepo, userRepo, priceService, signalRepo, notificationService, aiService)
 

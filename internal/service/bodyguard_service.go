@@ -129,6 +129,34 @@ func (s *BodyguardService) CheckPositionsFast(ctx context.Context) error {
 
 // closePosition closes a position and updates all related records
 func (s *BodyguardService) closePosition(ctx context.Context, pos *domain.Position, exitPrice float64, status string, closedBy string) error {
+	// 1. Fetch User to determine Mode (Real/Paper)
+	user, err := s.userRepo.GetByID(ctx, pos.UserID)
+	if err != nil {
+		return err
+	}
+
+	// 2. REAL TRADING EXECUTION
+	if user.Mode == domain.ModeReal {
+		// Determine Closing Side (Opposite of Position Side)
+		closeSide := "SELL"
+		if pos.Side == "SHORT" { // Assuming Side is stored as "LONG" or "SHORT"
+			closeSide = "BUY"
+		}
+
+		// Execute Close via Python Engine -> Binance
+		// Retry logic could be added here, but bodyguard retries every 10s anyway
+		res, err := s.aiService.ExecuteClose(ctx, pos.Symbol, closeSide, pos.Size)
+		if err != nil {
+			log.Printf("[ERR] Bodyguard: FAILED to execute REAL CLOSE for %s: %v", pos.Symbol, err)
+			return err // Return error so Bodyguard will retry in next cycle
+		}
+
+		// Use ACTUAL execution price from Binance
+		exitPrice = res.AvgPrice
+		log.Printf("[GUARD] REAL EXECUTION SUCCESS: %s Closed @ %.4f", pos.Symbol, exitPrice)
+	}
+
+	// 3. Calculate PnL Stats (Valid for both Real & Paper for reporting)
 	// Calculate Net PnL (Gross - Fees)
 	grossPnL := pos.CalculateGrossPnL(exitPrice)
 
@@ -137,11 +165,10 @@ func (s *BodyguardService) closePosition(ctx context.Context, pos *domain.Positi
 	fees := (pos.EntryPrice * pos.Size * feeRate) + (exitPrice * pos.Size * feeRate)
 	pnl := grossPnL - fees
 
-	// Calculate PnL percentage (matches Binance calculation)
+	// Calculate PnL percentage
 	pnlPercent := pos.CalculatePnLPercent(exitPrice)
 
-	// Determine result based on ACTUAL PnL, not SL/TP trigger
-	// This fixes trailing stop exits being labeled as LOSS when PnL is actually positive
+	// Determine result
 	result := "WIN"
 	actualStatus := domain.StatusClosedWin
 	if pnl < 0 {
@@ -149,9 +176,9 @@ func (s *BodyguardService) closePosition(ctx context.Context, pos *domain.Positi
 		actualStatus = domain.StatusClosedLoss
 	}
 
-	// Update position with CORRECT status based on actual PnL
+	// Update position record
 	now := time.Now()
-	pos.Status = actualStatus // Use actual PnL-based status, ignore status from CheckSLTP
+	pos.Status = actualStatus
 	pos.ExitPrice = &exitPrice
 	pos.PnL = &pnl
 	pos.PnLPercent = &pnlPercent
@@ -162,16 +189,15 @@ func (s *BodyguardService) closePosition(ctx context.Context, pos *domain.Positi
 		return err
 	}
 
-	// Update user balance
-	user, err := s.userRepo.GetByID(ctx, pos.UserID)
-	if err == nil {
+	// 4. Update Balance (ONLY FOR PAPER MODE)
+	if user.Mode == domain.ModePaper {
 		newBalance := user.PaperBalance + pnl
 		if err := s.userRepo.UpdateBalance(ctx, user.ID, newBalance, domain.ModePaper); err != nil {
 			log.Printf("[WARN] Failed to update user balance: %v", err)
 		}
 	}
 
-	// Fetch signal for metrics and update status
+	// 5. ML Feedback & Notifications (Common)
 	var sig *domain.Signal
 	if pos.SignalID != nil {
 		sig, _ = s.signalRepo.GetByID(ctx, *pos.SignalID)
@@ -182,7 +208,7 @@ func (s *BodyguardService) closePosition(ctx context.Context, pos *domain.Positi
 		}
 	}
 
-	// Send ML Feedback to Python Engine (async, non-blocking)
+	// Send ML Feedback to Python Engine (async)
 	go func() {
 		feedbackCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
@@ -193,7 +219,6 @@ func (s *BodyguardService) closePosition(ctx context.Context, pos *domain.Positi
 			PnL:     pnlPercent,
 		}
 
-		// Attach screener metrics if available from signal
 		if sig != nil && sig.ScreenerMetrics != nil {
 			feedback.Metrics = sig.ScreenerMetrics
 		}

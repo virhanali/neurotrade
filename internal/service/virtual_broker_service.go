@@ -21,7 +21,8 @@ type VirtualBrokerService struct {
 	userRepo            domain.UserRepository
 	priceService        *MarketPriceService
 	signalRepo          domain.SignalRepository
-	notificationService NotificationService // Reuse interface from trading/review service or define new one
+	notificationService NotificationService
+	aiService           domain.AIService // Added for Real Trading Execution
 }
 
 // NewVirtualBrokerService creates a new VirtualBrokerService
@@ -31,6 +32,7 @@ func NewVirtualBrokerService(
 	priceService *MarketPriceService,
 	signalRepo domain.SignalRepository,
 	notificationService NotificationService,
+	aiService domain.AIService, // Injected dependency
 ) *VirtualBrokerService {
 	return &VirtualBrokerService{
 		positionRepo:        positionRepo,
@@ -38,6 +40,7 @@ func NewVirtualBrokerService(
 		priceService:        priceService,
 		signalRepo:          signalRepo,
 		notificationService: notificationService,
+		aiService:           aiService,
 	}
 }
 
@@ -69,7 +72,6 @@ func (s *VirtualBrokerService) CheckPositions(ctx context.Context) error {
 	// Fetch current prices
 	prices, err := s.priceService.FetchRealTimePrices(ctx, symbols)
 	if err != nil {
-		// If it's just missing prices for some symbols, we warn but continue with the ones we found
 		if strings.Contains(err.Error(), "missing prices") {
 			log.Printf("[WARN]  Partial Price Fetch: %v", err)
 		} else {
@@ -93,13 +95,39 @@ func (s *VirtualBrokerService) CheckPositions(ctx context.Context) error {
 			continue
 		}
 
-		// Calculate PnL with fees
-		netPnL := s.calculateNetPnL(position, currentPrice)
-		pnlPercent := position.CalculatePnLPercent(currentPrice)
+		// Fetch User to determine Mode
+		user, err := s.userRepo.GetByID(ctx, position.UserID)
+		if err != nil {
+			log.Printf("ERROR: Failed to get user %s: %v", position.UserID, err)
+			continue
+		}
 
-		// Close position
+		// === REAL TRADING CLOSE LOGIC ===
+		exitPrice := currentPrice // Default to trigger price
+		if user.Mode == domain.ModeReal {
+			// Determine opposite side
+			closeSide := "SELL"
+			if position.Side == "SHORT" {
+				closeSide = "BUY"
+			}
+
+			// Execute Real Close
+			res, err := s.aiService.ExecuteClose(ctx, position.Symbol, closeSide, position.Size)
+			if err != nil {
+				log.Printf("[ERR] VirtualBroker: FAILED to execute REAL CLOSE for %s: %v", position.Symbol, err)
+				continue // Don't close position in DB if execution failed
+			}
+			exitPrice = res.AvgPrice // Use actual execution price
+			log.Printf("[Broker] REAL CLOSE SUCCESS: %s @ %.4f", position.Symbol, exitPrice)
+		}
+
+		// Calculate PnL with fees using Exit Price
+		netPnL := s.calculateNetPnL(position, exitPrice)
+		pnlPercent := position.CalculatePnLPercent(exitPrice)
+
+		// Close position in DB
 		now := time.Now()
-		position.ExitPrice = &currentPrice
+		position.ExitPrice = &exitPrice
 		position.PnL = &netPnL
 		position.PnLPercent = &pnlPercent
 		position.ClosedBy = &closedBy
@@ -111,21 +139,17 @@ func (s *VirtualBrokerService) CheckPositions(ctx context.Context) error {
 			continue
 		}
 
-		// Update user balance
-		user, err := s.userRepo.GetByID(ctx, position.UserID)
-		if err != nil {
-			log.Printf("ERROR: Failed to get user %s: %v", position.UserID, err)
-			continue
-		}
-
-		newBalance := user.PaperBalance + netPnL
-		if err := s.userRepo.UpdateBalance(ctx, user.ID, newBalance, domain.ModePaper); err != nil {
-			log.Printf("ERROR: Failed to update user balance: %v", err)
-			continue
+		// Update user balance (ONLY PAPER MODE)
+		if user.Mode == domain.ModePaper {
+			newBalance := user.PaperBalance + netPnL
+			if err := s.userRepo.UpdateBalance(ctx, user.ID, newBalance, domain.ModePaper); err != nil {
+				log.Printf("ERROR: Failed to update user balance: %v", err)
+				continue
+			}
 		}
 
 		// --- NOTIFICATION & SIGNAL UPDATE LOGIC ---
-		// Determine result string for Signal Review (based on actual PnL, not trigger)
+		// Determine result string for Signal Review
 		reviewResult := "WIN"
 		if netPnL < 0 {
 			reviewResult = "LOSS"
@@ -134,32 +158,25 @@ func (s *VirtualBrokerService) CheckPositions(ctx context.Context) error {
 			position.Status = domain.StatusClosedWin
 		}
 
-		// pnlPercent already calculated above - no need to recalculate
-
 		// Update Signal in DB if attached
 		if position.SignalID != nil {
-			// Update signal review status immediately to stop ReviewService from picking it up
 			if err := s.signalRepo.UpdateReviewStatus(ctx, *position.SignalID, reviewResult, &pnlPercent); err != nil {
 				log.Printf("WARNING: Failed to update signal review status: %v", err)
 			}
 
-			// Send Telegram Notification
+			// Send Notification
 			if s.notificationService != nil {
-				// Fetch signal details for notification
 				if sig, err := s.signalRepo.GetByID(ctx, *position.SignalID); err == nil {
 					sig.ReviewResult = &reviewResult
-					// Pass netPnL (dollar amount) for user notification, NOT percentage
 					if err := s.notificationService.SendReview(*sig, &netPnL); err != nil {
 						log.Printf("WARNING: Failed to send auto-close notification: %v", err)
 					}
 				}
 			}
 		}
-		// ------------------------------------------
 
 		log.Printf("[OK] Position CLOSED: %s %s | Entry=%.2f Exit=%.2f | PnL=%.2f USDT | Status=%s",
-			position.Symbol, position.Side, position.EntryPrice, currentPrice, netPnL, status)
-		log.Printf("   User balance updated: %.2f → %.2f USDT", user.PaperBalance, newBalance)
+			position.Symbol, position.Side, position.EntryPrice, exitPrice, netPnL, status)
 	}
 
 	return nil
