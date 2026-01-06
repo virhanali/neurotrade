@@ -54,6 +54,16 @@ class ChartGenerator:
             if 'low' not in plot_df.columns or 'high' not in plot_df.columns or 'volume' not in plot_df.columns:
                 raise Exception("Missing required columns: low, high, volume")
 
+            # VALIDATION: Check if columns have valid (non-NaN) values
+            if plot_df['low'].isna().all() or plot_df['high'].isna().all():
+                raise Exception(f"Invalid data: 'low' or 'high' columns contain all NaN values")
+
+            # Count valid data points
+            valid_low = plot_df['low'].notna().sum()
+            valid_high = plot_df['high'].notna().sum()
+            if valid_low < 2 or valid_high < 2:
+                raise Exception(f"Insufficient valid OHLC data: {valid_low} low, {valid_high} high (need at least 2)")
+
             # 1. VOLUME CLIMAX LOGIC
             # Calculate Volume MA
             vol_ma = plot_df['volume'].rolling(window=20).mean()
@@ -174,6 +184,22 @@ class ChartGenerator:
                     raise Exception(f"Missing column in 4H data: {col}")
                 if col not in df_1h.columns:
                     raise Exception(f"Missing column in 1H data: {col}")
+
+            # VALIDATION: Check if columns have valid (non-NaN) values for 4H
+            if df_4h['low'].isna().all() or df_4h['high'].isna().all():
+                raise Exception(f"Invalid 4H data: 'low' or 'high' columns contain all NaN values")
+            valid_4h_low = df_4h['low'].notna().sum()
+            valid_4h_high = df_4h['high'].notna().sum()
+            if valid_4h_low < 2 or valid_4h_high < 2:
+                raise Exception(f"Insufficient valid 4H data: {valid_4h_low} low, {valid_4h_high} high (need at least 2)")
+
+            # VALIDATION: Check if columns have valid (non-NaN) values for 1H
+            if df_1h['low'].isna().all() or df_1h['high'].isna().all():
+                raise Exception(f"Invalid 1H data: 'low' or 'high' columns contain all NaN values")
+            valid_1h_low = df_1h['low'].notna().sum()
+            valid_1h_high = df_1h['high'].notna().sum()
+            if valid_1h_low < 2 or valid_1h_high < 2:
+                raise Exception(f"Insufficient valid 1H data: {valid_1h_low} low, {valid_1h_high} high (need at least 2)")
 
             fig = plt.figure(figsize=(16, 10), facecolor='#1e222d')
 
