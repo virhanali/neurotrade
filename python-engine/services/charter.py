@@ -47,10 +47,17 @@ class ChartGenerator:
             # Focus on recent data (last 60 candles)
             plot_df = df.tail(60).copy() if len(df) > 60 else df.copy()
 
+            # VALIDATION: Check if we have enough data
+            if len(plot_df) < 2:
+                raise Exception(f"Insufficient data for chart generation: {len(plot_df)} candles (need at least 2)")
+
+            if 'low' not in plot_df.columns or 'high' not in plot_df.columns or 'volume' not in plot_df.columns:
+                raise Exception("Missing required columns: low, high, volume")
+
             # 1. VOLUME CLIMAX LOGIC
             # Calculate Volume MA
             vol_ma = plot_df['volume'].rolling(window=20).mean()
-            
+
             # Define Volume Colors based on Relative Volume (RVOL)
             # Default: Grey (Noise)
             # High (>1.5x): Cyan (Activity)
@@ -59,16 +66,17 @@ class ChartGenerator:
             for i in range(len(plot_df)):
                 vol = plot_df['volume'].iloc[i]
                 avg = vol_ma.iloc[i] if pd.notna(vol_ma.iloc[i]) else vol
-                
+
                 if vol > 2.5 * avg:
                     vol_colors.append('#ffd700')  # GOLD for Climax
                 elif vol > 1.5 * avg:
                     vol_colors.append('#00e5ff')  # CYAN for High Activity
                 else:
                     vol_colors.append('#363a45')  # GREY for Normal
-            
+
             # 2. STRUCTURE (Simulated Support/Resistance)
             # Find recent significant Swing High/Low in the visible window
+            # Safe extraction (guaranteed to have data after validation above)
             recent_low = plot_df['low'].min()
             recent_high = plot_df['high'].max()
             
