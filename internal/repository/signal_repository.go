@@ -192,16 +192,23 @@ func (r *SignalRepositoryImpl) UpdateStatus(ctx context.Context, id uuid.UUID, s
 }
 
 // UpdateReviewStatus updates the review result and PnL of a signal
+// Returns error if update failed
 func (r *SignalRepositoryImpl) UpdateReviewStatus(ctx context.Context, id uuid.UUID, result string, pnl *float64) error {
+	// Optimistic locking: only update if not already finalized
 	query := `
 		UPDATE signals
 		SET review_result = $1, review_pnl = $2
-		WHERE id = $3
+		WHERE id = $3 AND (review_result IS NULL OR review_result LIKE 'FLOATING%')
 	`
 
-	_, err := r.db.Exec(ctx, query, result, pnl, id)
+	cmdTag, err := r.db.Exec(ctx, query, result, pnl, id)
 	if err != nil {
 		return fmt.Errorf("failed to update signal review status: %w", err)
+	}
+
+	// If no rows updated, it means it was already finalized or not found
+	if cmdTag.RowsAffected() == 0 {
+		return fmt.Errorf("signal already reviewed")
 	}
 
 	return nil

@@ -102,6 +102,10 @@ func (s *ReviewService) ReviewPastSignals(ctx context.Context, olderThanMinutes 
 
 		// Update signal review status
 		if err := s.signalRepo.UpdateReviewStatus(ctx, signal.ID, result, &pnl); err != nil {
+			if err.Error() == "signal already reviewed" {
+				log.Printf("[SKIP] Signal %s already reviewed, skipping notification", signal.Symbol)
+				continue
+			}
 			log.Printf("ERROR: Failed to update review status for signal %s: %v", signal.ID, err)
 			continue
 		}
