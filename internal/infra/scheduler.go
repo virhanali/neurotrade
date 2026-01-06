@@ -41,7 +41,7 @@ func (s *Scheduler) Start() error {
 	// Golden Hours: 00:00-04:00, 07:00-11:00, 13:00-18:00 UTC → NORMAL (every 30s) - increased from 15s
 	// Dead Hours: Everything else → SLOW (every 2 min) - increased from 60s to catch more moves
 
-	_, err := s.cron.AddFunc("*/5 * * *", func() {
+	_, err := s.cron.AddFunc("*/5 * * * * *", func() {
 		ctx := context.Background()
 		now := time.Now().UTC()
 		hour := now.Hour()
