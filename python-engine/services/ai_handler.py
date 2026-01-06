@@ -25,89 +25,57 @@ except ImportError:
 def get_system_prompt() -> str:
     """
     Returns the system prompt for SCALPER mode (M15 Smart Money/Predictive Alpha)
-    Enhanced with Whale Detection (v4.2)
+    Enhanced with Whale Detection (v4.5) - Optimized for clarity
     """
-    return """ROLE: Elite Algo-Trading Execution Unit (M15 Specialist) with WHALE RADAR.
-CONTEXT: This candidate has ALREADY PASSED strict technical filters:
-1. High Volatility & Volume Spike detected.
-2. 4H Trend Alignment confirmed (Screener Logic).
-3. RSI is in "Action Zone" (Oversold/Overbought).
-4. **NEW: WHALE DETECTION DATA AVAILABLE** - Liquidations, Order Book, Large Trades.
+    return """ROLE: M15 Algo-Trading Unit with Whale Radar.
 
-YOUR MISSION: Validate the M15 Swing Setup using BOTH Technical + Whale Data.
+CONTEXT: Candidate PASSED screener filters (volatility, volume, 4H trend, RSI action zone). Validate final entry.
 
-🐋 WHALE SIGNAL INTERPRETATION (HIGHEST PRIORITY):
-- **PUMP_IMMINENT**: Whales are accumulating. High buy pressure. GO LONG AGGRESSIVELY.
-- **DUMP_IMMINENT**: Whales are distributing. High sell pressure. GO SHORT AGGRESSIVELY.
-- **SQUEEZE_LONGS**: Many leveraged longs at risk. AVOID LONGS (cascade dump possible).
-- **SQUEEZE_SHORTS**: Many leveraged shorts at risk. AVOID SHORTS (short squeeze possible).
-- **NEUTRAL**: No clear whale activity. Use standard technical analysis.
+=== DECISION PRIORITY (TOP TO BOTTOM) ===
 
-📊 LIQUIDATION PRESSURE LOGIC:
-- **LONG_HEAVY**: Many longs getting liquidated = Dump in progress. SHORT bias.
-- **SHORT_HEAVY**: Many shorts getting liquidated = Pump in progress. LONG bias.
-- **BALANCED/NONE**: Normal market. Use other signals.
+1. WHALE SIGNAL (Highest Priority):
+   - PUMP_IMMINENT → LONG (whales accumulating)
+   - DUMP_IMMINENT → SHORT (whales distributing)  
+   - SQUEEZE_LONGS → AVOID LONG (cascade dump risk)
+   - SQUEEZE_SHORTS → AVOID SHORT (squeeze risk)
+   - NEUTRAL → Use technicals only
 
-📈 ORDER IMBALANCE LOGIC:
-- **> +20%**: Heavy buy orders waiting. Support strong. LONG bias.
-- **< -20%**: Heavy sell orders waiting. Resistance strong. SHORT bias.
-- **-20% to +20%**: Balanced. No directional bias from order book.
+2. LIQUIDATION CHECK (Veto Power):
+   - LONG_HEAVY liquidations → SHORT bias (dump in progress)
+   - SHORT_HEAVY liquidations → LONG bias (pump in progress)
+   - If your direction MATCHES liquidation pressure → SKIP TRADE
 
-⚠️ CRITICAL CONFLUENCE RULES:
-1. **WHALE + TECHNICAL AGREE**: Execute with HIGH CONFIDENCE (85+).
-   - Example: PUMP_IMMINENT + RSI < 35 + Bullish Trend = STRONG LONG
-   - Example: DUMP_IMMINENT + RSI > 65 + Bearish Trend = STRONG SHORT
+3. ORDER BOOK IMBALANCE:
+   - >+20% buy orders → Support strong, LONG bias
+   - <-20% sell orders → Resistance strong, SHORT bias
 
-2. **WHALE + TECHNICAL CONFLICT**: WHALE WINS (Smart Money knows more).
-   - Example: RSI < 30 (oversold) BUT DUMP_IMMINENT = NO LONG (whale selling)
-   - Example: RSI > 70 (overbought) BUT PUMP_IMMINENT = NO SHORT (whale buying)
+4. TECHNICAL CONFLUENCE:
+   - ADX<25 (Sideways): Mean reversion at BB bands
+   - ADX>25 (Trending): Pullback entries on EMA20
+   - RSI<35 + BULL trend → LONG
+   - RSI>65 + BEAR trend → SHORT
 
-3. **LIQUIDATION WARNING**: If your intended direction matches liquidation pressure, AVOID.
-   - Example: Want LONG but LONG_HEAVY = SKIP (you'll get liquidated too)
-   - Example: Want SHORT but SHORT_HEAVY = SKIP (short squeeze risk)
+=== CONFLICT RESOLUTION ===
+- Whale + Technical AGREE → High confidence (85+)
+- Whale + Technical CONFLICT → WHALE WINS (smart money priority)
+- No clear signal → WAIT (preserve capital)
 
-STRATEGY MAP based on QUANTITATIVE DATA (ADX):
-A. IF ADX < 25 (WEAK TREND / SIDEWAYS):
-   - **MODE:** PING-PONG SCALPER (Mean Reversion).
-   - **ACTION:** Buy at Lower BB. Sell at Upper BB. Confirm with Whale data.
-   - **WHALE OVERRIDE:** If PUMP_IMMINENT in sideways, expect breakout UP.
+=== EXECUTION PARAMS ===
+- SL: Previous candle low/high ± ATR*0.5 buffer. MAX 1.5% distance.
+- TP: Minimum 1:2 RR. Whale signals aim 3-5%.
+- Leverage: 20x (pump/dump), 15x (trend), 20x (sideways tight SL)
 
-B. IF ADX > 25 (STRONG TREND):
-   - **MODE:** MOMENTUM RIDER (Trend Following).
-   - **ACTION:** Enter on Pullback to EMA 20.
-   - **WHALE OVERRIDE:** If Whale signal contradicts trend, wait for clarity.
-
-C. IF PREDICTIVE ALPHA (THE "SMART MONEY" SETUP):
-   - Use Whale Signal as PRIMARY confirmation.
-   - PUMP_IMMINENT + Squeeze = IMMEDIATE LONG (Whales loading before explosion).
-   - DUMP_IMMINENT + Lower Highs = IMMEDIATE SHORT (Whales exiting).
-
-EXECUTION PARAMETERS (STRICT RISK MANAGEMENT):
-   - ENTRY: Limit Order at Current Price.
-   - STOP LOSS (SL):
-     - LONG: Low of previous candle MINUS (ATR * 0.5) buffer.
-     - SHORT: High of previous candle PLUS (ATR * 0.5) buffer.
-     - HARD CAP: SL distance MUST NOT exceed 1.5% price movement.
-   - TAKE PROFIT (TP):
-     - MINIMUM RR: 1:2 (TP = 2x SL distance).
-     - WHALE SIGNALS: Aim for 3% - 5% on PUMP/DUMP signals.
-   - LEVERAGE:
-      - PUMP/DUMP Signal (High Confidence) -> 20x.
-      - Trend Rider -> 15x.
-      - Sideways Ping-Pong -> 20x (Tight SL).
-
-OUTPUT FORMAT (JSON ONLY):
+=== OUTPUT (JSON ONLY) ===
 {
   "symbol": "string",
   "signal": "LONG" | "SHORT" | "WAIT",
   "confidence": 0-100,
-  "reasoning": "Whale Signal + Technical confluence analysis...",
+  "reasoning": "Brief: [Whale] + [Technical] = [Decision]",
   "trade_params": {
     "entry_price": float,
     "stop_loss": float,
     "take_profit": float,
-    "suggested_leverage": int,
-    "position_size_usdt": float
+    "suggested_leverage": int
   }
 }"""
 
@@ -422,6 +390,44 @@ Analyze for SCALPER entry (Mean Reversion / Ping-Pong / Predictive Alpha). Provi
                         result["signal"] = "WAIT"
                         result["confidence"] = 0
                         break
+                
+                # 5. NEW: Validate SL/TP distances (Quality Control)
+                if result.get("signal") != "WAIT":
+                    entry = tp.get("entry_price", 0)
+                    sl = tp.get("stop_loss", 0)
+                    take_profit = tp.get("take_profit", 0)
+                    
+                    if entry > 0 and sl > 0 and take_profit > 0:
+                        # Calculate distances as percentage
+                        sl_distance_pct = abs(entry - sl) / entry * 100
+                        tp_distance_pct = abs(take_profit - entry) / entry * 100
+                        
+                        # Risk:Reward ratio
+                        rr_ratio = tp_distance_pct / sl_distance_pct if sl_distance_pct > 0 else 0
+                        
+                        # Constraints
+                        MIN_SL_PCT = 0.2    # Minimum 0.2% SL (avoid noise)
+                        MAX_SL_PCT = 3.0    # Maximum 3.0% SL (avoid big losses)
+                        MIN_RR = 1.2        # Minimum 1.2:1 Risk:Reward
+                        
+                        rejection_reasons = []
+                        
+                        if sl_distance_pct < MIN_SL_PCT:
+                            rejection_reasons.append(f"SL too tight ({sl_distance_pct:.2f}% < {MIN_SL_PCT}%)")
+                        
+                        if sl_distance_pct > MAX_SL_PCT:
+                            rejection_reasons.append(f"SL too wide ({sl_distance_pct:.2f}% > {MAX_SL_PCT}%)")
+                        
+                        if rr_ratio < MIN_RR:
+                            rejection_reasons.append(f"Bad RR ({rr_ratio:.1f}:1 < {MIN_RR}:1)")
+                        
+                        if rejection_reasons:
+                            logging.warning(f"[AI] Trade rejected: {', '.join(rejection_reasons)}")
+                            result["signal"] = "WAIT"
+                            result["confidence"] = 0
+                            result["reasoning"] = f"REJECTED: {', '.join(rejection_reasons)}"
+                        else:
+                            logging.info(f"[AI] Trade params valid: SL={sl_distance_pct:.2f}%, TP={tp_distance_pct:.2f}%, RR={rr_ratio:.1f}:1")
 
             return result
 
