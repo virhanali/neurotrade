@@ -48,7 +48,7 @@ CREATE TABLE IF NOT EXISTS ai_analysis_cache (
     outcome VARCHAR(10),        -- 'WIN', 'LOSS', or NULL
     pnl DECIMAL(18, 2),        -- Actual PnL if trade executed
 
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 
     -- === OPTIMIZATION: INDEXES ===
     -- For quick lookup of analyzed symbols
