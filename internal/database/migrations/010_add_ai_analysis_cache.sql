@@ -62,10 +62,8 @@ CREATE INDEX IF NOT EXISTS idx_ai_cache_outcome ON ai_analysis_cache(outcome) WH
 CREATE INDEX IF NOT EXISTS idx_ai_cache_ml_trained ON ai_analysis_cache(ml_is_trained);
 CREATE INDEX IF NOT EXISTS idx_ai_cache_final_signal ON ai_analysis_cache(final_signal, final_confidence);
 
--- Unique constraint: Prevent duplicate analysis for same symbol within 5 minutes
-CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_cache_unique_symbol_time
-    ON ai_analysis_cache(symbol)
-    WHERE created_at > NOW() - INTERVAL '5 minutes';
+-- NOTE: Preventing duplicate analysis within 5 minutes must be handled at application level
+-- (PostgreSQL does not allow non-IMMUTABLE functions like NOW() in index predicates)
 
 COMMENT ON TABLE ai_analysis_cache IS 'Cache of ALL AI analysis results for learning and analytics';
 COMMENT ON COLUMN ai_analysis_cache.ml_is_trained IS 'TRUE if ML model was trained, FALSE if rule-based fallback was used';
