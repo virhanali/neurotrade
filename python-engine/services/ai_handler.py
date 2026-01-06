@@ -406,9 +406,9 @@ Analyze for SCALPER entry (Mean Reversion / Ping-Pong / Predictive Alpha). Provi
                         rr_ratio = tp_distance_pct / sl_distance_pct if sl_distance_pct > 0 else 0
                         
                         # Constraints
-                        MIN_SL_PCT = 0.2    # Minimum 0.2% SL (avoid noise)
-                        MAX_SL_PCT = 3.0    # Maximum 3.0% SL (avoid big losses)
-                        MIN_RR = 1.2        # Minimum 1.2:1 Risk:Reward
+                        MIN_SL_PCT = 0.1    # Minimum 0.1% SL (avoid noise)
+                        MAX_SL_PCT = 5.0    # Maximum 5.0% SL (avoid big losses)
+                        MIN_RR = 1.1        # Minimum 1.1:1 Risk:Reward
                         
                         rejection_reasons = []
                         
