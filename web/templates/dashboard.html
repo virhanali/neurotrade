@@ -1042,7 +1042,7 @@
                                                                     ticks: {
                                                                         color: textColor,
                                                                         callback: function (value) {
-                                                                            return value < 0 ? '-$' + Math.abs(value) : '$' + value;
+                                                                            return value < 0 ? '-$' + Math.abs(value).toFixed(2) : '$' + value.toFixed(2);
                                                                         },
                                                                         font: { family: "'Inter', sans-serif", size: 10 },
                                                                         padding: 8
