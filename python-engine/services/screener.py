@@ -270,19 +270,26 @@ class MarketScreener:
                                 result['order_imbalance'] = whale_data.get('order_imbalance', 0)
                                 result['large_trades_bias'] = whale_data.get('large_trades_bias', 'MIXED')
 
-                                # BOOST SCORE for strong whale signals
+                                # BOOST SCORE for strong whale signals (Tier 3: Progressive Scoring)
                                 whale_sig = result['whale_signal']
                                 whale_conf = result['whale_confidence']
+                                whale_boost = 0
 
-                                if whale_sig == 'PUMP_IMMINENT' and whale_conf > 60:
-                                    result['score'] += 50  # Major boost for pump detection
-                                    logging.info(f"[WHALE] {symbol}: PUMP signal detected! Score boosted +50")
-                                elif whale_sig == 'DUMP_IMMINENT' and whale_conf > 60:
-                                    result['score'] += 50  # Major boost for dump detection
-                                    logging.info(f"[WHALE] {symbol}: DUMP signal detected! Score boosted +50")
+                                # Tier 3: Progressive Whale Scoring (non-linear, confidence-based)
+                                if whale_sig in ['PUMP_IMMINENT', 'DUMP_IMMINENT']:
+                                    # Scale from +25 (60% conf) to +50 (95% conf)
+                                    # Formula: 25 + (confidence - 60) * 0.5
+                                    if whale_conf >= 60:
+                                        whale_boost = min(50, 25 + int((whale_conf - 60) * 0.5))
+                                        logging.info(f"[WHALE] {symbol}: {whale_sig} detected! Progressive boost +{whale_boost} (conf: {whale_conf}%)")
                                 elif whale_sig in ['SQUEEZE_LONGS', 'SQUEEZE_SHORTS']:
-                                    result['score'] += 25  # Moderate boost for squeeze
-                                    logging.info(f"[WHALE] {symbol}: {whale_sig} detected! Score boosted +25")
+                                    # Scale from +10 (50% conf) to +25 (80% conf)
+                                    # Formula: 10 + (confidence - 50) * 0.5
+                                    if whale_conf >= 50:
+                                        whale_boost = min(25, 10 + int((whale_conf - 50) * 0.3))
+                                        logging.info(f"[WHALE] {symbol}: {whale_sig} detected! Progressive boost +{whale_boost} (conf: {whale_conf}%)")
+
+                                result['score'] += whale_boost
                             except Exception as e:
                                 logging.warning(f"[WHALE] Detection failed for {symbol}: {e}")
                                 result['whale_signal'] = 'NEUTRAL'

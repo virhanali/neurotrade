@@ -508,14 +508,15 @@ Analyze for SCALPER entry (Mean Reversion / Ping-Pong / Predictive Alpha). Provi
         except Exception as e:
             raise Exception(f"OpenRouter vision analysis failed: {str(e)}")
 
-    def combine_analysis(self, logic_result: Dict, vision_result: Dict, metrics: Dict = None) -> Dict:
+    def combine_analysis(self, logic_result: Dict, vision_result: Dict, metrics: Dict = None, whale_signal: str = 'NEUTRAL', whale_confidence: int = 0) -> Dict:
         """
         Combine DeepSeek logic and Gemini vision results using HYBRID AGGRESSIVE VETO
-        Enhanced with ML-based win probability prediction (v4.0)
+        Enhanced with ML-based win probability prediction (v4.0) + WHALE DETECTION VETO (Tier 1)
 
         PHILOSOPHY: Balance Quality with Quantity for Small Cap Growth.
         Allow 'Neutral' charts if Logic is strong (Mathematical Reversal).
         Use ML to boost confidence or veto low-probability trades.
+        NEW: SQUEEZE VETO prevents trading into liquidation cascades.
         """
         logic_signal = logic_result.get('signal', 'WAIT')
         vision_verdict = vision_result.get('verdict', 'NEUTRAL')
@@ -548,7 +549,30 @@ Analyze for SCALPER entry (Mean Reversion / Ping-Pong / Predictive Alpha). Provi
             except Exception as e:
                 logging.warning(f"[ML] Prediction failed: {e}")
 
-        # === 1. HARD SAFETY CHECK ===
+        # === 1. WHALE SQUEEZE VETO (Tier 1 - Prevents Liquidation Cascades) ===
+        # Hard veto: Don't trade INTO liquidation squeezes
+        whale_veto_reason = None
+        if whale_signal == 'SQUEEZE_LONGS' and logic_signal == 'LONG':
+            whale_veto_reason = f"SQUEEZE_LONGS detected - Avoid LONG (cascade dump risk) [Conf: {whale_confidence}%]"
+        elif whale_signal == 'SQUEEZE_SHORTS' and logic_signal == 'SHORT':
+            whale_veto_reason = f"SQUEEZE_SHORTS detected - Avoid SHORT (short squeeze risk) [Conf: {whale_confidence}%]"
+
+        if whale_veto_reason:
+            logging.warning(f"[WHALE VETO] {whale_veto_reason}")
+            return {
+                "final_signal": "WAIT",
+                "combined_confidence": 0,
+                "agreement": False,
+                "setup_valid": setup_valid,
+                "logic_analysis": logic_result,
+                "vision_analysis": vision_result,
+                "recommendation": f"SKIP (Whale Veto: {whale_veto_reason})",
+                "ml_win_probability": ml_win_prob,
+                "ml_insights": ml_insights,
+                "whale_veto": True
+            }
+
+        # === 3. HARD SAFETY CHECK ===
         # If Vision explicitly says chart is garbage (Choppy/Unreadable), we SKIP.
         # This protects you from burning fees in sideways noise.
         if setup_valid != "VALID_SETUP":
@@ -564,7 +588,7 @@ Analyze for SCALPER entry (Mean Reversion / Ping-Pong / Predictive Alpha). Provi
                 "ml_insights": ml_insights
             }
 
-        # === 2. ML VETO CHECK ===
+        # === 4. ML VETO CHECK ===
         # ONLY apply ML Veto if ML is actually trained with real data
         # If ML is not trained, we use standard Logic + Vision system
         if ml_is_trained and ml_win_prob < 0.3 and logic_confidence < 85:
@@ -581,7 +605,7 @@ Analyze for SCALPER entry (Mean Reversion / Ping-Pong / Predictive Alpha). Provi
                 "ml_is_trained": ml_is_trained
             }
 
-        # === 3. HYBRID AGREEMENT LOGIC ===
+        # === 5. HYBRID AGREEMENT LOGIC ===
         agreement = False
 
         # Scenario A: PERFECT AGREEMENT (Best Quality)
@@ -608,7 +632,7 @@ Analyze for SCALPER entry (Mean Reversion / Ping-Pong / Predictive Alpha). Provi
         # Scenario D: CONFLICT (Safety)
         # DeepSeek says LONG, Vision says BEARISH -> HARD REJECT.
 
-        # === 4. CONFIDENCE SYNTHESIS (ML-Enhanced) ===
+        # === 6. CONFIDENCE SYNTHESIS (ML-Enhanced) ===
         combined_confidence = 0
         if agreement:
             if vision_verdict == "NEUTRAL":
