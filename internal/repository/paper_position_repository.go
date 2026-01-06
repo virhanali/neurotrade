@@ -58,7 +58,7 @@ func (r *PaperPositionRepositoryImpl) Save(ctx context.Context, position *domain
 func (r *PaperPositionRepositoryImpl) GetByUserID(ctx context.Context, userID uuid.UUID) ([]*domain.PaperPosition, error) {
 	query := `
 		SELECT id, user_id, signal_id, symbol, side, entry_price,
-		       sl_price, tp_price, size, exit_price, pnl, status,
+		       sl_price, tp_price, size, leverage, exit_price, pnl, status,
 		       created_at, closed_at
 		FROM paper_positions
 		WHERE user_id = $1
@@ -84,6 +84,7 @@ func (r *PaperPositionRepositoryImpl) GetByUserID(ctx context.Context, userID uu
 			&position.SLPrice,
 			&position.TPPrice,
 			&position.Size,
+			&position.Leverage,
 			&position.ExitPrice,
 			&position.PnL,
 			&position.Status,
@@ -107,7 +108,7 @@ func (r *PaperPositionRepositoryImpl) GetByUserID(ctx context.Context, userID uu
 func (r *PaperPositionRepositoryImpl) GetOpenPositions(ctx context.Context) ([]*domain.PaperPosition, error) {
 	query := `
 		SELECT id, user_id, signal_id, symbol, side, entry_price,
-		       sl_price, tp_price, size, exit_price, pnl, status,
+		       sl_price, tp_price, size, leverage, exit_price, pnl, status,
 		       created_at, closed_at
 		FROM paper_positions
 		WHERE status = 'OPEN'
@@ -133,6 +134,7 @@ func (r *PaperPositionRepositoryImpl) GetOpenPositions(ctx context.Context) ([]*
 			&position.SLPrice,
 			&position.TPPrice,
 			&position.Size,
+			&position.Leverage,
 			&position.ExitPrice,
 			&position.PnL,
 			&position.Status,
@@ -190,7 +192,7 @@ func (r *PaperPositionRepositoryImpl) Update(ctx context.Context, position *doma
 func (r *PaperPositionRepositoryImpl) GetByID(ctx context.Context, id uuid.UUID) (*domain.PaperPosition, error) {
 	query := `
 		SELECT id, user_id, signal_id, symbol, side, entry_price,
-		       sl_price, tp_price, size, exit_price, pnl, status,
+		       sl_price, tp_price, size, leverage, exit_price, pnl, status,
 		       created_at, closed_at
 		FROM paper_positions
 		WHERE id = $1
@@ -207,6 +209,7 @@ func (r *PaperPositionRepositoryImpl) GetByID(ctx context.Context, id uuid.UUID)
 		&position.SLPrice,
 		&position.TPPrice,
 		&position.Size,
+		&position.Leverage,
 		&position.ExitPrice,
 		&position.PnL,
 		&position.Status,
