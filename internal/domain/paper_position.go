@@ -106,15 +106,28 @@ func (p *PaperPosition) CalculateGrossPnL(currentPrice float64) float64 {
 }
 
 // CalculatePnLPercent calculates the PnL percentage based on current price
+// This returns the LEVERAGED PnL percentage (matches Binance calculation)
 func (p *PaperPosition) CalculatePnLPercent(currentPrice float64) float64 {
 	if p.EntryPrice == 0 {
 		return 0
 	}
+
+	var pricePct float64
 	if p.IsLong() {
-		return ((currentPrice - p.EntryPrice) / p.EntryPrice) * 100
+		pricePct = ((currentPrice - p.EntryPrice) / p.EntryPrice) * 100
+	} else {
+		// Short
+		pricePct = ((p.EntryPrice - currentPrice) / p.EntryPrice) * 100
 	}
-	// Short
-	return ((p.EntryPrice - currentPrice) / p.EntryPrice) * 100
+
+	// Apply leverage to get actual PnL on margin
+	// If price moves 0.5% and leverage is 20x, actual PnL is 10%
+	leverage := p.Leverage
+	if leverage < 1 {
+		leverage = 1 // Safety: minimum 1x
+	}
+
+	return pricePct * leverage
 }
 
 // CheckSLTP checks if SL or TP is hit and returns how it was closed

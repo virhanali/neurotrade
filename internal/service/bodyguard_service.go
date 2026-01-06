@@ -140,9 +140,18 @@ func (s *BodyguardService) closePosition(ctx context.Context, pos *domain.PaperP
 	// Calculate PnL percentage (matches Binance calculation)
 	pnlPercent := pos.CalculatePnLPercent(exitPrice)
 
-	// Update position
+	// Determine result based on ACTUAL PnL, not SL/TP trigger
+	// This fixes trailing stop exits being labeled as LOSS when PnL is actually positive
+	result := "WIN"
+	actualStatus := domain.StatusClosedWin
+	if pnl < 0 {
+		result = "LOSS"
+		actualStatus = domain.StatusClosedLoss
+	}
+
+	// Update position with CORRECT status based on actual PnL
 	now := time.Now()
-	pos.Status = status
+	pos.Status = actualStatus // Use actual PnL-based status, ignore status from CheckSLTP
 	pos.ExitPrice = &exitPrice
 	pos.PnL = &pnl
 	pos.PnLPercent = &pnlPercent
@@ -161,18 +170,6 @@ func (s *BodyguardService) closePosition(ctx context.Context, pos *domain.PaperP
 			log.Printf("[WARN] Failed to update user balance: %v", err)
 		}
 	}
-
-	// Determine result AND fix status based on ACTUAL PnL
-	// This fixes trailing stop exits being labeled as LOSS when PnL is positive
-	result := "WIN"
-	if pnl < 0 {
-		result = "LOSS"
-		pos.Status = domain.StatusClosedLoss
-	} else {
-		pos.Status = domain.StatusClosedWin
-	}
-
-	// pnlPercent already calculated above
 
 	// Fetch signal for metrics and update status
 	var sig *domain.Signal
