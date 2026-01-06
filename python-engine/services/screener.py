@@ -472,3 +472,250 @@ class MarketScreener:
 
         except Exception as e:
             raise Exception(f"Failed to get screener summary: {str(e)}")
+
+    def scan_pump_candidates(self) -> List[Dict]:
+        """
+        Low-Cap Pump Scanner - Detects early pump signals on lower volume coins.
+
+        Detection Criteria:
+        1. Volume Surge: Current volume > 10x average (extreme activity)
+        2. Price Spike: >5% move in last 3 candles (momentum)
+        3. Low-Cap Filter: $1M < 24h Volume < $50M (not too illiquid, not whale territory)
+        4. Breakout Pattern: Price breaking recent high with volume
+
+        Returns:
+            List of pump candidates with metrics
+        """
+        try:
+            from services.price_stream import price_stream
+
+            # Get ticker data
+            raw_tickers = {}
+            if price_stream.is_connected and len(price_stream.get_all_tickers()) > 100:
+                raw_tickers = price_stream.get_all_tickers()
+                source = "WEBSOCKET"
+            else:
+                if not self.exchange.markets:
+                    self.exchange.load_markets()
+                raw_tickers = self.exchange.fetch_tickers()
+                source = "REST"
+
+            # Pre-filter: Low-cap coins with some movement
+            low_cap_candidates = []
+            for symbol, ticker in raw_tickers.items():
+                # Parse symbol
+                if source == "WEBSOCKET":
+                    if not symbol.endswith("USDT"):
+                        continue
+                    base = symbol[:-4]
+                    clean_symbol = f"{base}/USDT"
+                else:
+                    if not symbol.endswith("/USDT:USDT"):
+                        continue
+                    clean_symbol = symbol.replace(":USDT", "")
+
+                quote_volume = ticker.get('quoteVolume', 0) or 0
+                pct_change = ticker.get('percentage', 0) or 0
+
+                # Low-cap filter: $1M - $50M volume AND showing some movement (>2%)
+                if 1_000_000 < quote_volume < 50_000_000 and abs(pct_change) > 2:
+                    low_cap_candidates.append({
+                        'symbol': clean_symbol,
+                        'volume_24h': quote_volume,
+                        'pct_change_24h': pct_change,
+                    })
+
+            # Sort by volatility (biggest movers first)
+            low_cap_candidates.sort(key=lambda x: abs(x['pct_change_24h']), reverse=True)
+            candidates = low_cap_candidates[:50]  # Check top 50 movers
+
+            if not candidates:
+                return []
+
+            logging.info(f"[PUMP SCAN] Checking {len(candidates)} low-cap candidates...")
+
+            def analyze_pump(cand: Dict) -> Optional[Dict]:
+                """Analyze single candidate for pump signals"""
+                symbol = cand['symbol']
+                try:
+                    # Fetch 5-minute candles (fast timeframe for pump detection)
+                    ohlcv = self.exchange.fetch_ohlcv(symbol, '5m', limit=30)
+                    if not ohlcv or len(ohlcv) < 20:
+                        return None
+
+                    df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+
+                    # Calculate metrics
+                    current_vol = df['volume'].iloc[-1]
+                    avg_vol = df['volume'].iloc[:-1].mean()  # Exclude current candle
+                    vol_ratio = current_vol / avg_vol if avg_vol > 0 else 0
+
+                    # Price change in last 3 candles
+                    price_3_ago = df['close'].iloc[-4]
+                    current_price = df['close'].iloc[-1]
+                    pct_change_3c = ((current_price - price_3_ago) / price_3_ago) * 100 if price_3_ago > 0 else 0
+
+                    # Recent high/low for breakout detection
+                    recent_high = df['high'].iloc[-10:-1].max()  # High of last 9 candles (excluding current)
+                    recent_low = df['low'].iloc[-10:-1].min()
+
+                    # Breakout detection
+                    is_breakout_up = current_price > recent_high
+                    is_breakout_down = current_price < recent_low
+
+                    # PUMP DETECTION CRITERIA
+                    pump_score = 0
+                    pump_signals = []
+
+                    # 1. Volume Surge (Critical)
+                    if vol_ratio >= 10:
+                        pump_score += 50
+                        pump_signals.append(f"VOL_SURGE_{vol_ratio:.1f}x")
+                    elif vol_ratio >= 5:
+                        pump_score += 30
+                        pump_signals.append(f"VOL_HIGH_{vol_ratio:.1f}x")
+                    elif vol_ratio >= 3:
+                        pump_score += 15
+                        pump_signals.append(f"VOL_ELEVATED_{vol_ratio:.1f}x")
+
+                    # 2. Price Momentum (Important)
+                    if abs(pct_change_3c) >= 10:
+                        pump_score += 40
+                        pump_signals.append(f"MOMENTUM_{pct_change_3c:+.1f}%")
+                    elif abs(pct_change_3c) >= 5:
+                        pump_score += 25
+                        pump_signals.append(f"MOVE_{pct_change_3c:+.1f}%")
+                    elif abs(pct_change_3c) >= 3:
+                        pump_score += 10
+                        pump_signals.append(f"SHIFT_{pct_change_3c:+.1f}%")
+
+                    # 3. Breakout Confirmation
+                    if is_breakout_up and pct_change_3c > 0:
+                        pump_score += 20
+                        pump_signals.append("BREAKOUT_UP")
+                    elif is_breakout_down and pct_change_3c < 0:
+                        pump_score += 20
+                        pump_signals.append("BREAKOUT_DOWN")
+
+                    # Minimum score threshold
+                    if pump_score < 50:
+                        return None
+
+                    # Determine pump type
+                    if pct_change_3c > 0:
+                        pump_type = "PUMP"
+                    else:
+                        pump_type = "DUMP"
+
+                    # === DUMP RISK SCORE (0-100) ===
+                    # Higher = More likely to dump (risky for LONG, good for SHORT)
+                    dump_risk = 0
+                    risk_signals = []
+
+                    # 1. Parabolic Rate Detection (>5% per candle = unsustainable)
+                    avg_change_per_candle = abs(pct_change_3c) / 3
+                    if avg_change_per_candle > 5:
+                        dump_risk += 30
+                        risk_signals.append("PARABOLIC")
+                    elif avg_change_per_candle > 3:
+                        dump_risk += 15
+                        risk_signals.append("STEEP")
+
+                    # 2. Single Candle Volume Concentration (manipulation signal)
+                    max_vol = df['volume'].iloc[-5:].max()
+                    avg_vol_5 = df['volume'].iloc[-5:].mean()
+                    vol_concentration = max_vol / avg_vol_5 if avg_vol_5 > 0 else 1
+                    if vol_concentration > 3:  # One candle has 3x the average of last 5
+                        dump_risk += 25
+                        risk_signals.append("VOL_SPIKE_SINGLE")
+                    elif vol_concentration > 2:
+                        dump_risk += 10
+                        risk_signals.append("VOL_CONCENTRATED")
+
+                    # 3. Position in Range (at high = dump risk, at low = bounce risk)
+                    range_high = df['high'].iloc[-30:].max()
+                    range_low = df['low'].iloc[-30:].min()
+                    range_size = range_high - range_low
+                    if range_size > 0:
+                        position_in_range = (current_price - range_low) / range_size
+                        if position_in_range > 0.9:  # At top of range
+                            dump_risk += 25
+                            risk_signals.append("AT_RANGE_TOP")
+                        elif position_in_range > 0.75:
+                            dump_risk += 10
+                            risk_signals.append("NEAR_TOP")
+                        elif position_in_range < 0.1:  # At bottom = might bounce
+                            dump_risk -= 15
+                            risk_signals.append("AT_RANGE_BOTTOM")
+
+                    # 4. 24h Trend Context (negative 24h = weak coin)
+                    if cand['pct_change_24h'] < -5:
+                        dump_risk += 15
+                        risk_signals.append("WEAK_24H")
+                    elif cand['pct_change_24h'] > 10:
+                        dump_risk += 10  # Extended = pullback likely
+                        risk_signals.append("EXTENDED_24H")
+
+                    # Clamp to 0-100
+                    dump_risk = max(0, min(100, dump_risk))
+
+                    # Trade recommendation based on type and risk
+                    if pump_type == "PUMP":
+                        if dump_risk >= 60:
+                            trade_action = "AVOID_LONG"  # Too risky, likely to dump
+                        elif dump_risk >= 40:
+                            trade_action = "CAUTIOUS_LONG"  # Entry with tight SL
+                        else:
+                            trade_action = "LONG"  # Good entry
+                    else:  # DUMP
+                        if dump_risk >= 50:
+                            trade_action = "SHORT"  # Good short opportunity
+                        elif dump_risk >= 30:
+                            trade_action = "CAUTIOUS_SHORT"
+                        else:
+                            trade_action = "AVOID_SHORT"  # Might bounce
+
+                    return {
+                        'symbol': symbol,
+                        'pump_type': pump_type,
+                        'pump_score': int(pump_score),
+                        'signals': pump_signals,
+                        'vol_ratio': float(round(vol_ratio, 1)),
+                        'pct_change_3c': float(round(pct_change_3c, 2)),
+                        'pct_change_24h': float(round(cand['pct_change_24h'], 2)),
+                        'volume_24h': float(round(cand['volume_24h'] / 1_000_000, 2)),
+                        'current_price': float(current_price),
+                        'breakout': 'UP' if is_breakout_up else ('DOWN' if is_breakout_down else 'NONE'),
+                        'dump_risk': int(dump_risk),
+                        'risk_signals': risk_signals,
+                        'trade_action': trade_action,
+                    }
+
+                except Exception as e:
+                    return None
+
+            # Parallel analysis (5 threads to be gentle on API)
+            pump_alerts = []
+            with ThreadPoolExecutor(max_workers=5) as executor:
+                futures = {executor.submit(analyze_pump, cand): cand for cand in candidates}
+                for future in as_completed(futures):
+                    result = future.result()
+                    if result:
+                        pump_alerts.append(result)
+
+            # Sort by pump score
+            pump_alerts.sort(key=lambda x: x['pump_score'], reverse=True)
+
+            # Log detected pumps with trade action
+            for alert in pump_alerts[:5]:  # Log top 5
+                logging.info(
+                    f"[PUMP ALERT] {alert['symbol']}: {alert['pump_type']} → {alert['trade_action']} "
+                    f"Score={alert['pump_score']} DumpRisk={alert['dump_risk']}% Vol={alert['vol_ratio']}x "
+                    f"Move={alert['pct_change_3c']:+.1f}% Risk={alert['risk_signals']}"
+                )
+
+            return pump_alerts
+
+        except Exception as e:
+            logging.error(f"[PUMP SCAN] Error: {e}")
+            return []
