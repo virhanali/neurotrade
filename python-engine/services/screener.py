@@ -607,6 +607,74 @@ class MarketScreener:
                     else:
                         pump_type = "DUMP"
 
+                    # === DUMP RISK SCORE (0-100) ===
+                    # Higher = More likely to dump (risky for LONG, good for SHORT)
+                    dump_risk = 0
+                    risk_signals = []
+
+                    # 1. Parabolic Rate Detection (>5% per candle = unsustainable)
+                    avg_change_per_candle = abs(pct_change_3c) / 3
+                    if avg_change_per_candle > 5:
+                        dump_risk += 30
+                        risk_signals.append("PARABOLIC")
+                    elif avg_change_per_candle > 3:
+                        dump_risk += 15
+                        risk_signals.append("STEEP")
+
+                    # 2. Single Candle Volume Concentration (manipulation signal)
+                    max_vol = df['volume'].iloc[-5:].max()
+                    avg_vol_5 = df['volume'].iloc[-5:].mean()
+                    vol_concentration = max_vol / avg_vol_5 if avg_vol_5 > 0 else 1
+                    if vol_concentration > 3:  # One candle has 3x the average of last 5
+                        dump_risk += 25
+                        risk_signals.append("VOL_SPIKE_SINGLE")
+                    elif vol_concentration > 2:
+                        dump_risk += 10
+                        risk_signals.append("VOL_CONCENTRATED")
+
+                    # 3. Position in Range (at high = dump risk, at low = bounce risk)
+                    range_high = df['high'].iloc[-30:].max()
+                    range_low = df['low'].iloc[-30:].min()
+                    range_size = range_high - range_low
+                    if range_size > 0:
+                        position_in_range = (current_price - range_low) / range_size
+                        if position_in_range > 0.9:  # At top of range
+                            dump_risk += 25
+                            risk_signals.append("AT_RANGE_TOP")
+                        elif position_in_range > 0.75:
+                            dump_risk += 10
+                            risk_signals.append("NEAR_TOP")
+                        elif position_in_range < 0.1:  # At bottom = might bounce
+                            dump_risk -= 15
+                            risk_signals.append("AT_RANGE_BOTTOM")
+
+                    # 4. 24h Trend Context (negative 24h = weak coin)
+                    if cand['pct_change_24h'] < -5:
+                        dump_risk += 15
+                        risk_signals.append("WEAK_24H")
+                    elif cand['pct_change_24h'] > 10:
+                        dump_risk += 10  # Extended = pullback likely
+                        risk_signals.append("EXTENDED_24H")
+
+                    # Clamp to 0-100
+                    dump_risk = max(0, min(100, dump_risk))
+
+                    # Trade recommendation based on type and risk
+                    if pump_type == "PUMP":
+                        if dump_risk >= 60:
+                            trade_action = "AVOID_LONG"  # Too risky, likely to dump
+                        elif dump_risk >= 40:
+                            trade_action = "CAUTIOUS_LONG"  # Entry with tight SL
+                        else:
+                            trade_action = "LONG"  # Good entry
+                    else:  # DUMP
+                        if dump_risk >= 50:
+                            trade_action = "SHORT"  # Good short opportunity
+                        elif dump_risk >= 30:
+                            trade_action = "CAUTIOUS_SHORT"
+                        else:
+                            trade_action = "AVOID_SHORT"  # Might bounce
+
                     return {
                         'symbol': symbol,
                         'pump_type': pump_type,
@@ -615,9 +683,12 @@ class MarketScreener:
                         'vol_ratio': float(round(vol_ratio, 1)),
                         'pct_change_3c': float(round(pct_change_3c, 2)),
                         'pct_change_24h': float(round(cand['pct_change_24h'], 2)),
-                        'volume_24h': float(round(cand['volume_24h'] / 1_000_000, 2)),  # In millions
+                        'volume_24h': float(round(cand['volume_24h'] / 1_000_000, 2)),
                         'current_price': float(current_price),
                         'breakout': 'UP' if is_breakout_up else ('DOWN' if is_breakout_down else 'NONE'),
+                        'dump_risk': int(dump_risk),
+                        'risk_signals': risk_signals,
+                        'trade_action': trade_action,
                     }
 
                 except Exception as e:
@@ -635,12 +706,12 @@ class MarketScreener:
             # Sort by pump score
             pump_alerts.sort(key=lambda x: x['pump_score'], reverse=True)
 
-            # Log detected pumps
+            # Log detected pumps with trade action
             for alert in pump_alerts[:5]:  # Log top 5
                 logging.info(
-                    f"[PUMP ALERT] {alert['symbol']}: {alert['pump_type']} "
-                    f"Score={alert['pump_score']} Vol={alert['vol_ratio']}x "
-                    f"Move={alert['pct_change_3c']:+.1f}% Signals={alert['signals']}"
+                    f"[PUMP ALERT] {alert['symbol']}: {alert['pump_type']} → {alert['trade_action']} "
+                    f"Score={alert['pump_score']} DumpRisk={alert['dump_risk']}% Vol={alert['vol_ratio']}x "
+                    f"Move={alert['pct_change_3c']:+.1f}% Risk={alert['risk_signals']}"
                 )
 
             return pump_alerts
