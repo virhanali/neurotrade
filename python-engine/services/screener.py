@@ -1,15 +1,19 @@
 """
-Market Screener Service (v4.2)
+Market Screener Service (v4.5)
 Scans Binance Futures market for high-volume, volatile opportunities
 Enhanced with Whale Detection (Liquidation + Order Book Analysis)
+NEW: OHLCV Caching + Circuit Breaker for reliability
 """
 
 import ccxt
 import logging
 import pandas as pd
 import ta
+import time
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Optional
+from functools import lru_cache
 from config import settings
 
 # Import Whale Detector
@@ -19,6 +23,105 @@ try:
 except ImportError:
     HAS_WHALE_DETECTOR = False
     logging.warning("[SCREENER] Whale detector not available")
+
+
+class CircuitBreaker:
+    """
+    Circuit Breaker Pattern - Prevents cascading failures when API is down.
+    States: CLOSED (normal) -> OPEN (blocked) -> HALF-OPEN (testing)
+    """
+    def __init__(self, failure_threshold: int = 5, recovery_time: int = 60):
+        self.failure_threshold = failure_threshold
+        self.recovery_time = recovery_time
+        self.failures = 0
+        self.last_failure_time = 0
+        self.state = "CLOSED"
+        self._lock = threading.Lock()
+    
+    def call(self, func, *args, **kwargs):
+        """Execute function with circuit breaker protection"""
+        with self._lock:
+            # Check if circuit is OPEN
+            if self.state == "OPEN":
+                if time.time() - self.last_failure_time > self.recovery_time:
+                    self.state = "HALF-OPEN"
+                    logging.info("[CIRCUIT] State changed to HALF-OPEN (testing recovery)")
+                else:
+                    remaining = int(self.recovery_time - (time.time() - self.last_failure_time))
+                    raise Exception(f"Circuit OPEN - API disabled for {remaining}s")
+        
+        try:
+            result = func(*args, **kwargs)
+            with self._lock:
+                self.failures = 0
+                if self.state == "HALF-OPEN":
+                    self.state = "CLOSED"
+                    logging.info("[CIRCUIT] State changed to CLOSED (recovered)")
+            return result
+        except Exception as e:
+            with self._lock:
+                self.failures += 1
+                if self.failures >= self.failure_threshold:
+                    self.state = "OPEN"
+                    self.last_failure_time = time.time()
+                    logging.error(f"[CIRCUIT] State changed to OPEN after {self.failures} failures")
+            raise e
+    
+    def reset(self):
+        """Manually reset circuit breaker"""
+        with self._lock:
+            self.failures = 0
+            self.state = "CLOSED"
+            logging.info("[CIRCUIT] Manually reset to CLOSED")
+
+
+class OHLCVCache:
+    """
+    Simple TTL cache for OHLCV data to reduce API calls.
+    15m data cached for 60s, 4h data cached for 300s.
+    """
+    def __init__(self):
+        self._cache = {}
+        self._lock = threading.Lock()
+        self._ttl = {
+            '1m': 30,
+            '5m': 60,
+            '15m': 60,
+            '1h': 300,
+            '4h': 300,
+        }
+    
+    def get(self, symbol: str, timeframe: str) -> Optional[List]:
+        """Get cached OHLCV data if not expired"""
+        key = f"{symbol}_{timeframe}"
+        with self._lock:
+            if key in self._cache:
+                data, timestamp = self._cache[key]
+                ttl = self._ttl.get(timeframe, 60)
+                if time.time() - timestamp < ttl:
+                    return data
+                else:
+                    del self._cache[key]
+        return None
+    
+    def set(self, symbol: str, timeframe: str, data: List):
+        """Cache OHLCV data with timestamp"""
+        key = f"{symbol}_{timeframe}"
+        with self._lock:
+            self._cache[key] = (data, time.time())
+    
+    def stats(self) -> Dict:
+        """Return cache statistics"""
+        with self._lock:
+            return {
+                "size": len(self._cache),
+                "keys": list(self._cache.keys())[:10]  # First 10 keys
+            }
+    
+    def clear(self):
+        """Clear all cached data"""
+        with self._lock:
+            self._cache.clear()
 
 
 class MarketScreener:
@@ -45,6 +148,33 @@ class MarketScreener:
             'options': {'defaultType': 'future'},
             'session': session  # Use custom session with larger pool
         })
+        
+        # NEW: Initialize cache and circuit breaker
+        self.ohlcv_cache = OHLCVCache()
+        self.circuit_breaker = CircuitBreaker(failure_threshold=5, recovery_time=60)
+    
+    def fetch_ohlcv_cached(self, symbol: str, timeframe: str, limit: int) -> Optional[List]:
+        """
+        Fetch OHLCV data with caching and circuit breaker protection.
+        Returns None if circuit is open or fetch fails.
+        """
+        # 1. Check cache first
+        cached = self.ohlcv_cache.get(symbol, timeframe)
+        if cached is not None:
+            return cached
+        
+        # 2. Fetch from API with circuit breaker
+        try:
+            data = self.circuit_breaker.call(
+                self.exchange.fetch_ohlcv,
+                symbol, timeframe, None, limit
+            )
+            if data:
+                self.ohlcv_cache.set(symbol, timeframe, data)
+            return data
+        except Exception as e:
+            logging.warning(f"[CACHE] Failed to fetch {symbol} {timeframe}: {e}")
+            return None
 
     def check_5min_confirmation(self, symbol: str, whale_signal: str) -> bool:
         """
@@ -179,14 +309,14 @@ class MarketScreener:
                 """Analyze a single candidate - runs in thread"""
                 symbol = cand['symbol']
                 try:
-                    # 1. Fetch 15m Data (Tactical)
-                    ohlcv_15m = self.exchange.fetch_ohlcv(symbol, timeframe='15m', limit=50)
+                    # 1. Fetch 15m Data (Tactical) - WITH CACHE
+                    ohlcv_15m = self.fetch_ohlcv_cached(symbol, '15m', 50)
                     if not ohlcv_15m or len(ohlcv_15m) < 50: 
                         return None
                     df_15m = pd.DataFrame(ohlcv_15m, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
                     
-                    # 2. Fetch 4h Data (Strategic Trend)
-                    ohlcv_4h = self.exchange.fetch_ohlcv(symbol, timeframe='4h', limit=200)
+                    # 2. Fetch 4h Data (Strategic Trend) - WITH CACHE
+                    ohlcv_4h = self.fetch_ohlcv_cached(symbol, '4h', 200)
                     if not ohlcv_4h or len(ohlcv_4h) < 200: 
                         return None
                     df_4h = pd.DataFrame(ohlcv_4h, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
@@ -374,6 +504,39 @@ class MarketScreener:
                         result['order_imbalance'] = float(result.get('order_imbalance', 0))
                         if '5min_confirmed' in result:
                             result['5min_confirmed'] = bool(result['5min_confirmed'])
+
+                        # NEW v4.5: Compute suggested_direction (pre-hint for AI)
+                        # Priority: Whale Signal > RSI + Trend
+                        suggested_direction = "NEUTRAL"
+                        whale_sig_final = result.get('whale_signal', 'NEUTRAL')
+                        
+                        # 1. Whale signal has highest priority
+                        if whale_sig_final == 'PUMP_IMMINENT':
+                            suggested_direction = "LONG"
+                        elif whale_sig_final == 'DUMP_IMMINENT':
+                            suggested_direction = "SHORT"
+                        elif whale_sig_final == 'SQUEEZE_LONGS':
+                            suggested_direction = "SHORT"  # Avoid longs, lean short
+                        elif whale_sig_final == 'SQUEEZE_SHORTS':
+                            suggested_direction = "LONG"   # Avoid shorts, lean long
+                        else:
+                            # 2. Fallback to RSI + Trend confluence
+                            rsi = result.get('rsi', 50)
+                            trend = result.get('trend', 'NEUTRAL')
+                            
+                            if rsi < 35 and trend == "BULL":
+                                suggested_direction = "LONG"  # Oversold in uptrend
+                            elif rsi > 65 and trend == "BEAR":
+                                suggested_direction = "SHORT"  # Overbought in downtrend
+                            elif rsi < 30:
+                                suggested_direction = "LONG"  # Extreme oversold
+                            elif rsi > 70:
+                                suggested_direction = "SHORT"  # Extreme overbought
+                        
+                        result['suggested_direction'] = suggested_direction
+                        
+                        if suggested_direction != "NEUTRAL":
+                            logging.info(f"[DIRECTION] {symbol}: {suggested_direction} (whale={whale_sig_final}, rsi={result.get('rsi', 0):.1f}, trend={result.get('trend')})")
 
                         return result
 
