@@ -328,19 +328,24 @@ func (pb *PythonBridge) ExecuteClose(ctx context.Context, symbol, side string, q
 // GetRealBalance fetches real wallet balance from Python Engine
 func (pb *PythonBridge) GetRealBalance(ctx context.Context) (float64, error) {
 	url := fmt.Sprintf("%s/execute/balance", pb.baseURL)
+	log.Printf("[PythonBridge] Fetching balance from: %s", url)
+
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
+		log.Printf("[PythonBridge] Failed to create request: %v", err)
 		return 0, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	resp, err := pb.httpClient.Do(req)
 	if err != nil {
+		log.Printf("[PythonBridge] Failed to fetch balance: %v", err)
 		return 0, fmt.Errorf("failed to fetch balance: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
+		log.Printf("[PythonBridge] Balance fetch failed: status=%d, body=%s", resp.StatusCode, string(body))
 		return 0, fmt.Errorf("failed to fetch balance: status=%d, body=%s", resp.StatusCode, string(body))
 	}
 
@@ -350,8 +355,10 @@ func (pb *PythonBridge) GetRealBalance(ctx context.Context) (float64, error) {
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		log.Printf("[PythonBridge] Failed to decode balance response: %v", err)
 		return 0, fmt.Errorf("failed to decode balance response: %w", err)
 	}
 
+	log.Printf("[PythonBridge] Balance fetched: total=%.2f, free=%.2f", result.Total, result.Free)
 	return result.Free, nil
 }

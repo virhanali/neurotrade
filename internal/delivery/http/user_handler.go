@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -65,10 +66,14 @@ func (h *UserHandler) GetMe(c echo.Context) error {
 
 			// Async update DB to not block UI
 			go func(uid uuid.UUID, bal float64) {
-				// We need specific UpdateRealBalance repo method, but for now we might skip DB persistence
-				// or reuse UpdateBalance but that updates PaperBalance specifically in current impl.
-				// TODO: Add UpdateRealBalance to repo. For now, we return fresh data to UI at least.
+				dbCtx, dbCancel := context.WithTimeout(context.Background(), 2*time.Second)
+				defer dbCancel()
+				if err := h.userRepo.UpdateRealBalance(dbCtx, uid, bal); err != nil {
+					fmt.Printf("[ERROR] Failed to cache real balance: %v\n", err)
+				}
 			}(user.ID, realBal)
+		} else {
+			fmt.Printf("[WARN] Failed to fetch real balance: %v\n", err)
 		}
 	}
 

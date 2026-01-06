@@ -57,4 +57,7 @@ type UserRepository interface {
 
 	// UpdateSettings updates user trading settings
 	UpdateSettings(ctx context.Context, user *User) error
+
+	// UpdateRealBalance updates cached real wallet balance from Binance
+	UpdateRealBalance(ctx context.Context, userID uuid.UUID, balance float64) error
 }

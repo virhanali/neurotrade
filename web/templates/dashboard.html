@@ -556,7 +556,7 @@
                 </a>
 
                 <!-- Settings (New Location - Tab) -->
-                <a href="#settings" onclick="switchTab('settings')" id="nav-settings"
+                <a href="#" onclick="switchTab('settings', event)" id="nav-settings"
                     class="flex items-center px-3 py-2.5 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100 font-medium rounded-lg transition-colors group whitespace-nowrap">
                     <i class="ri-settings-3-line mr-3 text-lg group-hover:text-emerald-500 flex-shrink-0"></i>
                     <span>User Settings</span>
@@ -1591,8 +1591,8 @@
             <!-- TAB: USER SETTINGS -->
             <div id="tab-settings" class="hidden animate-fade-in">
                 <div class="max-w-3xl mx-auto">
-                    <form hx-post="/api/settings" hx-trigger="submit" hx-swap="none" class="space-y-6"
-                        _="on htmx:afterRequest if event.detail.successful then showToast('Settings saved successfully', 'success') end">
+                    <form id="settings-form" hx-post="/api/settings" hx-trigger="submit" hx-swap="none" class="space-y-6"
+                        onhtmx:afterRequest="if(event.detail.successful) showToast('Settings saved successfully', 'success'); else showToast('Failed to save settings', 'error');">
 
                         <!-- Trading Mode -->
                         <div
@@ -1612,7 +1612,7 @@
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <!-- Paper Mode Option -->
                                 <label class="relative flex items-start p-4 border-2 rounded-xl cursor-pointer transition-all duration-200 group
-                                    {{if eq .User.Mode " PAPER"}}border-emerald-500 bg-emerald-50/30
+                                    {{if eq .User.Mode "PAPER"}}border-emerald-500 bg-emerald-50/30
                                     dark:bg-emerald-900/10{{else}}border-slate-200 dark:border-slate-700
                                     hover:border-emerald-200 dark:hover:border-emerald-800{{end}}">
                                     <input type="radio" name="mode" value="PAPER" class="peer sr-only" {{if eq
@@ -1620,10 +1620,10 @@
 
                                     <!-- Visual Indicators (Flat Siblings) -->
                                     <div
-                                        class="mt-1 mr-4 flex-shrink-0 w-5 h-5 rounded-full border-2 border-slate-300 dark:border-slate-600 peer-checked:border-emerald-500 peer-checked:bg-emerald-500 flex items-center justify-center transition-colors">
-                                    </div>
-                                    <div
-                                        class="absolute top-[22px] left-[22px] w-2.5 h-2.5 rounded-full bg-white opacity-0 peer-checked:opacity-100 transition-opacity pointer-events-none">
+                                        class="mt-1 mr-4 flex-shrink-0 w-5 h-5 rounded-full border-2 border-slate-300 dark:border-slate-600 peer-checked:border-emerald-500 peer-checked:bg-emerald-500 flex items-center justify-center transition-colors relative">
+                                        <div
+                                            class="w-2.5 h-2.5 rounded-full bg-white opacity-0 peer-checked:opacity-100 transition-opacity pointer-events-none">
+                                        </div>
                                     </div>
 
                                     <div class="flex-1">
@@ -1648,7 +1648,7 @@
 
                                 <!-- Real Mode Option -->
                                 <label class="relative flex items-start p-4 border-2 rounded-xl cursor-pointer transition-all duration-200 group
-                                    {{if eq .User.Mode " REAL"}}border-rose-500 bg-rose-50/30
+                                    {{if eq .User.Mode "REAL"}}border-rose-500 bg-rose-50/30
                                     dark:bg-rose-900/10{{else}}border-slate-200 dark:border-slate-700
                                     hover:border-rose-200 dark:hover:border-rose-800{{end}}">
                                     <input type="radio" name="mode" value="REAL" class="peer sr-only" {{if eq
@@ -1656,10 +1656,10 @@
 
                                     <!-- Visual Indicators -->
                                     <div
-                                        class="mt-1 mr-4 flex-shrink-0 w-5 h-5 rounded-full border-2 border-slate-300 dark:border-slate-600 peer-checked:border-rose-500 peer-checked:bg-rose-500 flex items-center justify-center transition-colors">
-                                    </div>
-                                    <div
-                                        class="absolute top-[22px] left-[22px] w-2.5 h-2.5 rounded-full bg-white opacity-0 peer-checked:opacity-100 transition-opacity pointer-events-none">
+                                        class="mt-1 mr-4 flex-shrink-0 w-5 h-5 rounded-full border-2 border-slate-300 dark:border-slate-600 peer-checked:border-rose-500 peer-checked:bg-rose-500 flex items-center justify-center transition-colors relative">
+                                        <div
+                                            class="w-2.5 h-2.5 rounded-full bg-white opacity-0 peer-checked:opacity-100 transition-opacity pointer-events-none">
+                                        </div>
                                     </div>
 
                                     <div class="flex-1">

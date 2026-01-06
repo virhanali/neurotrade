@@ -215,3 +215,19 @@ func (r *UserRepositoryImpl) UpdateSettings(ctx context.Context, user *domain.Us
 
 	return nil
 }
+
+// UpdateRealBalance updates cached real wallet balance from Binance
+func (r *UserRepositoryImpl) UpdateRealBalance(ctx context.Context, userID uuid.UUID, balance float64) error {
+	query := `
+		UPDATE users
+		SET real_balance_cache = $1, updated_at = NOW()
+		WHERE id = $2
+	`
+
+	_, err := r.db.Exec(ctx, query, balance, userID)
+	if err != nil {
+		return fmt.Errorf("failed to update real balance cache: %w", err)
+	}
+
+	return nil
+}
