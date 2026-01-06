@@ -222,6 +222,31 @@ async def get_screener_summary():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/screener/pumps")
+async def get_pump_candidates():
+    """
+    Low-Cap Pump Scanner - Detects early pump/dump signals.
+
+    Scans for:
+    - Volume surge >10x average
+    - Price momentum >5% in 3 candles
+    - Low-cap coins ($1M-$50M volume)
+    - Breakout patterns
+
+    Returns:
+        List of pump candidates with scores and signals
+    """
+    try:
+        pumps = await asyncio.to_thread(screener.scan_pump_candidates)
+        return {
+            "timestamp": datetime.utcnow().isoformat(),
+            "pump_count": len(pumps),
+            "alerts": pumps[:10],  # Return top 10
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/prices")
 async def get_prices(symbols: Optional[str] = None):
     """
