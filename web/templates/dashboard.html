@@ -1619,7 +1619,7 @@
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <!-- Paper Mode Option -->
                                 <label class="relative flex items-start p-4 border-2 rounded-xl cursor-pointer transition-all duration-200 group
-                                    {{if eq .User.Mode " PAPER"}}border-emerald-500 bg-emerald-50/30
+                                    {{if eq .User.Mode "PAPER"}}border-emerald-500 bg-emerald-50/30
                                     dark:bg-emerald-900/10{{else}}border-slate-200 dark:border-slate-700
                                     hover:border-emerald-200 dark:hover:border-emerald-800{{end}}">
                                     <input type="radio" name="mode" value="PAPER" class="peer sr-only" {{if eq
@@ -1655,7 +1655,7 @@
 
                                 <!-- Real Mode Option -->
                                 <label class="relative flex items-start p-4 border-2 rounded-xl cursor-pointer transition-all duration-200 group
-                                    {{if eq .User.Mode " REAL"}}border-rose-500 bg-rose-50/30
+                                    {{if eq .User.Mode "REAL"}}border-rose-500 bg-rose-50/30
                                     dark:bg-rose-900/10{{else}}border-slate-200 dark:border-slate-700
                                     hover:border-rose-200 dark:hover:border-rose-800{{end}}">
                                     <input type="radio" name="mode" value="REAL" class="peer sr-only" {{if eq
@@ -1717,7 +1717,7 @@
                                             <span class="text-slate-500">$</span>
                                         </div>
                                         <input type="number" name="fixed_order_size" step="0.01" min="1" max="1000"
-                                            required value="{{printf " %.2f" .User.FixedOrderSize}}"
+                                            required value="{{printf "%.2f" .User.FixedOrderSize}}"
                                             id="fixed-margin-input"
                                             class="w-full pl-7 pr-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-slate-900 dark:text-white">
                                     </div>
