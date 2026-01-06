@@ -77,11 +77,11 @@ class CircuitBreaker:
 
 class OHLCVCache:
     """
-    Simple TTL cache for OHLCV data to reduce API calls.
+    Hybrid cache for OHLCV data - Redis primary, in-memory fallback.
     15m data cached for 60s, 4h data cached for 300s.
     """
     def __init__(self):
-        self._cache = {}
+        self._memory_cache = {}
         self._lock = threading.Lock()
         self._ttl = {
             '1m': 30,
@@ -90,38 +90,82 @@ class OHLCVCache:
             '1h': 300,
             '4h': 300,
         }
+        self._redis = None
+        self._use_redis = False
+        
+        # Try to init Redis
+        try:
+            from services.redis_cache import get_cache
+            self._redis = get_cache()
+            self._use_redis = self._redis._use_redis
+            if self._use_redis:
+                logging.info("[CACHE] OHLCVCache using Redis backend")
+        except Exception as e:
+            logging.info(f"[CACHE] OHLCVCache using memory-only ({e})")
     
     def get(self, symbol: str, timeframe: str) -> Optional[List]:
         """Get cached OHLCV data if not expired"""
-        key = f"{symbol}_{timeframe}"
+        key = f"ohlcv:{symbol}:{timeframe}"
+        
+        # Try Redis first
+        if self._use_redis and self._redis:
+            try:
+                data = self._redis.get(key)
+                if data:
+                    return data
+            except Exception:
+                pass
+        
+        # Fallback to memory
         with self._lock:
-            if key in self._cache:
-                data, timestamp = self._cache[key]
+            if key in self._memory_cache:
+                data, timestamp = self._memory_cache[key]
                 ttl = self._ttl.get(timeframe, 60)
                 if time.time() - timestamp < ttl:
                     return data
                 else:
-                    del self._cache[key]
+                    del self._memory_cache[key]
         return None
     
     def set(self, symbol: str, timeframe: str, data: List):
-        """Cache OHLCV data with timestamp"""
-        key = f"{symbol}_{timeframe}"
+        """Cache OHLCV data"""
+        key = f"ohlcv:{symbol}:{timeframe}"
+        ttl = self._ttl.get(timeframe, 60)
+        
+        # Try Redis first
+        if self._use_redis and self._redis:
+            try:
+                self._redis.set(key, data, ttl)
+            except Exception:
+                pass
+        
+        # Also store in memory (fast local access)
         with self._lock:
-            self._cache[key] = (data, time.time())
+            self._memory_cache[key] = (data, time.time())
     
     def stats(self) -> Dict:
         """Return cache statistics"""
-        with self._lock:
-            return {
-                "size": len(self._cache),
-                "keys": list(self._cache.keys())[:10]  # First 10 keys
-            }
+        stats = {
+            "backend": "redis" if self._use_redis else "memory",
+            "memory_keys": len(self._memory_cache)
+        }
+        if self._use_redis and self._redis:
+            try:
+                redis_stats = self._redis.stats()
+                stats.update(redis_stats)
+            except Exception:
+                pass
+        return stats
     
     def clear(self):
         """Clear all cached data"""
+        if self._use_redis and self._redis:
+            try:
+                self._redis.clear_pattern("ohlcv:*")
+            except Exception:
+                pass
         with self._lock:
-            self._cache.clear()
+            self._memory_cache.clear()
 
 
 class MarketScreener:
