@@ -311,6 +311,48 @@ async def analyze_market(request: MarketAnalysisRequest):
         else:
             top_candidates = screener.get_top_opportunities() # RETURNS List[Dict]
 
+        # Step 1.5: Pump Scanner Integration - Add low-cap pump candidates
+        try:
+            pump_alerts = screener.scan_pump_candidates()
+
+            # Filter for actionable signals only
+            actionable_actions = {'LONG', 'SHORT', 'CAUTIOUS_LONG', 'CAUTIOUS_SHORT'}
+            actionable_pumps = [p for p in pump_alerts if p.get('trade_action') in actionable_actions]
+
+            if actionable_pumps:
+                # Get existing symbols to avoid duplicates
+                existing_symbols = {c['symbol'] for c in top_candidates}
+
+                # Convert pump alerts to candidate format
+                for pump in actionable_pumps:
+                    if pump['symbol'] not in existing_symbols:
+                        # Map pump_type + trade_action to whale_signal for veto compatibility
+                        if pump['trade_action'] in ['LONG', 'CAUTIOUS_LONG']:
+                            whale_signal = 'PUMP_IMMINENT'
+                        elif pump['trade_action'] in ['SHORT', 'CAUTIOUS_SHORT']:
+                            whale_signal = 'DUMP_IMMINENT'
+                        else:
+                            whale_signal = 'NEUTRAL'
+
+                        pump_candidate = {
+                            'symbol': pump['symbol'],
+                            'vol_ratio': pump.get('vol_ratio', 5.0),
+                            'is_squeeze': False,
+                            'score': pump.get('pump_score', 50),
+                            'whale_signal': whale_signal,
+                            'whale_confidence': 100 - pump.get('dump_risk', 50),  # Invert dump_risk
+                            'pump_source': True,  # Flag for tracking
+                            'pump_type': pump.get('pump_type'),
+                            'trade_action': pump.get('trade_action'),
+                            'dump_risk': pump.get('dump_risk', 50),
+                        }
+                        top_candidates.append(pump_candidate)
+                        existing_symbols.add(pump['symbol'])
+
+                logging.info(f"[PUMP] Injected {len(actionable_pumps)} pump candidates into analysis queue")
+        except Exception as e:
+            logging.warning(f"[PUMP] Scanner skipped: {e}")
+
         if not top_candidates:
             # No opportunities found - this is normal, not an error
             logging.info("[EMPTY] No trading opportunities passed filters (market too quiet)")
