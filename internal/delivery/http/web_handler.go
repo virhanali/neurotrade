@@ -252,10 +252,10 @@ func (h *WebHandler) HandleDashboard(c echo.Context) error {
 
 	allPositions, err := h.positionRepo.GetByUserID(ctx, userID)
 	if err != nil {
-		allPositions = []*domain.PaperPosition{}
+		allPositions = []*domain.Position{}
 	}
 
-	var pendingPositions []*domain.PaperPosition
+	var pendingPositions []*domain.Position
 	for _, pos := range allPositions {
 		if pos.Status == domain.StatusPositionPendingApproval {
 			pendingPositions = append(pendingPositions, pos)
@@ -335,7 +335,7 @@ func (h *WebHandler) HandlePositionsHTML(c echo.Context) error {
 		isAdmin = user.Role == domain.RoleAdmin
 	}
 
-	var allPositions []*domain.PaperPosition
+	var allPositions []*domain.Position
 	var err error
 
 	if isAdmin {
@@ -357,7 +357,7 @@ func (h *WebHandler) HandlePositionsHTML(c echo.Context) error {
 	}
 
 	// Filter for open positions only
-	var positions []*domain.PaperPosition
+	var positions []*domain.Position
 	for _, pos := range allPositions {
 		if pos.Status == domain.StatusOpen {
 			positions = append(positions, pos)
@@ -701,13 +701,13 @@ func (h *WebHandler) HandlePositionsCount(c echo.Context) error {
 	var err error
 
 	if isAdmin {
-		var positions []*domain.PaperPosition
+		var positions []*domain.Position
 		positions, err = h.positionRepo.GetOpenPositions(ctx)
 		count = len(positions)
 	} else {
 		// For regular users, we need to filter open positions from their list
 		// Optimization: Add GetOpenPositionsByUserID to repo later
-		var positions []*domain.PaperPosition
+		var positions []*domain.Position
 		positions, err = h.positionRepo.GetByUserID(ctx, userID)
 		if err == nil {
 			for _, pos := range positions {
