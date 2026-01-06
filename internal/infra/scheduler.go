@@ -43,33 +43,36 @@ func (s *Scheduler) Start() error {
 		hour := now.Hour()
 		second := now.Second()
 
-		// === SESSION CLASSIFICATION ===
+		// === SESSION CLASSIFICATION (UTC) ===
 		// Overlap (London+NY): 13:00-16:00 UTC → AGGRESSIVE (every 10s)
 		// Golden Hours: 00:00-04:00, 07:00-11:00, 13:00-18:00 UTC → NORMAL (every 15s)
-		// Dead Hours: Everything else → SKIP
+		// Dead Hours: Everything else → SLOW (every 60s) - still catch pumps!
 
 		isOverlapHour := hour >= 13 && hour < 16
 		isGoldenHour := (hour >= 0 && hour < 4) || (hour >= 7 && hour < 11) || (hour >= 13 && hour < 18)
 
-		// SKIP: Not golden hour
-		if !isGoldenHour {
-			return
-		}
-
 		// DYNAMIC FREQUENCY:
-		// - Overlap hours: run EVERY 10 seconds (this cron fires every 10s)
-		// - Other golden hours: run only at :00, :15, :30, :45 (every 15s)
-		if !isOverlapHour {
-			// Only run at 0, 15, 30, 45 seconds (every 15s)
+		if isOverlapHour {
+			// Overlap hours: run EVERY 10 seconds
+			// (this cron fires every 10s, so just run)
+		} else if isGoldenHour {
+			// Golden hours: run at :00, :15, :30, :45 (every 15s)
 			if second != 0 && second != 15 && second != 30 && second != 45 {
+				return
+			}
+		} else {
+			// Dead hours: run only at :00 of each minute (every 60s)
+			if second != 0 {
 				return
 			}
 		}
 
 		// Log with frequency indicator
-		freq := "15s"
+		freq := "60s [SLOW]"
 		if isOverlapHour {
 			freq = "10s [OVERLAP]"
+		} else if isGoldenHour {
+			freq = "15s [GOLDEN]"
 		}
 
 		log.Printf("[CRON] Scan triggered (%s) [Mode: %s]", freq, s.mode)
@@ -86,7 +89,7 @@ func (s *Scheduler) Start() error {
 	// Start the cron scheduler
 	s.cron.Start()
 	log.Println("[OK] Scheduler started successfully")
-	log.Println("[OK] Dynamic frequency: 10s (Overlap 13:00-16:00 UTC) | 15s (Other Golden Hours)")
+	log.Println("[OK] Dynamic frequency: 10s (Overlap) | 15s (Golden) | 60s (Dead hours)")
 
 	return nil
 }
