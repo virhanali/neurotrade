@@ -1600,9 +1600,7 @@
             <!-- TAB: USER SETTINGS -->
             <div id="tab-settings" class="hidden animate-fade-in">
                 <div class="max-w-3xl mx-auto">
-                    <form id="settings-form" hx-post="/api/settings" hx-trigger="submit" hx-swap="none" class="space-y-6"
-                        onhtmx:beforeRequest="showToast('Saving settings...', 'info')"
-                        onhtmx:afterRequest="if(event.detail.successful) showToast('Settings saved successfully!', 'success'); else showToast('Failed to save settings. Please try again.', 'error');">
+                    <form id="settings-form" hx-post="/api/settings" hx-trigger="submit" hx-swap="none" class="space-y-6">
 
                         <!-- Trading Mode -->
                         <div
@@ -1858,7 +1856,7 @@
         // Confirmation Modal State
         let confirmCallback = null;
 
-        // Settings Form Validation
+        // Settings Form Validation & HTMX Event Handlers
         function validateSettingsForm() {
             const fixedMargin = parseFloat(document.getElementById('fixed-margin-input').value) || 1.0;
             const leverageSelect = document.querySelector('select[name="leverage"]');
@@ -1913,6 +1911,125 @@
                     setTimeout(validateSettingsForm, 100);
                 });
             });
+
+            // ===== HTMX Event Handlers for Settings Form =====
+            const settingsForm = document.getElementById('settings-form');
+            if (settingsForm) {
+                // Before request - Show loading toast
+                settingsForm.addEventListener('htmx:beforeRequest', function(evt) {
+                    showToast('Saving settings...', 'info');
+                    
+                    // Update button state
+                    const saveBtn = document.getElementById('settings-save-btn');
+                    const saveBtnText = document.getElementById('save-btn-text');
+                    if (saveBtn) saveBtn.disabled = true;
+                    if (saveBtnText) saveBtnText.textContent = 'Saving...';
+                });
+
+                // After request - Show result toast
+                settingsForm.addEventListener('htmx:afterRequest', function(evt) {
+                    const detail = evt.detail || {};
+                    
+                    if (detail.successful) {
+                        showToast('Settings saved successfully!', 'success');
+                        
+                        // Refresh user data
+                        htmx.ajax('GET', window.location.pathname, {
+                            target: 'body',
+                            swap: 'innerHTML'
+                        });
+                    } else {
+                        showToast('Failed to save settings. Please try again.', 'error');
+                    }
+                    
+                    // Reset button state
+                    const saveBtn = document.getElementById('settings-save-btn');
+                    const saveBtnText = document.getElementById('save-btn-text');
+                    if (saveBtn) saveBtn.disabled = false;
+                    if (saveBtnText) saveBtnText.textContent = 'Save Configuration';
+                });
+
+                // On confirm - Show processing toast
+                settingsForm.addEventListener('htmx:confirm', function(evt) {
+                    showToast('Confirming...', 'info');
+                });
+
+                // On settle - Handle any remaining UI states
+                settingsForm.addEventListener('htmx:afterSettle', function(evt) {
+                    // Additional cleanup if needed
+                });
+            }
+        });
+            // Initial validation
+            setTimeout(validateSettingsForm, 100);
+
+            // Validate on margin change
+            const marginInput = document.getElementById('fixed-margin-input');
+            if (marginInput) {
+                marginInput.addEventListener('input', validateSettingsForm);
+            }
+
+            // Validate on leverage change
+            const leverageSelect = document.querySelector('select[name="leverage"]');
+            if (leverageSelect) {
+                leverageSelect.addEventListener('change', validateSettingsForm);
+            }
+
+            // Validate on mode change
+            document.querySelectorAll('input[name="mode"]').forEach(el => {
+                el.addEventListener('change', () => {
+                    // Small delay to let the DOM update first
+                    setTimeout(validateSettingsForm, 100);
+                });
+            });
+
+            // ===== HTMX Event Handlers for Settings Form =====
+            const settingsForm = document.getElementById('settings-form');
+            if (settingsForm) {
+                // Before request - Show loading toast
+                settingsForm.addEventListener('htmx:beforeRequest', function(evt) {
+                    showToast('Saving settings...', 'info');
+                    
+                    // Update button state
+                    const saveBtn = document.getElementById('settings-save-btn');
+                    const saveBtnText = document.getElementById('save-btn-text');
+                    if (saveBtn) saveBtn.disabled = true;
+                    if (saveBtnText) saveBtnText.textContent = 'Saving...';
+                });
+
+                // After request - Show result toast
+                settingsForm.addEventListener('htmx:afterRequest', function(evt) {
+                    const detail = evt.detail || {};
+                    
+                    if (detail.successful) {
+                        showToast('Settings saved successfully!', 'success');
+                        
+                        // Refresh user data
+                        htmx.ajax('GET', window.location.pathname, {
+                            target: 'body',
+                            swap: 'innerHTML'
+                        });
+                    } else {
+                        showToast('Failed to save settings. Please try again.', 'error');
+                    }
+                    
+                    // Reset button state
+                    const saveBtn = document.getElementById('settings-save-btn');
+                    const saveBtnText = document.getElementById('save-btn-text');
+                    if (saveBtn) saveBtn.disabled = false;
+                    if (saveBtnText) saveBtnText.textContent = 'Save Configuration';
+                });
+
+                // On confirm - Show processing toast
+                settingsForm.addEventListener('htmx:confirm', function(evt) {
+                    showToast('Confirming...', 'info');
+                });
+
+                // On settle - Handle any remaining UI states
+                settingsForm.addEventListener('htmx:afterSettle', function(evt) {
+                    // Additional cleanup if needed
+                });
+            }
         });
 
         function showConfirmModal(title, message, callback, type = 'default') {

@@ -21,21 +21,12 @@ import (
 
 // MarketScanScheduler defines the interface for market scan scheduler
 type MarketScanScheduler interface {
-	SetMode(mode string)
 	GetMode() string
 }
 
 // AdminHandler handles admin-related requests
-type AdminHandler struct {
-	db              *pgxpool.Pool
-	scheduler       MarketScanScheduler
-	signalRepo      domain.SignalRepository
-	positionRepo    domain.PositionRepository
-	templates       *template.Template
-	pythonEngineURL string
-}
 
-// NewAdminHandler creates a new AdminHandler
+// NewAdminHandler creates a new admin handler
 func NewAdminHandler(db *pgxpool.Pool, scheduler MarketScanScheduler, signalRepo domain.SignalRepository, positionRepo domain.PositionRepository, templates *template.Template, pythonEngineURL string) *AdminHandler {
 	return &AdminHandler{
 		db:              db,
