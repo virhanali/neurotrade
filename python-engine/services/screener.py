@@ -207,7 +207,7 @@ class MarketScreener:
                     bb_lower = rolling_mean - (rolling_std * 2)
                     bb_width = (bb_upper.iloc[-1] - bb_lower.iloc[-1]) / rolling_mean.iloc[-1]
                     
-                    is_squeeze = bb_width < 0.02  # Less than 2% width = SQUEEZE
+                    is_squeeze = bool(bb_width < 0.02)  # Less than 2% width = SQUEEZE
 
                     # FILTER LOGIC:
                     # 1. Reject Dead Coins (Vol < 0.5x Avg) UNLESS it's a Squeeze (Accumulation)
@@ -299,15 +299,16 @@ class MarketScreener:
 
                     if score > 15:
                         result = cand.copy()
-                        result['score'] = score
-                        result['rsi'] = rsi_val
+                        # Convert all numpy types to native Python types for JSON serialization
+                        result['score'] = float(score)
+                        result['rsi'] = float(rsi_val) if rsi_val is not None else 50.0
                         result['trend'] = major_trend
-                        result['vol_ratio'] = vol_ratio
-                        result['vol_z_score'] = vol_z_score
-                        result['is_squeeze'] = is_squeeze
-                        result['adx'] = adx_val
-                        result['atr_pct'] = atr_pct
-                        result['efficiency_ratio'] = efficiency_ratio
+                        result['vol_ratio'] = float(vol_ratio)
+                        result['vol_z_score'] = float(vol_z_score)
+                        result['is_squeeze'] = is_squeeze  # Already bool from above
+                        result['adx'] = float(adx_val)
+                        result['atr_pct'] = float(atr_pct)
+                        result['efficiency_ratio'] = float(efficiency_ratio)
 
                         # WHALE DETECTION (NEW v4.2)
                         # Get whale signal for this candidate
@@ -352,21 +353,27 @@ class MarketScreener:
                                         whale_boost = min(25, 10 + int((whale_conf - 50) * 0.3))
                                         logging.info(f"[WHALE] {symbol}: {whale_sig} detected! Progressive boost +{whale_boost} (conf: {whale_conf}%)")
 
-                                result['score'] += whale_boost
+                                result['score'] = float(result['score'] + whale_boost)
                             except Exception as e:
                                 logging.warning(f"[WHALE] Detection failed for {symbol}: {e}")
                                 result['whale_signal'] = 'NEUTRAL'
                                 result['whale_confidence'] = 0
                                 result['liquidation_pressure'] = 'NONE'
-                                result['order_imbalance'] = 0
+                                result['order_imbalance'] = 0.0
                                 result['large_trades_bias'] = 'MIXED'
                         else:
                             # No whale detector available
                             result['whale_signal'] = 'NEUTRAL'
                             result['whale_confidence'] = 0
                             result['liquidation_pressure'] = 'NONE'
-                            result['order_imbalance'] = 0
+                            result['order_imbalance'] = 0.0
                             result['large_trades_bias'] = 'MIXED'
+
+                        # Ensure all numeric values are native Python types
+                        result['whale_confidence'] = int(result.get('whale_confidence', 0))
+                        result['order_imbalance'] = float(result.get('order_imbalance', 0))
+                        if '5min_confirmed' in result:
+                            result['5min_confirmed'] = bool(result['5min_confirmed'])
 
                         return result
 
