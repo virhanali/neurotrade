@@ -34,7 +34,7 @@ class ChartGenerator:
     def generate_chart_image(self, df: pd.DataFrame, symbol: str, interval: str = "1H") -> BytesIO:
         """
         Generate candlestick chart with Smart Money Visual Cues (Volume Climax & Structure)
-        
+
         Args:
             df: DataFrame with OHLCV data
             symbol: Trading pair name
@@ -44,6 +44,10 @@ class ChartGenerator:
             BytesIO buffer containing PNG image
         """
         try:
+            # Early validation - check if df is valid
+            if df is None or len(df) == 0:
+                raise Exception(f"Empty DataFrame received")
+
             # Focus on recent data (last 60 candles)
             plot_df = df.tail(60).copy() if len(df) > 60 else df.copy()
 
@@ -54,65 +58,90 @@ class ChartGenerator:
                 raise Exception(f"Missing required columns: {missing_cols}")
 
             # CRITICAL FIX: Drop rows with NaN in OHLCV columns BEFORE any processing
-            # This prevents numpy "zero-size array" errors in mplfinance
             plot_df = plot_df.dropna(subset=['open', 'high', 'low', 'close', 'volume'])
 
             # VALIDATION: Check if we have enough clean data after dropping NaN
             if len(plot_df) < 2:
                 raise Exception(f"Insufficient clean data: {len(plot_df)} valid candles (need at least 2)")
 
-            # 1. VOLUME CLIMAX DETECTION (Vectorized for efficiency)
-            vol_ma = plot_df['volume'].rolling(window=20).mean()
-            vol_ma = vol_ma.fillna(plot_df['volume'])  # Fill NaN with raw volume for early candles
+            # Reset index to ensure continuous DatetimeIndex for mplfinance
+            plot_df = plot_df.reset_index(drop=False)
+            if 'timestamp' in plot_df.columns:
+                plot_df = plot_df.set_index('timestamp')
+            elif 'index' in plot_df.columns:
+                plot_df = plot_df.set_index('index')
 
-            # Detect climax volume (>2.5x average) - vectorized operation
-            is_climax = plot_df['volume'] > (vol_ma * 2.5)
-            climax_signals = plot_df['low'].where(is_climax) * 0.995
+            # 2. STRUCTURE - Support/Resistance levels (safe after dropna)
+            recent_low = float(plot_df['low'].min())
+            recent_high = float(plot_df['high'].max())
 
-            # 2. STRUCTURE - Support/Resistance levels
-            recent_low = plot_df['low'].min()
-            recent_high = plot_df['high'].max()
+            # Build addplots - only add if data is valid
+            add_plots = []
 
-            # Build additional plot overlays
-            add_plots = [
-                mpf.make_addplot(climax_signals, type='scatter', markersize=40, marker='^', color='#ffd700', panel=0)
-            ]
+            # Volume Climax Detection (optional - skip if fails)
+            try:
+                vol_ma = plot_df['volume'].rolling(window=min(20, len(plot_df))).mean()
+                vol_ma = vol_ma.fillna(plot_df['volume'])
+                is_climax = plot_df['volume'] > (vol_ma * 2.5)
+                if is_climax.any():
+                    climax_signals = plot_df['low'].where(is_climax) * 0.995
+                    add_plots.append(
+                        mpf.make_addplot(climax_signals, type='scatter', markersize=40, marker='^', color='#ffd700', panel=0)
+                    )
+            except Exception:
+                pass  # Skip climax signals if calculation fails
 
-            # Bollinger Bands
-            if 'bb_upper' in plot_df.columns:
-                add_plots.extend([
-                    mpf.make_addplot(plot_df['bb_upper'], color='#787b86', linestyle='--', width=0.8),
-                    mpf.make_addplot(plot_df['bb_middle'], color='#2962ff', linestyle='-', width=1.0),
-                    mpf.make_addplot(plot_df['bb_lower'], color='#787b86', linestyle='--', width=0.8),
-                ])
+            # Bollinger Bands (only if columns exist AND have valid data)
+            if all(col in plot_df.columns for col in ['bb_upper', 'bb_middle', 'bb_lower']):
+                try:
+                    # Only add if at least 50% of values are valid
+                    if plot_df['bb_upper'].notna().sum() > len(plot_df) * 0.5:
+                        bb_upper = plot_df['bb_upper'].ffill().bfill()
+                        bb_middle = plot_df['bb_middle'].ffill().bfill()
+                        bb_lower = plot_df['bb_lower'].ffill().bfill()
+                        add_plots.extend([
+                            mpf.make_addplot(bb_upper, color='#787b86', linestyle='--', width=0.8),
+                            mpf.make_addplot(bb_middle, color='#2962ff', linestyle='-', width=1.0),
+                            mpf.make_addplot(bb_lower, color='#787b86', linestyle='--', width=0.8),
+                        ])
+                except Exception:
+                    pass  # Skip BB if any issue
 
-            # EMAs
-            if 'ema_50' in plot_df.columns:
-                add_plots.append(mpf.make_addplot(plot_df['ema_50'], color='#ff6d00', linestyle='-', width=1.2))
-            if 'ema_200' in plot_df.columns:
-                add_plots.append(mpf.make_addplot(plot_df['ema_200'], color='#00bcd4', linestyle='-', width=1.5))
-                
-            # Horizontal Lines for S/R (Visual Guide)
+            # EMAs (only if columns exist AND have valid data)
+            if 'ema_50' in plot_df.columns and plot_df['ema_50'].notna().sum() > len(plot_df) * 0.5:
+                try:
+                    ema_50 = plot_df['ema_50'].ffill().bfill()
+                    add_plots.append(mpf.make_addplot(ema_50, color='#ff6d00', linestyle='-', width=1.2))
+                except Exception:
+                    pass
+            if 'ema_200' in plot_df.columns and plot_df['ema_200'].notna().sum() > len(plot_df) * 0.5:
+                try:
+                    ema_200 = plot_df['ema_200'].ffill().bfill()
+                    add_plots.append(mpf.make_addplot(ema_200, color='#00bcd4', linestyle='-', width=1.5))
+                except Exception:
+                    pass
+
+            # Horizontal Lines for S/R
             hlines = dict(hlines=[recent_low, recent_high], colors=['#4caf50', '#f44336'], linestyle=':', linewidths=0.8, alpha=0.6)
 
-            # Create figure with HIGHER DPI
-            # We override volume style slightly via make_marketcolors logic if possible, 
-            # but for now, the YELLOW DOTS on price are a clearer signal for Vision AI than colored volume bars.
-            fig, axes = mpf.plot(
-                plot_df,
-                type='candle',
-                style=self.style,
-                volume=True,
-                addplot=add_plots,
-                hlines=hlines,
-                title=f'{symbol} - {interval} (Smart Money View)',
-                ylabel='Price',
-                ylabel_lower='Vol',
-                figsize=(12, 8),
-                returnfig=True,
-                warn_too_much_data=200,
-                tight_layout=True
-            )
+            # Create figure - use minimal addplots if list is empty
+            plot_kwargs = {
+                'type': 'candle',
+                'style': self.style,
+                'volume': True,
+                'hlines': hlines,
+                'title': f'{symbol} - {interval} (Smart Money View)',
+                'ylabel': 'Price',
+                'ylabel_lower': 'Vol',
+                'figsize': (12, 8),
+                'returnfig': True,
+                'warn_too_much_data': 200,
+                'tight_layout': True
+            }
+            if add_plots:
+                plot_kwargs['addplot'] = add_plots
+
+            fig, axes = mpf.plot(plot_df, **plot_kwargs)
 
             # Save to buffer
             buffer = BytesIO()
