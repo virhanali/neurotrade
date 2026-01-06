@@ -713,6 +713,44 @@ Analyze for SCALPER entry (Mean Reversion / Ping-Pong / Predictive Alpha). Provi
         if agreement and combined_confidence >= effective_threshold:
             recommendation = "EXECUTE"
 
+        # === CACHE ANALYSIS FOR LEARNING ===
+        # Save ALL analysis results (not just trades) to ai_analysis_cache
+        if HAS_LEARNER and metrics:
+            try:
+                from services.learner import learner
+
+                # Build analysis cache data
+                cache_data = {
+                    'symbol': metrics.get('symbol', 'UNKNOWN'),
+                    'logic_signal': logic_result.get('signal'),
+                    'logic_confidence': logic_result.get('confidence', 0),
+                    'logic_reasoning': logic_result.get('reasoning', ''),
+                    'vision_signal': vision_result.get('signal'),
+                    'vision_confidence': vision_result.get('confidence', 0),
+                    'vision_reasoning': vision_result.get('reasoning', ''),
+                    'ml_win_probability': ml_win_prob,
+                    'ml_threshold': ml_threshold,
+                    'ml_is_trained': ml_is_trained,
+                    'ml_insights': ml_insights,
+                    'final_signal': final_signal,
+                    'final_confidence': combined_confidence,
+                    'recommendation': recommendation,
+                    'adx': metrics.get('adx'),
+                    'vol_z_score': metrics.get('vol_z_score'),
+                    'ker': metrics.get('efficiency_ratio', metrics.get('ker', 0)),
+                    'is_squeeze': metrics.get('is_squeeze'),
+                    'screener_score': metrics.get('score'),
+                    'whale_signal': whale_signal,
+                    'whale_confidence': whale_confidence,
+                    'btc_trend': 'UNKNOWN',  # Could be extracted from logic_result
+                }
+
+                # Cache the analysis
+                learner.cache_analysis(cache_data)
+
+            except Exception as e:
+                logging.warning(f"[AI] Failed to cache analysis: {e}")
+
         return {
             "final_signal": final_signal,
             "combined_confidence": combined_confidence,

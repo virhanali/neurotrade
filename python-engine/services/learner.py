@@ -10,6 +10,7 @@ Production-Grade Self-Learning System with:
 """
 
 import logging
+import json
 import numpy as np
 import pickle
 import os
@@ -92,22 +93,88 @@ class DeepLearner:
         self._regime_cache_time = None
         self._cache_ttl = timedelta(minutes=5)
 
+    def cache_analysis(self, analysis: Dict):
+        """
+        Save AI analysis results to cache table BEFORE trade decision.
+        This ensures we don't waste API credits and can learn from non-traded signals.
+        """
+        if not self.engine:
+            logging.error("[LEARNER] DB connection missing. Cannot cache analysis.")
+            return
+
+        try:
+            now = datetime.utcnow()
+
+            stmt = text("""
+                INSERT INTO ai_analysis_cache
+                (symbol, logic_signal, logic_confidence, logic_reasoning,
+                 vision_signal, vision_confidence, vision_reasoning,
+                 ml_win_probability, ml_threshold, ml_is_trained, ml_insights,
+                 final_signal, final_confidence, recommendation,
+                 adx, vol_z_score, ker, is_squeeze, screener_score,
+                 whale_signal, whale_confidence,
+                 hour_of_day, day_of_week,
+                 btc_trend)
+                VALUES
+                (:symbol, :logic_signal, :logic_confidence, :logic_reasoning,
+                 :vision_signal, :vision_confidence, :vision_reasoning,
+                 :ml_win_prob, :ml_threshold, :ml_is_trained, :ml_insights,
+                 :final_signal, :final_confidence, :recommendation,
+                 :adx, :vol_z_score, :ker, :is_squeeze, :score,
+                 :whale_signal, :whale_confidence,
+                 :hour, :dow, :btc_trend)
+                ON CONFLICT (symbol, created_at) DO NOTHING
+            """)
+
+            with self.engine.connect() as conn:
+                conn.execute(stmt, {
+                    'symbol': analysis.get('symbol'),
+                    'logic_signal': analysis.get('logic_signal'),
+                    'logic_confidence': analysis.get('logic_confidence'),
+                    'logic_reasoning': analysis.get('logic_reasoning'),
+                    'vision_signal': analysis.get('vision_signal'),
+                    'vision_confidence': analysis.get('vision_confidence'),
+                    'vision_reasoning': analysis.get('vision_reasoning'),
+                    'ml_win_prob': analysis.get('ml_win_probability'),
+                    'ml_threshold': analysis.get('ml_threshold'),
+                    'ml_is_trained': analysis.get('ml_is_trained', False),
+                    'ml_insights': json.dumps(analysis.get('ml_insights', [])),
+                    'final_signal': analysis.get('final_signal'),
+                    'final_confidence': analysis.get('final_confidence'),
+                    'recommendation': analysis.get('recommendation'),
+                    'adx': analysis.get('adx'),
+                    'vol_z_score': analysis.get('vol_z_score'),
+                    'ker': analysis.get('ker'),
+                    'is_squeeze': analysis.get('is_squeeze'),
+                    'score': analysis.get('screener_score'),
+                    'whale_signal': analysis.get('whale_signal'),
+                    'whale_confidence': analysis.get('whale_confidence'),
+                    'hour': now.hour,
+                    'dow': now.weekday(),
+                    'btc_trend': analysis.get('btc_trend', 'UNKNOWN')
+                })
+                conn.commit()
+
+            logging.info(f"[CACHE] Analysis cached for {analysis.get('symbol')} (Signal: {analysis.get('final_signal')}, Conf: {analysis.get('final_confidence')}%)")
+
+        except Exception as e:
+            logging.error(f"[LEARNER] Failed to cache analysis: {e}")
+
     def record_outcome(self, symbol: str, signal_data: Dict, outcome: str, pnl: float):
         """
         Save trade result to Database (Permanent Long-Term Memory).
-        Enhanced with timestamp-based features.
+        Also update ai_analysis_cache with outcome.
         """
         if not self.engine:
             logging.error("[LEARNER] DB connection missing. Cannot save learning.")
             return
 
         try:
-            # Extract current time features
             now = datetime.utcnow()
             hour_of_day = now.hour
-            day_of_week = now.weekday()  # 0=Monday, 6=Sunday
+            day_of_week = now.weekday()
 
-            # Extract metrics safely
+            # 1. Save to ai_learning_logs (legacy, for ML training)
             metric_data = {
                 'symbol': symbol,
                 'outcome': outcome,
@@ -126,7 +193,6 @@ class DeepLearner:
                 'day_of_week': day_of_week
             }
 
-            # Check if extended columns exist, use basic insert if not
             stmt = text("""
                 INSERT INTO ai_learning_logs
                 (symbol, outcome, pnl, adx, vol_z_score, ker, is_squeeze, score, funding_rate, ls_ratio, whale_score)
@@ -152,6 +218,28 @@ class DeepLearner:
 
             logging.info(f"[LEARNER] Knowledge saved for {symbol} ({outcome}, PnL: {pnl:.2f}%)")
 
+            # 2. Update ai_analysis_cache with outcome (link analysis to result)
+            # Find most recent analysis for this symbol and update outcome
+            stmt_update = text("""
+                UPDATE ai_analysis_cache
+                SET outcome = :outcome, pnl = :pnl
+                WHERE symbol = :symbol
+                AND outcome IS NULL
+                ORDER BY created_at DESC
+                LIMIT 1
+            """)
+
+            with self.engine.connect() as conn:
+                result = conn.execute(stmt_update, {
+                    'symbol': symbol,
+                    'outcome': outcome,
+                    'pnl': pnl
+                })
+                conn.commit()
+
+                if result.rowcount > 0:
+                    logging.info(f"[LEARNER] Cached analysis updated for {symbol} with outcome {outcome}")
+
             # Trigger model retrain if needed
             self._check_retrain()
 
@@ -159,8 +247,66 @@ class DeepLearner:
             logging.error(f"[LEARNER] Failed to save knowledge: {e}")
 
     def _fetch_training_data(self) -> Optional[List[Dict]]:
-        """Fetch historical data for ML training."""
+        """
+        Fetch historical data for ML training.
+        Combines data from BOTH ai_learning_logs and ai_analysis_cache.
+        This uses ALL analysis results, not just traded ones.
+        """
         if not self.engine:
+            return None
+
+        try:
+            with self.engine.connect() as conn:
+                # Fetch from BOTH tables with UNION
+                # ai_analysis_cache: All analysis results (including non-traded)
+                # ai_learning_logs: Legacy data (only traded)
+                result = conn.execute(text("""
+                    SELECT outcome, adx, vol_z_score, ker, is_squeeze, score,
+                           funding_rate, ls_ratio, whale_score,
+                           hour_of_day, day_of_week, pnl
+                    FROM (
+                        -- From ai_analysis_cache (NEW: includes ALL analysis)
+                        SELECT outcome, adx, vol_z_score, ker, is_squeeze, screener_score,
+                               funding_rate, ls_ratio, whale_score,
+                               hour_of_day, day_of_week, pnl
+                        FROM ai_analysis_cache
+                        WHERE outcome IS NOT NULL
+
+                        UNION ALL
+
+                        -- From ai_learning_logs (LEGACY: only traded)
+                        SELECT outcome, adx, vol_z_score, ker, is_squeeze, score,
+                               funding_rate, ls_ratio, whale_score,
+                               hour_of_day, day_of_week, pnl
+                        FROM ai_learning_logs
+                        WHERE outcome IN ('WIN', 'LOSS')
+                    ) combined_data
+                    ORDER BY RANDOM()
+                    LIMIT 1000
+                """))
+
+                data = []
+                for row in result:
+                    data.append({
+                        'outcome': row[0],
+                        'adx': float(row[1] or 0),
+                        'vol_z_score': float(row[2] or 0),
+                        'ker': float(row[3] or 0),
+                        'is_squeeze': bool(row[4]),
+                        'score': float(row[5] or 0),
+                        'funding_rate': float(row[6] or 0),
+                        'ls_ratio': float(row[7] or 0),
+                        'whale_score': float(row[8] or 0),
+                        'hour': float(row[9] or 12),
+                        'dow': float(row[10] or 0),
+                        'pnl': float(row[11] or 0),
+                    })
+
+                logging.info(f"[LEARNER] Fetched {len(data)} training samples from COMBINED sources")
+                return data
+
+        except Exception as e:
+            logging.error(f"[LEARNER] Failed to fetch training data: {e}")
             return None
 
         try:
