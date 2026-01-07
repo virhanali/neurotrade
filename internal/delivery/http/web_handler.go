@@ -148,38 +148,27 @@ func (h *WebHandler) HandleRegisterPost(c echo.Context) error {
 	return c.Redirect(http.StatusFound, "/dashboard")
 }
 
-// GET /dashboard - Render dashboard
-func (h *WebHandler) HandleDashboard(c echo.Context) error {
-	return c.Redirect(http.StatusTemporaryRedirect, "http://localhost:3000/dashboard")
+// GET / - Serve SPA index.html
+func (h *WebHandler) HandleSPA(c echo.Context) error {
+	return c.File("web/dist/index.html")
 }
 
-// GET /api/user/positions/html - Return HTML fragment for legacy support (Stub)
-func (h *WebHandler) HandlePositionsHTML(c echo.Context) error {
-	return c.String(http.StatusOK, "Please use React Frontend")
-}
-
-// HandleHistoryHTML - Stub
-func (h *WebHandler) HandleHistoryHTML(c echo.Context) error {
-	return c.String(http.StatusOK, "Please use React Frontend")
-}
-
-// RegisterWebRoutes registers all web routes
+// RegisterWebRoutes registers web routes for SPA
 func RegisterWebRoutes(e *echo.Echo, handler *WebHandler, authMiddleware echo.MiddlewareFunc) {
-	// Public routes
-	e.GET("/", handler.HandleIndex)
-	e.GET("/login", handler.HandleLogin)
-	e.POST("/login", handler.HandleLoginPost)
-	e.GET("/register", handler.HandleRegister)
-	e.POST("/register", handler.HandleRegisterPost)
+	// Serve Static Assets
+	e.Static("/assets", "web/dist/assets")
+	e.File("/favicon.ico", "web/dist/favicon.ico")
 
-	// Protected routes (require authentication)
-	e.GET("/dashboard", handler.HandleDashboard, authMiddleware)
-	e.GET("/dashboard/:tab", handler.HandleDashboard, authMiddleware)
-	e.GET("/api/user/positions/html", handler.HandlePositionsHTML, authMiddleware)
-	e.GET("/api/user/history/html", handler.HandleHistoryHTML, authMiddleware)
+	// API endpoints used by React (Keep these!)
 	e.GET("/api/user/positions/count", handler.HandlePositionsCount, authMiddleware)
-	e.GET("/api/settings/modal", handler.HandleSettingsModal, authMiddleware)
 	e.POST("/api/settings", handler.HandleUpdateSettings, authMiddleware)
+
+	// Stub legacy HTMX endpoints to avoid 404 logs (Optional)
+	e.GET("/api/user/positions/html", func(c echo.Context) error { return c.NoContent(http.StatusGone) })
+
+	// Catch-all route for SPA (Must be last)
+	// Routes that are NOT API will fall through here, allowing React Router to handle /dashboard, /login, etc.
+	e.GET("/*", handler.HandleSPA)
 }
 
 // HandlePositionsCount returns the count of active positions as a plain string

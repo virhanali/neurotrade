@@ -1,4 +1,12 @@
-# Build stage
+# Stage 1: Build Frontend
+FROM node:20-alpine AS frontend-builder
+WORKDIR /app
+COPY web-react/package*.json ./
+RUN npm ci
+COPY web-react ./
+RUN npm run build
+
+# Stage 2: Build Backend
 FROM golang:alpine AS builder
 
 WORKDIR /app
@@ -19,7 +27,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
     -ldflags="-w -s -X main.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     -o main ./cmd/app
 
-# Production stage
+# Stage 3: Production Image
 FROM alpine:3.19 AS production
 
 WORKDIR /app
@@ -32,7 +40,8 @@ RUN apk --no-cache add ca-certificates tzdata curl wget && \
 # Copy binary and assets from builder
 COPY --from=builder /app/main .
 COPY --from=builder /app/configs ./configs
-
+# Copy frontend build from frontend-builder
+COPY --from=frontend-builder /app/dist ./web/dist
 
 # Create logs directory
 RUN mkdir -p /app/logs && \
