@@ -891,14 +891,7 @@ class MarketScreener:
                         risk_summary = ", ".join(risk_signals[:2])
                         logging.info(f"[CAUTIOUS] {symbol} {pump_type} - Score={int(pump_score)} DumpRisk={int(dump_risk)}% Action={trade_action} Reasons: {risk_summary}")
 
-                    # === FAKE PUMP/DUMP WARNING LOGGING ===
-                    # Log detailed fake detection for debugging
-                    if trade_action in ["AVOID_LONG", "AVOID_SHORT"]:
-                        risk_summary = ", ".join(risk_signals[:3])  # Top 3 reasons
-                        logging.warning(f"[FAKE DETECTED] {symbol} {pump_type} - Score={int(pump_score)} DumpRisk={int(dump_risk)}% Action={trade_action} Reasons: {risk_summary}")
-                    elif trade_action in ["CAUTIOUS_LONG", "CAUTIOUS_SHORT"]:
-                        risk_summary = ", ".join(risk_signals[:2])
-                        logging.info(f"[CAUTIOUS] {symbol} {pump_type} - Score={int(pump_score)} DumpRisk={int(dump_risk)}% Action={trade_action} Reasons: {risk_summary}")
+
 
                     return {
                         'symbol': symbol,
@@ -909,6 +902,7 @@ class MarketScreener:
                         'pct_change_3c': float(round(pct_change_3c, 2)),
                         'pct_change_24h': float(round(cand['pct_change_24h'], 2)),
                         'dump_risk': int(dump_risk),
+                        'risk_signals': risk_signals,
                         'trade_action': trade_action
                     }
 
