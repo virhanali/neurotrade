@@ -2,7 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider } from '@/hooks/useTheme';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
-import { LoginPage, DashboardPage, PositionsPage, HistoryPage, SettingsPage, AdminPage, LandingPage } from '@/pages';
+import { LoginPage, RegisterPage, DashboardPage, PositionsPage, HistoryPage, SettingsPage, AdminPage, LandingPage } from '@/pages';
 import './index.css';
 
 const queryClient = new QueryClient({
@@ -30,7 +30,7 @@ function App() {
           <Routes>
             <Route path="/" element={<LandingPage />} />
             <Route path="/login" element={<LoginPage />} />
-            <Route path="/register" element={<Navigate to="/login" replace />} /> {/* Redirect register to login or make dedicated page later */}
+            <Route path="/register" element={<RegisterPage />} />
             <Route
               element={
                 <ProtectedRoute>

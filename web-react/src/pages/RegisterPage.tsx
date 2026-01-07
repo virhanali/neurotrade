@@ -3,9 +3,10 @@ import { useNavigate, Link } from 'react-router-dom';
 import { Brain, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { api } from '@/api/client';
 
-export function LoginPage() {
+export function RegisterPage() {
     const navigate = useNavigate();
     const [username, setUsername] = useState('');
+    const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState('');
@@ -17,10 +18,15 @@ export function LoginPage() {
         setLoading(true);
 
         try {
-            await api.login({ username, password });
-            navigate('/dashboard');
+            await api.register({ username, email, password });
+            // After register, maybe auto login? 
+            // Usually register returns User, not Token.
+            // So redirect to login or show success.
+            // Let's assume user must login.
+            alert('Registration successful! Please login.');
+            navigate('/login');
         } catch (err: any) {
-            setError(err.response?.data?.error || 'Login failed. Please try again.');
+            setError(err.response?.data?.error || 'Registration failed. Please try again.');
         } finally {
             setLoading(false);
         }
@@ -40,7 +46,7 @@ export function LoginPage() {
 
                 {/* Form Card */}
                 <div className="bg-slate-800/50 backdrop-blur-xl rounded-2xl border border-slate-700/50 p-8">
-                    <h2 className="text-xl font-bold text-white mb-6">Sign In</h2>
+                    <h2 className="text-xl font-bold text-white mb-6">Create Account</h2>
 
                     <form onSubmit={handleSubmit} className="space-y-5">
                         {/* Username */}
@@ -53,7 +59,22 @@ export function LoginPage() {
                                 value={username}
                                 onChange={(e) => setUsername(e.target.value)}
                                 className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
-                                placeholder="Enter your username"
+                                placeholder="Choose a username"
+                                required
+                            />
+                        </div>
+
+                        {/* Email */}
+                        <div>
+                            <label className="block text-sm font-medium text-slate-300 mb-2">
+                                Email
+                            </label>
+                            <input
+                                type="email"
+                                value={email}
+                                onChange={(e) => setEmail(e.target.value)}
+                                className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+                                placeholder="Enter your email"
                                 required
                             />
                         </div>
@@ -69,13 +90,15 @@ export function LoginPage() {
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
                                     className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all pr-12"
-                                    placeholder="Enter your password"
+                                    placeholder="Choose a strong password"
                                     required
+                                    minLength={6}
                                 />
                                 <button
                                     type="button"
                                     onClick={() => setShowPassword(!showPassword)}
                                     className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors"
+                                    title={showPassword ? "Hide password" : "Show password"}
                                 >
                                     {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                                 </button>
@@ -98,18 +121,18 @@ export function LoginPage() {
                             {loading ? (
                                 <>
                                     <Loader2 className="w-5 h-5 animate-spin" />
-                                    Signing in...
+                                    Creating Account...
                                 </>
                             ) : (
-                                'Sign In'
+                                'Sign Up'
                             )}
                         </button>
                     </form>
 
                     <p className="mt-6 text-center text-slate-400 text-sm">
-                        Don't have an account?{' '}
-                        <Link to="/register" className="text-emerald-400 hover:text-emerald-300 font-medium transition-colors">
-                            Sign Up
+                        Already have an account?{' '}
+                        <Link to="/login" className="text-emerald-400 hover:text-emerald-300 font-medium transition-colors">
+                            Sign In
                         </Link>
                     </p>
                 </div>
