@@ -6,7 +6,7 @@ export interface User {
     role: 'user' | 'admin' | 'USER' | 'ADMIN';
     mode: 'PAPER' | 'REAL';
     paperBalance: number;
-    realBalanceCache: number | null;
+    realBalance: number | null;
     fixedOrderSize: number;
     leverage: number;
     autoTradeEnabled: boolean;

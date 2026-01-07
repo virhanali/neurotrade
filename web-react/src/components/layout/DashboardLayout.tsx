@@ -34,7 +34,7 @@ export function DashboardLayout() {
     const { theme, toggleTheme } = useTheme();
 
     const balance = user?.mode === 'REAL'
-        ? user.realBalanceCache ?? 0
+        ? user.realBalance ?? 0
         : user?.paperBalance ?? 0;
 
     const openPositionsCount = positions?.filter(p => p.status === 'OPEN').length || 0;

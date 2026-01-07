@@ -41,7 +41,7 @@ export function DashboardPage() {
                 {/* Total Balance */}
                 <StatCard
                     title="Total Equity"
-                    value={formatCurrency(user?.mode === 'REAL' ? (user.realBalanceCache || 0) : (user?.paperBalance || 0))}
+                    value={formatCurrency(user?.mode === 'REAL' ? (user.realBalance ?? 0) : (user?.paperBalance ?? 0))}
                     subtitle={user?.mode || 'PAPER'}
                     subtitleColor={user?.mode === 'REAL' ? 'rose' : 'slate'}
                     icon={DollarSign}
