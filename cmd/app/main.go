@@ -154,7 +154,7 @@ func main() {
 	log.Printf("[OK] Trading mode locked to: %s", tradingMode)
 
 	// Initialize market scan scheduler
-	marketScanScheduler := infra.NewScheduler(tradingService, cfg.Trading.DefaultBalance, tradingMode)
+	marketScanScheduler := infra.NewScheduler(tradingService, cfg.Trading.DefaultBalance, tradingMode, cfg.Python.URL)
 	if err := marketScanScheduler.Start(); err != nil {
 		log.Fatalf("Failed to start market scan scheduler: %v", err)
 	}
@@ -300,7 +300,7 @@ func main() {
 	adminHandler := httpdelivery.NewAdminHandler(db, marketScanScheduler, signalRepo, positionRepo, cfg.Python.URL)
 
 	// Initialize web handler (Phase 5 - HTML pages)
-	webHandler := httpdelivery.NewWebHandler(userRepo, positionRepo, db, priceService)
+	webHandler := httpdelivery.NewWebHandler(userRepo, positionRepo, db, priceService, aiService)
 
 	// Create auth middleware wrapper for web routes
 	webAuthMiddleware := func(next echo.HandlerFunc) echo.HandlerFunc {

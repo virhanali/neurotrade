@@ -27,6 +27,7 @@ const navItems = [
     { path: '/dashboard', label: 'Overview', icon: LayoutDashboard },
     { path: '/positions', label: 'Live Positions', icon: TrendingUp },
     { path: '/history', label: 'Trade History', icon: History },
+    { path: '/analytics', label: 'Predictive AI', icon: Brain },
     { path: '/settings', label: 'Settings', icon: Settings },
 ];
 

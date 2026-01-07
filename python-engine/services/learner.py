@@ -301,26 +301,123 @@ class DeepLearner:
             logging.error(f"[LEARNER] Failed to fetch training data: {e}")
             return None
 
+    def _fetch_enhanced_training_data(self) -> Optional[List[Dict]]:
+        """
+        Fetch training data from ai_analysis_cache (enhanced features).
+        Falls back to ai_learning_logs if cache doesn't have enough data.
+        """
+        if not self.engine:
+            return None
+
+        try:
+            with self.engine.connect() as conn:
+                # Try ai_analysis_cache first (more features)
+                result = conn.execute(text("""
+                    SELECT 
+                        outcome,
+                        COALESCE(adx, 0) as adx,
+                        COALESCE(vol_z_score, 0) as vol_z_score,
+                        COALESCE(ker, 0) as ker,
+                        COALESCE(is_squeeze, false) as is_squeeze,
+                        COALESCE(screener_score, 0) as score,
+                        COALESCE(pnl, 0) as pnl,
+                        -- Enhanced AI features
+                        COALESCE(logic_confidence, 0) as logic_confidence,
+                        COALESCE(vision_confidence, 0) as vision_confidence,
+                        COALESCE(final_confidence, 0) as final_confidence,
+                        COALESCE(ml_win_probability, 0.5) as ml_prob,
+                        CASE WHEN logic_signal = vision_signal THEN 1 ELSE 0 END as ai_agreement,
+                        -- Whale features
+                        COALESCE(whale_confidence, 0) as whale_confidence,
+                        CASE WHEN whale_signal IN ('PUMP_IMMINENT', 'DUMP_IMMINENT') THEN 1 ELSE 0 END as whale_active,
+                        -- Time features
+                        COALESCE(hour_of_day, 12) as hour,
+                        COALESCE(day_of_week, 0) as dow
+                    FROM ai_analysis_cache
+                    WHERE outcome IN ('WIN', 'LOSS')
+                    ORDER BY created_at DESC
+                    LIMIT 1000
+                """))
+
+                data = []
+                for row in result:
+                    data.append({
+                        'outcome': row[0],
+                        'adx': float(row[1] or 0),
+                        'vol_z_score': float(row[2] or 0),
+                        'ker': float(row[3] or 0),
+                        'is_squeeze': bool(row[4]),
+                        'score': float(row[5] or 0),
+                        'pnl': float(row[6] or 0),
+                        # Enhanced features
+                        'logic_confidence': float(row[7] or 0),
+                        'vision_confidence': float(row[8] or 0),
+                        'final_confidence': float(row[9] or 0),
+                        'ml_prob': float(row[10] or 0.5),
+                        'ai_agreement': int(row[11] or 0),
+                        'whale_confidence': float(row[12] or 0),
+                        'whale_active': int(row[13] or 0),
+                        'hour': float(row[14] or 12),
+                        'dow': float(row[15] or 0),
+                    })
+
+                if len(data) >= self.MIN_SAMPLES_FOR_ML:
+                    logging.info(f"[LEARNER] Fetched {len(data)} enhanced samples from ai_analysis_cache")
+                    return data
+                else:
+                    logging.info(f"[LEARNER] Cache has {len(data)} samples, falling back to ai_learning_logs")
+                    return self._fetch_training_data()
+
+        except Exception as e:
+            logging.warning(f"[LEARNER] Enhanced fetch failed, using fallback: {e}")
+            return self._fetch_training_data()
+
     def _prepare_features(self, data: List[Dict]) -> Tuple[np.ndarray, np.ndarray]:
-        """Prepare feature matrix and labels for training."""
+        """Prepare feature matrix and labels for training (enhanced version)."""
         X = []
         y = []
 
         for row in data:
+            # Base features (from screener)
+            adx = float(row.get('adx', 0) or 0)
+            vol_z = float(row.get('vol_z_score', 0) or 0)
+            ker = float(row.get('ker', 0) or 0)
+            score = float(row.get('score', 0) or 0)
+            
+            # AI confidence features (from cache)
+            logic_conf = float(row.get('logic_confidence', 0) or 0)
+            vision_conf = float(row.get('vision_confidence', 0) or 0)
+            final_conf = float(row.get('final_confidence', 0) or 0)
+            ai_agreement = float(row.get('ai_agreement', 0) or 0)
+            
+            # Whale features
+            whale_conf = float(row.get('whale_confidence', 0) or 0)
+            whale_active = float(row.get('whale_active', 0) or 0)
+            
             features = [
-                float(row.get('adx', 0) or 0),
-                float(row.get('vol_z_score', 0) or 0),
-                float(row.get('ker', 0) or 0),
+                # Core screener metrics
+                adx,
+                vol_z,
+                ker,
                 1.0 if row.get('is_squeeze') else 0.0,
-                float(row.get('score', 0) or 0),
-                float(row.get('funding_rate', 0) or 0),
-                float(row.get('ls_ratio', 0) or 0),
-                float(row.get('whale_score', 0) or 0),
+                score,
+                # AI confidence metrics
+                logic_conf,
+                vision_conf,
+                final_conf,
+                ai_agreement,
+                # Whale metrics
+                whale_conf,
+                whale_active,
+                # Time features
                 float(row.get('hour', 12) or 12),
                 float(row.get('dow', 0) or 0),
                 # Derived features
-                float(row.get('adx', 0) or 0) * float(row.get('ker', 0) or 0),  # ADX * KER interaction
-                1.0 if float(row.get('vol_z_score', 0) or 0) > 2.0 else 0.0,  # High volume flag
+                adx * ker,  # ADX * KER interaction
+                1.0 if vol_z > 2.0 else 0.0,  # High volume flag
+                logic_conf * vision_conf / 10000.0,  # AI agreement strength
+                1.0 if final_conf >= 80 else 0.0,  # High confidence flag
+                whale_active * whale_conf / 100.0,  # Whale signal strength
             ]
             X.append(features)
             y.append(1 if row.get('outcome') == 'WIN' else 0)
@@ -328,12 +425,13 @@ class DeepLearner:
         return np.array(X), np.array(y)
 
     def _train_model(self):
-        """Train LightGBM model on historical data."""
+        """Train LightGBM model on historical data (enhanced version)."""
         if not HAS_LIGHTGBM or not HAS_SKLEARN:
             logging.info("[LEARNER] ML libraries not available. Using rule-based system.")
             return
 
-        data = self._fetch_training_data()
+        # Try enhanced data first, fallback to basic
+        data = self._fetch_enhanced_training_data()
         if not data or len(data) < self.MIN_SAMPLES_FOR_ML:
             logging.info(f"[LEARNER] Not enough data for ML training ({len(data) if data else 0}/{self.MIN_SAMPLES_FOR_ML})")
             return
@@ -705,6 +803,63 @@ class DeepLearner:
             if threshold != 75:
                 msg += f"- ML RECOMMENDATION: Adjust confidence threshold to {threshold}%.\n"
 
+            # ENHANCED: Get insights from ai_analysis_cache
+            try:
+                with self.engine.connect() as conn:
+                    # AI Agreement win rate
+                    agreement_result = conn.execute(text("""
+                        SELECT 
+                            COUNT(*) as total,
+                            SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins
+                        FROM ai_analysis_cache
+                        WHERE outcome IS NOT NULL
+                        AND logic_signal = vision_signal
+                    """)).fetchone()
+                    
+                    if agreement_result and agreement_result[0] > 10:
+                        agreement_wr = agreement_result[1] / agreement_result[0]
+                        if agreement_wr > 0.6:
+                            msg += f"- AI INSIGHT: When Logic+Vision AGREE, WR is {agreement_wr*100:.0f}%. Trust agreement.\n"
+                        elif agreement_wr < 0.4:
+                            msg += f"- AI INSIGHT: Agreement signals underperforming ({agreement_wr*100:.0f}% WR). Be cautious.\n"
+                    
+                    # High confidence win rate
+                    high_conf_result = conn.execute(text("""
+                        SELECT 
+                            COUNT(*) as total,
+                            SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins
+                        FROM ai_analysis_cache
+                        WHERE outcome IS NOT NULL
+                        AND final_confidence >= 80
+                    """)).fetchone()
+                    
+                    if high_conf_result and high_conf_result[0] > 5:
+                        high_conf_wr = high_conf_result[1] / high_conf_result[0]
+                        if high_conf_wr > 0.65:
+                            msg += f"- AI INSIGHT: High confidence (80%+) signals winning {high_conf_wr*100:.0f}%. Confidence is calibrated.\n"
+                        elif high_conf_wr < 0.5:
+                            msg += f"- AI INSIGHT: High confidence signals failing ({high_conf_wr*100:.0f}% WR). AI overconfident.\n"
+                    
+                    # Whale signal effectiveness
+                    whale_result = conn.execute(text("""
+                        SELECT 
+                            COUNT(*) as total,
+                            SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins
+                        FROM ai_analysis_cache
+                        WHERE outcome IS NOT NULL
+                        AND whale_signal IN ('PUMP_IMMINENT', 'DUMP_IMMINENT')
+                    """)).fetchone()
+                    
+                    if whale_result and whale_result[0] > 5:
+                        whale_wr = whale_result[1] / whale_result[0]
+                        if whale_wr > 0.6:
+                            msg += f"- WHALE INSIGHT: PUMP/DUMP signals winning {whale_wr*100:.0f}%. Whale detection is effective.\n"
+                        elif whale_wr < 0.45:
+                            msg += f"- WHALE INSIGHT: Whale signals underperforming ({whale_wr*100:.0f}% WR). May need recalibration.\n"
+                            
+            except Exception as e:
+                logging.debug(f"[LEARNER] Enhanced insights failed: {e}")
+
             return msg
 
         except Exception as e:
@@ -718,11 +873,22 @@ class DeepLearner:
 
         try:
             feature_names = [
+                # Core metrics
                 'adx', 'vol_z_score', 'ker', 'is_squeeze', 'score',
-                'funding_rate', 'ls_ratio', 'whale_score',
-                'hour', 'day_of_week', 'adx_ker_interaction', 'high_volume_flag'
+                # AI confidence metrics
+                'logic_confidence', 'vision_confidence', 'final_confidence', 'ai_agreement',
+                # Whale metrics
+                'whale_confidence', 'whale_active',
+                # Time features
+                'hour', 'day_of_week',
+                # Derived features
+                'adx_ker_interaction', 'high_volume_flag', 
+                'ai_agreement_strength', 'high_confidence_flag', 'whale_signal_strength'
             ]
             importance = self.model.feature_importance(importance_type='gain')
+            # Handle mismatch between features and importance
+            if len(importance) != len(feature_names):
+                return {f"feature_{i}": float(v) for i, v in enumerate(importance)}
             return dict(zip(feature_names, importance.tolist()))
         except:
             return {}

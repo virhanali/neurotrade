@@ -285,72 +285,10 @@ async def analyze_market(request: MarketAnalysisRequest):
             # Create dummy metrics for custom symbols
             top_candidates = [{'symbol': s, 'vol_ratio': 0, 'is_squeeze': False, 'score': 0} for s in request.custom_symbols]
         else:
-            top_candidates = screener.get_top_opportunities() # RETURNS List[Dict]
+            top_candidates = screener.get_top_opportunities()
 
-        # Step 1.5: Pump Scanner Integration - Add low-cap pump candidates
-        try:
-            pump_alerts = screener.scan_pump_candidates()
-
-            # Filter for actionable signals only
-            actionable_actions = {'LONG', 'SHORT', 'CAUTIOUS_LONG', 'CAUTIOUS_SHORT'}
-            actionable_pumps = [p for p in pump_alerts if p.get('trade_action') in actionable_actions]
-
-            if actionable_pumps:
-                # Get existing symbols to avoid duplicates
-                existing_symbols = {c['symbol'] for c in top_candidates}
-
-                # Convert pump alerts to candidate format
-                for pump in actionable_pumps:
-                    if pump['symbol'] not in existing_symbols:
-                        # Map pump_type + trade_action to whale_signal for veto compatibility
-                        if pump['trade_action'] in ['LONG', 'CAUTIOUS_LONG']:
-                            whale_signal = 'PUMP_IMMINENT'
-                        elif pump['trade_action'] in ['SHORT', 'CAUTIOUS_SHORT']:
-                            whale_signal = 'DUMP_IMMINENT'
-                        else:
-                            whale_signal = 'NEUTRAL'
-
-                        pump_candidate = {
-                            'symbol': pump['symbol'],
-                            'vol_ratio': pump.get('vol_ratio', 5.0),
-                            'is_squeeze': False,
-                            'score': pump.get('pump_score', 50),
-                            'whale_signal': whale_signal,
-                            'whale_confidence': 100 - pump.get('dump_risk', 50),  # Invert dump_risk
-                            'pump_source': True,  # Flag for tracking
-                            'pump_type': pump.get('pump_type'),
-                            'trade_action': pump.get('trade_action'),
-                            'dump_risk': pump.get('dump_risk', 50),
-                        }
-                        top_candidates.append(pump_candidate)
-                        existing_symbols.add(pump['symbol'])
-
-                logging.info(f"[PUMP] Injected {len(actionable_pumps)} pump candidates into analysis queue")
-        except Exception as e:
-            logging.warning(f"[PUMP] Scanner skipped: {e}")
-
-        # Step 1.6: Priority Sort - Pump candidates first, then by score
-        # This ensures extreme movements get analyzed before the market moves further
-        def get_priority(candidate):
-            # Pump source candidates get highest priority
-            is_pump = candidate.get('pump_source', False)
-            pump_score = candidate.get('pump_score', 0)
-            pct_change = abs(candidate.get('pct_change_3c', 0))
-            regular_score = candidate.get('score', 0)
-            
-            if is_pump and pct_change >= 10:  # EXTREME pump
-                return (0, -pct_change)  # Priority 0 (highest), then by movement
-            elif is_pump:  # Standard pump
-                return (1, -pump_score)  # Priority 1, then by pump score
-            else:  # Regular screener candidate
-                return (2, -regular_score)  # Priority 2, then by screener score
-        
-        top_candidates.sort(key=get_priority)
-        
-        # Log the priority order
-        pump_count = sum(1 for c in top_candidates if c.get('pump_source', False))
-        if pump_count > 0:
-            logging.info(f"[PRIORITY] Processing order: {pump_count} pump candidates first, then {len(top_candidates) - pump_count} regular")
+        # Sort by screener score (highest first)
+        top_candidates.sort(key=lambda x: x.get('score', 0), reverse=True)
 
         if not top_candidates:
             # No opportunities found - this is normal, not an error
@@ -569,8 +507,294 @@ async def ml_predict(request: PredictionRequest):
         return {"status": "error", "detail": str(e)}
 
 
+@app.get("/analytics/ai-behavior")
+async def ai_behavior_analytics():
+    """
+    Get AI behavior analytics from ai_analysis_cache.
+    Works even without trade outcomes - pure observational data.
+    """
+    try:
+        from services.learner import learner
+        
+        if not learner.engine:
+            return {"status": "error", "detail": "Database not connected"}
+        
+        from sqlalchemy import text
+        
+        with learner.engine.connect() as conn:
+            # 1. AI Agreement Rate
+            agreement = conn.execute(text("""
+                SELECT 
+                    COUNT(*) as total,
+                    SUM(CASE WHEN logic_signal = vision_signal THEN 1 ELSE 0 END) as agreed
+                FROM ai_analysis_cache
+                WHERE created_at > NOW() - INTERVAL '7 days'
+            """)).fetchone()
+            agreement_rate = (agreement[1] / agreement[0] * 100) if agreement[0] > 0 else 0
+            
+            # 2. Confidence Distribution
+            confidence_dist = conn.execute(text("""
+                SELECT 
+                    CASE 
+                        WHEN final_confidence >= 80 THEN 'HIGH (80+)'
+                        WHEN final_confidence >= 60 THEN 'MEDIUM (60-79)'
+                        ELSE 'LOW (<60)'
+                    END as confidence_level,
+                    COUNT(*) as count
+                FROM ai_analysis_cache
+                WHERE created_at > NOW() - INTERVAL '7 days'
+                GROUP BY 1
+                ORDER BY 2 DESC
+            """)).fetchall()
+            
+            # 3. Recommendation Distribution
+            rec_dist = conn.execute(text("""
+                SELECT 
+                    recommendation,
+                    COUNT(*) as count,
+                    ROUND(AVG(final_confidence), 1) as avg_confidence
+                FROM ai_analysis_cache
+                WHERE created_at > NOW() - INTERVAL '7 days'
+                GROUP BY recommendation
+                ORDER BY count DESC
+            """)).fetchall()
+            
+            # 4. Whale Signal Distribution
+            whale_dist = conn.execute(text("""
+                SELECT 
+                    whale_signal,
+                    COUNT(*) as count,
+                    ROUND(AVG(whale_confidence), 1) as avg_whale_conf
+                FROM ai_analysis_cache
+                WHERE created_at > NOW() - INTERVAL '7 days'
+                GROUP BY whale_signal
+                ORDER BY count DESC
+            """)).fetchall()
+            
+            # 5. Hourly Pattern
+            hourly = conn.execute(text("""
+                SELECT 
+                    hour_of_day,
+                    COUNT(*) as total,
+                    SUM(CASE WHEN recommendation = 'EXECUTE' THEN 1 ELSE 0 END) as execute_count
+                FROM ai_analysis_cache
+                WHERE created_at > NOW() - INTERVAL '7 days'
+                GROUP BY hour_of_day
+                ORDER BY hour_of_day
+            """)).fetchall()
+            
+            # 6. Top Analyzed Symbols
+            top_symbols = conn.execute(text("""
+                SELECT 
+                    symbol,
+                    COUNT(*) as analyzed_count,
+                    ROUND(AVG(screener_score), 1) as avg_score,
+                    ROUND(AVG(final_confidence), 1) as avg_confidence
+                FROM ai_analysis_cache
+                WHERE created_at > NOW() - INTERVAL '7 days'
+                GROUP BY symbol
+                ORDER BY analyzed_count DESC
+                LIMIT 10
+            """)).fetchall()
+            
+            # 7. Total Stats
+            totals = conn.execute(text("""
+                SELECT 
+                    COUNT(*) as total_analyzed,
+                    SUM(CASE WHEN recommendation = 'EXECUTE' THEN 1 ELSE 0 END) as total_execute,
+                    SUM(CASE WHEN outcome IS NOT NULL THEN 1 ELSE 0 END) as with_outcome
+                FROM ai_analysis_cache
+                WHERE created_at > NOW() - INTERVAL '7 days'
+            """)).fetchone()
+        
+        return {
+            "status": "ok",
+            "period": "last_7_days",
+            "summary": {
+                "total_analyzed": totals[0] or 0,
+                "total_execute": totals[1] or 0,
+                "with_outcome": totals[2] or 0,
+                "execute_rate": round((totals[1] or 0) / max(totals[0], 1) * 100, 1),
+                "ai_agreement_rate": round(agreement_rate, 1)
+            },
+            "confidence_distribution": [
+                {"level": row[0], "count": row[1]} for row in confidence_dist
+            ],
+            "recommendation_distribution": [
+                {"recommendation": row[0], "count": row[1], "avg_confidence": float(row[2] or 0)} 
+                for row in rec_dist
+            ],
+            "whale_signals": [
+                {"signal": row[0], "count": row[1], "avg_confidence": float(row[2] or 0)} 
+                for row in whale_dist
+            ],
+            "hourly_pattern": [
+                {"hour": row[0], "total": row[1], "execute_count": row[2]} 
+                for row in hourly
+            ],
+            "top_symbols": [
+                {"symbol": row[0], "count": row[1], "avg_score": float(row[2] or 0), "avg_confidence": float(row[3] or 0)} 
+                for row in top_symbols
+            ]
+        }
+        
+    except Exception as e:
+        logging.error(f"AI analytics error: {str(e)}")
+        return {"status": "error", "detail": str(e)}
+
+
 # ============================================
-# Whale Detection Endpoints (NEW v4.2)
+# ML Backfill Endpoints (Simulated Outcomes)
+# ============================================
+
+@app.post("/ml/backfill-outcomes")
+async def backfill_simulated_outcomes(hours_back: int = 24, limit: int = 50):
+    """
+    Backfill simulated outcomes for old signals.
+    
+    This allows ML to learn from "hypothetical" trades.
+    Checks historical prices to determine if signal would have been WIN or LOSS.
+    
+    Args:
+        hours_back: How far back to look for signals (default 24h)
+        limit: Max signals to process (default 50)
+    """
+    try:
+        from services.learner import learner
+        from sqlalchemy import text
+        import ccxt
+        
+        if not learner.engine:
+            return {"status": "error", "detail": "Database not connected"}
+        
+        exchange = ccxt.binanceusdm({'enableRateLimit': True})
+        
+        # Get signals without outcomes that are old enough for simulation
+        with learner.engine.connect() as conn:
+            signals = conn.execute(text("""
+                SELECT 
+                    id, symbol, logic_signal, final_confidence,
+                    screener_score, created_at
+                FROM ai_analysis_cache
+                WHERE outcome IS NULL
+                AND created_at < NOW() - INTERVAL '1 hour'
+                AND created_at > NOW() - INTERVAL :hours_back
+                AND logic_signal IN ('LONG', 'SHORT')
+                ORDER BY created_at ASC
+                LIMIT :limit
+            """), {"hours_back": f"{hours_back} hours", "limit": limit}).fetchall()
+        
+        if not signals:
+            return {
+                "status": "ok",
+                "message": "No signals to backfill",
+                "processed": 0
+            }
+        
+        processed = 0
+        wins = 0
+        losses = 0
+        
+        for signal in signals:
+            try:
+                signal_id = signal[0]
+                symbol = signal[1]
+                direction = signal[2]  # LONG or SHORT
+                confidence = signal[3]
+                created_at = signal[5]
+                
+                # Fetch 15m candles from signal time + 4 hours
+                # (simulate 4 hour hold time for scalping)
+                ohlcv = exchange.fetch_ohlcv(symbol, '15m', limit=20)
+                if not ohlcv or len(ohlcv) < 5:
+                    continue
+                
+                # Get entry price (first candle close after signal)
+                entry_price = ohlcv[0][4]
+                
+                # Define SL/TP ratios (standard 1:2 R:R)
+                if direction == "LONG":
+                    sl_price = entry_price * 0.99  # 1% SL
+                    tp_price = entry_price * 1.02  # 2% TP
+                else:
+                    sl_price = entry_price * 1.01  # 1% SL
+                    tp_price = entry_price * 0.98  # 2% TP
+                
+                # Check if TP or SL hit first
+                outcome = None
+                pnl = 0.0
+                
+                for candle in ohlcv[1:]:
+                    high = candle[2]
+                    low = candle[3]
+                    
+                    if direction == "LONG":
+                        if low <= sl_price:
+                            outcome = "LOSS"
+                            pnl = -1.0
+                            break
+                        elif high >= tp_price:
+                            outcome = "WIN"
+                            pnl = 2.0
+                            break
+                    else:  # SHORT
+                        if high >= sl_price:
+                            outcome = "LOSS"
+                            pnl = -1.0
+                            break
+                        elif low <= tp_price:
+                            outcome = "WIN"
+                            pnl = 2.0
+                            break
+                
+                # If neither hit, check final price
+                if outcome is None:
+                    final_price = ohlcv[-1][4]
+                    if direction == "LONG":
+                        pnl = ((final_price - entry_price) / entry_price) * 100
+                    else:
+                        pnl = ((entry_price - final_price) / entry_price) * 100
+                    outcome = "WIN" if pnl > 0 else "LOSS"
+                
+                # Update database
+                with learner.engine.connect() as conn:
+                    conn.execute(text("""
+                        UPDATE ai_analysis_cache
+                        SET outcome = :outcome, pnl = :pnl
+                        WHERE id = :id
+                    """), {"outcome": outcome, "pnl": pnl, "id": signal_id})
+                    conn.commit()
+                
+                processed += 1
+                if outcome == "WIN":
+                    wins += 1
+                else:
+                    losses += 1
+                    
+            except Exception as e:
+                logging.warning(f"[BACKFILL] Failed to process {signal[1]}: {e}")
+                continue
+        
+        # Trigger model retrain if we have new data
+        if processed >= 10:
+            learner._check_retrain()
+        
+        return {
+            "status": "ok",
+            "processed": processed,
+            "wins": wins,
+            "losses": losses,
+            "win_rate": round(wins / max(processed, 1) * 100, 1),
+            "message": f"Backfilled {processed} signals with simulated outcomes"
+        }
+        
+    except Exception as e:
+        logging.error(f"Backfill error: {str(e)}")
+        return {"status": "error", "detail": str(e)}
+
+
+# ============================================
+# Whale Detection Endpoints
 # ============================================
 
 @app.get("/whale/status")

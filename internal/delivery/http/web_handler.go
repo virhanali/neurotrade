@@ -26,6 +26,7 @@ type WebHandler struct {
 	userRepo       domain.UserRepository
 	positionRepo   domain.PositionRepository
 	marketPriceSvc MarketPriceService
+	aiService      domain.AIService
 	db             *pgxpool.Pool
 }
 
@@ -34,11 +35,13 @@ func NewWebHandler(
 	positionRepo domain.PositionRepository,
 	db *pgxpool.Pool,
 	marketPriceSvc MarketPriceService,
+	aiService domain.AIService,
 ) *WebHandler {
 	return &WebHandler{
 		userRepo:       userRepo,
 		positionRepo:   positionRepo,
 		marketPriceSvc: marketPriceSvc,
+		aiService:      aiService,
 		db:             db,
 	}
 }
@@ -161,6 +164,7 @@ func RegisterWebRoutes(e *echo.Echo, handler *WebHandler, authMiddleware echo.Mi
 
 	// API endpoints used by React (Keep these!)
 	e.GET("/api/user/positions/count", handler.HandlePositionsCount, authMiddleware)
+	e.GET("/api/ml/analytics", handler.HandleGetMLAnalytics, authMiddleware)
 	e.POST("/api/settings", handler.HandleUpdateSettings, authMiddleware)
 
 	// Stub legacy HTMX endpoints to avoid 404 logs (Optional)
@@ -281,4 +285,18 @@ func (h *WebHandler) HandleUpdateSettings(c echo.Context) error {
 		"message": "Settings saved successfully",
 		"data":    user,
 	})
+}
+
+// GET /api/ml/analytics - Proxy to Python ML Analytics
+func (h *WebHandler) HandleGetMLAnalytics(c echo.Context) error {
+	ctx := c.Request().Context()
+
+	analytics, err := h.aiService.GetAIAnalytics(ctx)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": fmt.Sprintf("Failed to fetch ML analytics: %v", err),
+		})
+	}
+
+	return c.JSON(http.StatusOK, analytics)
 }

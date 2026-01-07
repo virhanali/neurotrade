@@ -2,7 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider } from '@/hooks/useTheme';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
-import { LoginPage, RegisterPage, DashboardPage, PositionsPage, HistoryPage, SettingsPage, AdminPage, LandingPage } from '@/pages';
+import { LoginPage, RegisterPage, DashboardPage, PositionsPage, HistoryPage, SettingsPage, AdminPage, LandingPage, MLAnalyticsPage } from '@/pages';
 import './index.css';
 
 const queryClient = new QueryClient({
@@ -41,6 +41,7 @@ function App() {
               <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/positions" element={<PositionsPage />} />
               <Route path="/history" element={<HistoryPage />} />
+              <Route path="/analytics" element={<MLAnalyticsPage />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="/admin" element={<AdminPage />} />
             </Route>

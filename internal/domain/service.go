@@ -35,6 +35,9 @@ type AIService interface {
 
 	// GetRealBalance fetches real wallet balance from Python Engine
 	GetRealBalance(ctx context.Context, apiKey, apiSecret string) (float64, error)
+
+	// GetAIAnalytics fetches AI behavior analytics from Python Engine
+	GetAIAnalytics(ctx context.Context) (map[string]interface{}, error)
 }
 
 // ExecutionResult represents the result of a real trade execution

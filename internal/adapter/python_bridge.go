@@ -383,3 +383,30 @@ func (pb *PythonBridge) GetRealBalance(ctx context.Context, apiKey, apiSecret st
 	log.Printf("[PythonBridge] Balance fetched: total=%.2f, free=%.2f", result.Total, result.Free)
 	return result.Total, nil
 }
+
+// GetAIAnalytics fetches AI behavior analytics from Python Engine
+func (pb *PythonBridge) GetAIAnalytics(ctx context.Context) (map[string]interface{}, error) {
+	url := fmt.Sprintf("%s/analytics/ai-behavior", pb.baseURL)
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create analytics request: %w", err)
+	}
+
+	resp, err := pb.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch analytics from Python engine: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Python engine analytics failed with status: %d", resp.StatusCode)
+	}
+
+	var result map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to decode analytics response: %w", err)
+	}
+
+	return result, nil
+}

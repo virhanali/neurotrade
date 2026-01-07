@@ -26,4 +26,4 @@ EXPOSE 8000
 
 # Ensure we're in the right directory and run the application
 WORKDIR /app
-CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PYTHON_PORT:-8000} --workers 1"]

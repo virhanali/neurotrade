@@ -1,13 +1,12 @@
 """
-Market Screener Service (v4.5)
-Scans Binance Futures market for high-volume, volatile opportunities
-Enhanced with Whale Detection (Liquidation + Order Book Analysis)
-NEW: OHLCV Caching + Circuit Breaker for reliability
+Market Screener Service
+Scans Binance Futures market for trading opportunities with multi-timeframe analysis.
 """
 
 import ccxt
 import logging
 import pandas as pd
+import numpy as np
 import ta
 import time
 import threading
@@ -270,17 +269,419 @@ class MarketScreener:
             logging.warning(f"[5-MIN CONFIRM] Failed for {symbol}: {e}")
             return True  # On error, allow trade (don't block)
 
+    def check_1h_confirmation(self, symbol: str, direction: str) -> tuple:
+        """Check if 1H timeframe confirms the suggested direction. Returns (confirmed, reason)."""
+        try:
+            ohlcv = self.fetch_ohlcv_cached(symbol, '1h', 20)
+            if not ohlcv or len(ohlcv) < 15:
+                return True, "Insufficient 1H data (allowing trade)"
+            
+            df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+            
+            # Calculate 1H EMA 9 and 21
+            ema_9 = ta.trend.ema_indicator(df['close'], window=9).iloc[-1]
+            ema_21 = ta.trend.ema_indicator(df['close'], window=21).iloc[-1]
+            current_price = df['close'].iloc[-1]
+            
+            # Calculate 1H RSI
+            rsi_1h = ta.momentum.rsi(df['close'], window=14).iloc[-1]
+            
+            # Trend direction from EMAs
+            ema_bullish = ema_9 > ema_21 and current_price > ema_9
+            ema_bearish = ema_9 < ema_21 and current_price < ema_9
+            
+            if direction == "LONG":
+                # For LONG: 1H should not be strongly bearish
+                if ema_bearish and rsi_1h < 40:
+                    return False, f"1H BEARISH (EMA9<EMA21, RSI={rsi_1h:.1f})"
+                elif rsi_1h < 30:  # Extreme oversold is acceptable for reversal
+                    return True, f"1H Extreme Oversold (RSI={rsi_1h:.1f})"
+                elif ema_bullish:
+                    return True, f"1H BULLISH confirmation (EMA9>EMA21)"
+                else:
+                    return True, "1H Neutral (allowing trade)"
+                    
+            elif direction == "SHORT":
+                # For SHORT: 1H should not be strongly bullish
+                if ema_bullish and rsi_1h > 60:
+                    return False, f"1H BULLISH (EMA9>EMA21, RSI={rsi_1h:.1f})"
+                elif rsi_1h > 70:  # Extreme overbought is acceptable for reversal
+                    return True, f"1H Extreme Overbought (RSI={rsi_1h:.1f})"
+                elif ema_bearish:
+                    return True, f"1H BEARISH confirmation (EMA9<EMA21)"
+                else:
+                    return True, "1H Neutral (allowing trade)"
+            
+            return True, "1H Check passed"
+            
+        except Exception as e:
+            logging.warning(f"[1H CONFIRM] Failed for {symbol}: {e}")
+            return True, f"1H check error: {e}"
+
+    def check_market_structure(self, df_15m: pd.DataFrame) -> dict:
+        """Analyze market structure for HH/HL (uptrend) or LH/LL (downtrend)."""
+        try:
+            if len(df_15m) < 20:
+                return {'structure': 'UNKNOWN', 'quality': 50, 'swings': []}
+            
+            highs = df_15m['high'].values
+            lows = df_15m['low'].values
+            
+            # Find swing highs and lows (last 15 candles)
+            swing_highs = []
+            swing_lows = []
+            
+            for i in range(-13, -2):  # Check from -13 to -3 (need neighbors)
+                # Swing high: higher than both neighbors
+                if highs[i] > highs[i-1] and highs[i] > highs[i+1]:
+                    swing_highs.append((i, highs[i]))
+                # Swing low: lower than both neighbors
+                if lows[i] < lows[i-1] and lows[i] < lows[i+1]:
+                    swing_lows.append((i, lows[i]))
+            
+            if len(swing_highs) < 2 or len(swing_lows) < 2:
+                return {'structure': 'UNCLEAR', 'quality': 40, 'swings': []}
+            
+            # Analyze last 2 swing highs and lows
+            last_high = swing_highs[-1][1]
+            prev_high = swing_highs[-2][1]
+            last_low = swing_lows[-1][1]
+            prev_low = swing_lows[-2][1]
+            
+            higher_highs = last_high > prev_high
+            higher_lows = last_low > prev_low
+            lower_highs = last_high < prev_high
+            lower_lows = last_low < prev_low
+            
+            # Determine structure
+            structure = 'CHOPPY'
+            quality = 30
+            
+            if higher_highs and higher_lows:
+                structure = 'UPTREND'
+                quality = 80
+            elif lower_highs and lower_lows:
+                structure = 'DOWNTREND'
+                quality = 80
+            elif higher_lows and not higher_highs:
+                structure = 'ACCUMULATION'  # Building base
+                quality = 60
+            elif lower_highs and not lower_lows:
+                structure = 'DISTRIBUTION'  # Topping
+                quality = 60
+            else:
+                structure = 'CHOPPY'
+                quality = 30
+            
+            return {
+                'structure': structure,
+                'quality': quality,
+                'higher_highs': higher_highs,
+                'higher_lows': higher_lows,
+                'last_swing_high': float(last_high),
+                'last_swing_low': float(last_low)
+            }
+            
+        except Exception as e:
+            logging.warning(f"[STRUCTURE] Analysis failed: {e}")
+            return {'structure': 'ERROR', 'quality': 50, 'swings': []}
+
+    def check_sr_proximity(self, df_15m: pd.DataFrame, entry_price: float) -> dict:
+        """Check if entry price is too close to support/resistance levels."""
+        try:
+            if len(df_15m) < 30:
+                return {'near_sr': False, 'distance_pct': 999}
+            
+            # Find recent key levels (last 30 candles)
+            recent_high = df_15m['high'].iloc[-30:-1].max()
+            recent_low = df_15m['low'].iloc[-30:-1].min()
+            
+            # Also check Bollinger Bands as dynamic S/R
+            rolling_mean = df_15m['close'].rolling(window=20).mean().iloc[-1]
+            rolling_std = df_15m['close'].rolling(window=20).std().iloc[-1]
+            bb_upper = rolling_mean + (rolling_std * 2)
+            bb_lower = rolling_mean - (rolling_std * 2)
+            
+            # Key levels to check
+            key_levels = [recent_high, recent_low, bb_upper, bb_lower]
+            
+            # Find nearest level
+            min_distance_pct = 999
+            nearest_level = None
+            level_type = None
+            
+            for level in key_levels:
+                distance_pct = abs(entry_price - level) / entry_price * 100
+                if distance_pct < min_distance_pct:
+                    min_distance_pct = distance_pct
+                    nearest_level = level
+                    if level == recent_high:
+                        level_type = 'RESISTANCE'
+                    elif level == recent_low:
+                        level_type = 'SUPPORT'
+                    elif level == bb_upper:
+                        level_type = 'BB_UPPER'
+                    else:
+                        level_type = 'BB_LOWER'
+            
+            # Entry within 0.3% of S/R is risky
+            near_sr = min_distance_pct < 0.3
+            
+            return {
+                'near_sr': near_sr,
+                'distance_pct': float(min_distance_pct),
+                'nearest_level': float(nearest_level) if nearest_level else None,
+                'level_type': level_type
+            }
+            
+        except Exception as e:
+            logging.warning(f"[S/R CHECK] Analysis failed: {e}")
+            return {'near_sr': False, 'distance_pct': 999}
+
+    def check_volume_sustainability(self, df_15m: pd.DataFrame) -> dict:
+        """Check if volume is sustained (not just a spike)."""
+        try:
+            if len(df_15m) < 15:
+                return {'sustained': False, 'strong_candles': 0, 'avg_ratio': 0}
+            
+            # Calculate average volume (excluding last 3 candles)
+            avg_vol = df_15m['volume'].iloc[-15:-3].mean()
+            
+            if avg_vol == 0:
+                return {'sustained': False, 'strong_candles': 0, 'avg_ratio': 0}
+            
+            # Check last 3 candles
+            vol_ratios = []
+            strong_candles = 0
+            
+            for i in range(-3, 0):
+                ratio = df_15m['volume'].iloc[i] / avg_vol
+                vol_ratios.append(ratio)
+                if ratio > 1.2:  # Above average
+                    strong_candles += 1
+            
+            # Sustained = at least 2 of 3 candles have elevated volume
+            sustained = strong_candles >= 2
+            avg_ratio = sum(vol_ratios) / len(vol_ratios)
+            
+            return {
+                'sustained': sustained,
+                'strong_candles': strong_candles,
+                'avg_ratio': float(avg_ratio),
+                'candle_ratios': [float(r) for r in vol_ratios]
+            }
+            
+        except Exception as e:
+            logging.warning(f"[VOL SUSTAIN] Analysis failed: {e}")
+            return {'sustained': False, 'strong_candles': 0, 'avg_ratio': 0}
+
+    def calculate_directional_momentum(self, df_15m: pd.DataFrame) -> dict:
+        """Calculate directional momentum to predict PUMP or DUMP."""
+        try:
+            if len(df_15m) < 25:
+                return {'direction': 'NEUTRAL', 'confidence': 0, 'factors': []}
+            
+            closes = df_15m['close'].values
+            highs = df_15m['high'].values
+            lows = df_15m['low'].values
+            volumes = df_15m['volume'].values
+            opens = df_15m['open'].values
+            
+            pump_score = 0
+            dump_score = 0
+            factors = []
+            fake_signals = []
+            fake_penalty = 0
+            
+            # ===========================================
+            # ANTI-FAKE DETECTION (Run first)
+            # ===========================================
+            
+            # 1. Single Candle Dominance (manipulation signal)
+            # If one candle has >50% of the total move, it's likely fake
+            total_move = abs(closes[-1] - closes[-5])
+            max_single_move = max(abs(closes[i] - closes[i-1]) for i in range(-4, 0))
+            if total_move > 0 and max_single_move / total_move > 0.6:
+                fake_penalty += 20
+                fake_signals.append("SINGLE_CANDLE_DOMINANCE")
+            
+            # 2. Wick Rejection (price rejected at highs/lows)
+            last_candle_body = abs(closes[-1] - opens[-1])
+            last_candle_range = highs[-1] - lows[-1]
+            if last_candle_range > 0:
+                body_ratio = last_candle_body / last_candle_range
+                # Long wick = rejection
+                if body_ratio < 0.3:  # Body is less than 30% of range
+                    fake_penalty += 15
+                    fake_signals.append("WICK_REJECTION")
+            
+            # 3. Volume Divergence (price up but volume decreasing)
+            vol_trend = (volumes[-1] + volumes[-2]) / 2 - (volumes[-3] + volumes[-4]) / 2
+            price_trend = closes[-1] - closes[-4]
+            # Bullish price but bearish volume = weak/fake
+            if price_trend > 0 and vol_trend < 0:
+                fake_penalty += 15
+                fake_signals.append("VOL_DIVERGENCE_BULL")
+            elif price_trend < 0 and vol_trend < 0:
+                fake_penalty += 10
+                fake_signals.append("VOL_DIVERGENCE_BEAR")
+            
+            # 4. Immediate Reversal Check (last candle reversing)
+            prev_direction = closes[-2] - closes[-3]
+            curr_direction = closes[-1] - closes[-2]
+            if prev_direction > 0 and curr_direction < 0 and abs(curr_direction) > abs(prev_direction) * 0.5:
+                fake_penalty += 20
+                fake_signals.append("REVERSAL_CANDLE")
+            elif prev_direction < 0 and curr_direction > 0 and abs(curr_direction) > abs(prev_direction) * 0.5:
+                fake_penalty += 20
+                fake_signals.append("REVERSAL_CANDLE")
+            
+            # 1. Price Rate of Change (ROC)
+            # ROC 3 candles (45 min)
+            roc_3 = ((closes[-1] - closes[-4]) / closes[-4]) * 100 if closes[-4] > 0 else 0
+            # ROC 5 candles (75 min)
+            roc_5 = ((closes[-1] - closes[-6]) / closes[-6]) * 100 if closes[-6] > 0 else 0
+            
+            if roc_3 > 1.0:  # >1% up in 3 candles
+                pump_score += 20
+                factors.append(f"ROC3: +{roc_3:.1f}% (bullish)")
+            elif roc_3 < -1.0:
+                dump_score += 20
+                factors.append(f"ROC3: {roc_3:.1f}% (bearish)")
+            
+            if roc_5 > 1.5:  # >1.5% up in 5 candles
+                pump_score += 15
+                factors.append(f"ROC5: +{roc_5:.1f}% (bullish)")
+            elif roc_5 < -1.5:
+                dump_score += 15
+                factors.append(f"ROC5: {roc_5:.1f}% (bearish)")
+            
+            # 2. EMA 9/21 Crossover
+            ema_9 = ta.trend.ema_indicator(df_15m['close'], window=9).iloc[-1]
+            ema_21 = ta.trend.ema_indicator(df_15m['close'], window=21).iloc[-1]
+            ema_9_prev = ta.trend.ema_indicator(df_15m['close'], window=9).iloc[-2]
+            ema_21_prev = ta.trend.ema_indicator(df_15m['close'], window=21).iloc[-2]
+            
+            # Bullish crossover (EMA9 crosses above EMA21)
+            if ema_9 > ema_21 and ema_9_prev <= ema_21_prev:
+                pump_score += 25
+                factors.append("EMA9/21 BULLISH CROSS ⬆️")
+            # Bearish crossover
+            elif ema_9 < ema_21 and ema_9_prev >= ema_21_prev:
+                dump_score += 25
+                factors.append("EMA9/21 BEARISH CROSS ⬇️")
+            # Already bullish
+            elif ema_9 > ema_21:
+                pump_score += 10
+                factors.append("EMA9 > EMA21 (bullish)")
+            # Already bearish
+            elif ema_9 < ema_21:
+                dump_score += 10
+                factors.append("EMA9 < EMA21 (bearish)")
+            
+            # 3. RSI Slope
+            rsi_series = ta.momentum.rsi(df_15m['close'], window=14)
+            rsi_now = rsi_series.iloc[-1]
+            rsi_prev = rsi_series.iloc[-3]  # 3 candles ago
+            rsi_slope = rsi_now - rsi_prev
+            
+            if rsi_slope > 5:  # RSI increasing fast
+                pump_score += 15
+                factors.append(f"RSI slope: +{rsi_slope:.1f} (accelerating up)")
+            elif rsi_slope < -5:  # RSI decreasing fast
+                dump_score += 15
+                factors.append(f"RSI slope: {rsi_slope:.1f} (accelerating down)")
+            
+            # RSI zones bonus
+            if rsi_now < 35 and rsi_slope > 0:  # Recovering from oversold
+                pump_score += 10
+                factors.append(f"RSI {rsi_now:.0f} recovering from oversold")
+            elif rsi_now > 65 and rsi_slope < 0:  # Dropping from overbought
+                dump_score += 10
+                factors.append(f"RSI {rsi_now:.0f} dropping from overbought")
+            
+            # 4. Volume-Price Confirmation
+            vol_avg = np.mean(volumes[-10:-3])
+            
+            bullish_vol_candles = 0
+            bearish_vol_candles = 0
+            
+            for i in range(-3, 0):
+                candle_up = closes[i] > opens[i]  # Green candle
+                high_vol = volumes[i] > vol_avg * 1.2  # Above average volume
+                
+                if candle_up and high_vol:
+                    bullish_vol_candles += 1
+                elif not candle_up and high_vol:
+                    bearish_vol_candles += 1
+            
+            if bullish_vol_candles >= 2:
+                pump_score += 20
+                factors.append(f"Volume confirms UP ({bullish_vol_candles}/3 bullish)")
+            elif bearish_vol_candles >= 2:
+                dump_score += 20
+                factors.append(f"Volume confirms DOWN ({bearish_vol_candles}/3 bearish)")
+            
+            # 5. HH/HL Pattern (Last 5 candles)
+            recent_highs = highs[-5:]
+            recent_lows = lows[-5:]
+            
+            higher_highs = all(recent_highs[i] >= recent_highs[i-1] for i in range(1, len(recent_highs)))
+            higher_lows = all(recent_lows[i] >= recent_lows[i-1] for i in range(1, len(recent_lows)))
+            lower_highs = all(recent_highs[i] <= recent_highs[i-1] for i in range(1, len(recent_highs)))
+            lower_lows = all(recent_lows[i] <= recent_lows[i-1] for i in range(1, len(recent_lows)))
+            
+            if higher_highs and higher_lows:
+                pump_score += 20
+                factors.append("HH + HL pattern (strong bullish)")
+            elif lower_highs and lower_lows:
+                dump_score += 20
+                factors.append("LH + LL pattern (strong bearish)")
+            
+            # Final calculation with anti-fake penalty
+            total_score = pump_score + dump_score
+            
+            # Apply fake penalty to confidence
+            if pump_score > dump_score and pump_score >= 25:
+                direction = "PUMP"
+                base_confidence = int((pump_score / max(total_score, 1)) * 100)
+                confidence = max(0, min(95, base_confidence - fake_penalty))
+            elif dump_score > pump_score and dump_score >= 25:
+                direction = "DUMP"
+                base_confidence = int((dump_score / max(total_score, 1)) * 100)
+                confidence = max(0, min(95, base_confidence - fake_penalty))
+            else:
+                direction = "NEUTRAL"
+                confidence = 0
+            
+            # If fake penalty is too high, downgrade to NEUTRAL
+            if fake_penalty >= 40:
+                direction = "NEUTRAL"
+                confidence = 0
+                logging.info(f"[MOMENTUM] Signal downgraded to NEUTRAL due to fake detection: {fake_signals}")
+            elif fake_penalty >= 20 and confidence > 0:
+                logging.info(f"[MOMENTUM] Confidence reduced by {fake_penalty}% due to: {fake_signals}")
+            
+            return {
+                'direction': direction,
+                'confidence': confidence,
+                'pump_score': pump_score,
+                'dump_score': dump_score,
+                'roc_3': float(roc_3),
+                'roc_5': float(roc_5),
+                'ema_bullish': bool(ema_9 > ema_21),
+                'rsi_slope': float(rsi_slope),
+                'factors': factors,
+                'fake_penalty': fake_penalty,
+                'fake_signals': fake_signals
+            }
+            
+        except Exception as e:
+            logging.warning(f"[MOMENTUM] Analysis failed: {e}")
+            return {'direction': 'NEUTRAL', 'confidence': 0, 'factors': [str(e)]}
+
     def get_top_opportunities(self) -> List[Dict]:
-        """
-        Screen market for top trading opportunities [PRO MODE]
-        Returns list of candidate dictionaries with metrics.
-        
-        New Logic (Resource Heavy):
-        1. Fetch Top 30 Volatile Candidates
-        2. MTF Analysis: Check 15m AND 4H Trends
-        3. Volume Spike Detection
-        4. Strict RSI + Trend Confluence
-        """
+        """Screen market for top trading opportunities. Returns list of candidates with metrics."""
         try:
             # Try to get data from WebSocket first (Fastest)
             from services.price_stream import price_stream
@@ -471,6 +872,50 @@ class MarketScreener:
                     score += (vol_ratio * 5)
                     score += (adx_val / 5)
 
+                    # Quality Filters
+
+                    # 5. MARKET STRUCTURE CHECK (Higher Highs/Lows)
+                    structure_data = self.check_market_structure(df_15m)
+                    structure_quality = structure_data.get('quality', 50)
+                    structure_type = structure_data.get('structure', 'UNCLEAR')
+                    
+                    # PENALTY: Choppy structure = reduce score
+                    if structure_type == 'CHOPPY':
+                        score -= 15  # Reduced from -20 to keep more signals
+                        logging.info(f"[STRUCTURE] {symbol}: CHOPPY market (-15 score)")
+                    elif structure_type in ['UPTREND', 'DOWNTREND']:
+                        score += 15  # Bonus for clean structure
+                    
+                    # 6. VOLUME SUSTAINABILITY CHECK (RELAXED for scalping)
+                    # No penalty - only give bonus for sustained volume
+                    vol_sustain = self.check_volume_sustainability(df_15m)
+                    if vol_sustain.get('sustained', False):
+                        score += 10  # Bonus for sustained volume
+                    # REMOVED: penalty for no volume - scalpers catch first spike
+                    
+                    # 7. S/R PROXIMITY CHECK (Don't enter near resistance/support)
+                    sr_check = self.check_sr_proximity(df_15m, current_price)
+                    if sr_check.get('near_sr', False):
+                        sr_penalty = 10  # Reduced from 15 to keep more signals
+                        score -= sr_penalty
+                        logging.info(f"[S/R] {symbol}: Entry too close to {sr_check.get('level_type')} "
+                                   f"(distance: {sr_check.get('distance_pct', 0):.2f}%, -{sr_penalty} score)")
+                    
+                    # Directional Momentum
+                    momentum_data = self.calculate_directional_momentum(df_15m)
+                    momentum_direction = momentum_data.get('direction', 'NEUTRAL')
+                    momentum_confidence = momentum_data.get('confidence', 0)
+                    
+                    # Boost score for clear directional signals
+                    if momentum_direction in ['PUMP', 'DUMP'] and momentum_confidence >= 60:
+                        momentum_boost = min(25, int(momentum_confidence / 4))  # Max +25 for 100% conf
+                        score += momentum_boost
+                        logging.info(f"[MOMENTUM] {symbol}: {momentum_direction} detected! "
+                                   f"conf={momentum_confidence}% (+{momentum_boost} score) "
+                                   f"factors: {momentum_data.get('factors', [])[:3]}")
+                    
+
+
                     if score > 15:
                         result = cand.copy()
                         # Convert all numpy types to native Python types for JSON serialization
@@ -483,8 +928,26 @@ class MarketScreener:
                         result['adx'] = float(adx_val)
                         result['atr_pct'] = float(atr_pct)
                         result['efficiency_ratio'] = float(efficiency_ratio)
+                        
+                        # Quality metrics
+                        result['structure'] = structure_type
+                        result['structure_quality'] = structure_quality
+                        result['vol_sustained'] = vol_sustain.get('sustained', False)
+                        result['vol_strong_candles'] = vol_sustain.get('strong_candles', 0)
+                        result['sr_distance_pct'] = sr_check.get('distance_pct', 999)
+                        result['sr_near'] = sr_check.get('near_sr', False)
+                        result['sr_level_type'] = sr_check.get('level_type', None)
+                        
+                        # Momentum data
+                        result['momentum_direction'] = momentum_direction
+                        result['momentum_confidence'] = momentum_confidence
+                        result['momentum_factors'] = momentum_data.get('factors', [])[:5]  # Top 5 factors
+                        result['roc_3'] = momentum_data.get('roc_3', 0)
+                        result['roc_5'] = momentum_data.get('roc_5', 0)
+                        result['ema_bullish'] = momentum_data.get('ema_bullish', False)
+                        result['rsi_slope'] = momentum_data.get('rsi_slope', 0)
 
-                        # WHALE DETECTION (NEW v4.2)
+                        # Whale detection
                         # Get whale signal for this candidate
                         if HAS_WHALE_DETECTOR:
                             try:
@@ -495,12 +958,12 @@ class MarketScreener:
                                 result['order_imbalance'] = whale_data.get('order_imbalance', 0)
                                 result['large_trades_bias'] = whale_data.get('large_trades_bias', 'MIXED')
 
-                                # BOOST SCORE for strong whale signals (Tier 3: Progressive Scoring)
+                                # Boost score for strong whale signals
                                 whale_sig = result['whale_signal']
                                 whale_conf = result['whale_confidence']
                                 whale_boost = 0
 
-                                # Tier 2: 5-Minute Confirmation Check (Optional 2 enhancement)
+                                # 5-min confirmation for strong signals
                                 # Only check for strong PUMP/DUMP signals to confirm entry timing
                                 if whale_sig in ['PUMP_IMMINENT', 'DUMP_IMMINENT']:
                                     m5_confirmed = self.check_5min_confirmation(symbol, whale_sig)
@@ -513,7 +976,7 @@ class MarketScreener:
                                 else:
                                     result['5min_confirmed'] = True
 
-                                # Tier 3: Progressive Whale Scoring (non-linear, confidence-based)
+                                # Progressive whale scoring
                                 if whale_sig in ['PUMP_IMMINENT', 'DUMP_IMMINENT']:
                                     # Scale from +25 (60% conf) to +50 (95% conf)
                                     # Formula: 25 + (confidence - 60) * 0.5
@@ -550,7 +1013,7 @@ class MarketScreener:
                             result['5min_confirmed'] = bool(result['5min_confirmed'])
 
                         # NEW v4.5: Compute suggested_direction (pre-hint for AI)
-                        # Priority: Whale Signal > RSI + Trend
+                        # Priority: Whale Signal > Momentum > RSI + Trend
                         suggested_direction = "NEUTRAL"
                         whale_sig_final = result.get('whale_signal', 'NEUTRAL')
                         
@@ -563,8 +1026,15 @@ class MarketScreener:
                             suggested_direction = "SHORT"  # Avoid longs, lean short
                         elif whale_sig_final == 'SQUEEZE_SHORTS':
                             suggested_direction = "LONG"   # Avoid shorts, lean long
+                        # 2. Momentum direction (stronger than RSI alone)
+                        elif momentum_direction == "PUMP" and momentum_confidence >= 60:
+                            suggested_direction = "LONG"
+                            logging.info(f"[DIRECTION] {symbol}: LONG from MOMENTUM ({momentum_confidence}%)")
+                        elif momentum_direction == "DUMP" and momentum_confidence >= 60:
+                            suggested_direction = "SHORT"
+                            logging.info(f"[DIRECTION] {symbol}: SHORT from MOMENTUM ({momentum_confidence}%)")
                         else:
-                            # 2. Fallback to RSI + Trend confluence
+                            # 3. Fallback to RSI + Trend confluence
                             rsi = result.get('rsi', 50)
                             trend = result.get('trend', 'NEUTRAL')
                             
@@ -577,10 +1047,42 @@ class MarketScreener:
                             elif rsi > 70:
                                 suggested_direction = "SHORT"  # Extreme overbought
                         
+                        # 1H confirmation layer
+                        h1_confirmed = True
+                        h1_reason = ""
+                        
+                        if suggested_direction != "NEUTRAL":
+                            h1_confirmed, h1_reason = self.check_1h_confirmation(symbol, suggested_direction)
+                            result['h1_confirmed'] = h1_confirmed
+                            result['h1_reason'] = h1_reason
+                            
+                            if not h1_confirmed:
+                                # Strong whale signals override 1H rejection
+                                if whale_sig_final in ['PUMP_IMMINENT', 'DUMP_IMMINENT'] and result.get('whale_confidence', 0) >= 80:
+                                    logging.info(f"[1H] {symbol}: {h1_reason} - BUT WHALE SIGNAL OVERRIDE ({whale_sig_final} {result.get('whale_confidence')}%)")
+                                    result['h1_override'] = 'WHALE_SIGNAL'
+                                else:
+                                    # Downgrade: Apply score penalty and flag
+                                    score_penalty = 25
+                                    result['score'] = float(max(0, result['score'] - score_penalty))
+                                    result['h1_conflict'] = True
+                                    logging.warning(f"[1H] {symbol}: {suggested_direction} rejected - {h1_reason} (-{score_penalty} score)")
+                                    
+                                    # If score drops too low, downgrade direction
+                                    if result['score'] < 30:
+                                        suggested_direction = "NEUTRAL"
+                                        logging.info(f"[1H] {symbol}: Direction downgraded to NEUTRAL (score too low)")
+                            else:
+                                logging.info(f"[1H] {symbol}: {suggested_direction} confirmed - {h1_reason}")
+                        else:
+                            result['h1_confirmed'] = True
+                            result['h1_reason'] = "No direction to confirm"
+
+                        
                         result['suggested_direction'] = suggested_direction
                         
                         if suggested_direction != "NEUTRAL":
-                            logging.info(f"[DIRECTION] {symbol}: {suggested_direction} (whale={whale_sig_final}, rsi={result.get('rsi', 0):.1f}, trend={result.get('trend')})")
+                            logging.info(f"[DIRECTION] {symbol}: {suggested_direction} (whale={whale_sig_final}, rsi={result.get('rsi', 0):.1f}, trend={result.get('trend')}, h1={h1_confirmed})")
 
                         return result
 
@@ -590,8 +1092,7 @@ class MarketScreener:
                     logging.error(f"[WARN] Screener error for {symbol}: {e}")
                     return None
             
-            # Execute parallel analysis (10 threads = optimal balance for speed vs rate limit)
-            # 10 threads × 2 req = 20 req/sec burst (safe under CloudFront limit)
+            # Execute parallel analysis
             final_list = []
             with ThreadPoolExecutor(max_workers=10) as executor:
                 futures = {executor.submit(analyze_candidate, cand): cand for cand in candidates}

@@ -2,7 +2,9 @@ package infra
 
 import (
 	"context"
+	"fmt"
 	"log"
+	"net/http"
 	"time"
 
 	"github.com/robfig/cron/v3"
@@ -16,19 +18,22 @@ type Scheduler struct {
 	tradingService *usecase.TradingService
 	balance        float64
 	mode           string // "SCALPER" or "INVESTOR"
+	pythonURL      string
 }
 
 // NewScheduler creates a new scheduler
 // mode defaults to "SCALPER" if empty
-func NewScheduler(tradingService *usecase.TradingService, balance float64, mode string) *Scheduler {
+func NewScheduler(tradingService *usecase.TradingService, balance float64, mode string, pythonURL string) *Scheduler {
 	if mode == "" {
 		mode = "SCALPER"
 	}
+
 	return &Scheduler{
 		cron:           cron.New(cron.WithSeconds()),
 		tradingService: tradingService,
 		balance:        balance,
 		mode:           mode,
+		pythonURL:      pythonURL,
 	}
 }
 
@@ -97,10 +102,48 @@ func (s *Scheduler) Start() error {
 		return err
 	}
 
+	// === ML BACKFILL SCHEDULER ===
+	// Run every 6 hours to backfill simulated outcomes
+	// This allows ML to learn from hypothetical trades
+	_, err = s.cron.AddFunc("0 0 */6 * * *", func() {
+		log.Println("[CRON] ML Backfill triggered (every 6 hours)")
+
+		// Use HTTP Client with timeout for safety
+		client := &http.Client{
+			Timeout: 60 * time.Second, // Long timeout for backfill operation
+		}
+
+		url := fmt.Sprintf("%s/ml/backfill-outcomes?hours_back=48&limit=100", s.pythonURL)
+		req, err := http.NewRequest("POST", url, nil)
+		if err != nil {
+			log.Printf("[WARN] Failed to create backfill request: %v", err)
+			return
+		}
+
+		resp, err := client.Do(req)
+		if err != nil {
+			log.Printf("[WARN] ML Backfill failed to connect: %v", err)
+			return
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode == http.StatusOK {
+			log.Println("[OK] ML Backfill completed successfully")
+		} else {
+			log.Printf("[WARN] ML Backfill returned status: %d", resp.StatusCode)
+		}
+	})
+
+	if err != nil {
+		log.Printf("[WARN] Failed to schedule ML backfill: %v", err)
+		// Don't return error - this is optional feature
+	}
+
 	// Start cron scheduler
 	s.cron.Start()
 	log.Println("[OK] Scheduler started successfully")
 	log.Println("[OK] Dynamic frequency: 30s (Overlap) | 1m (Golden) | 5m (Dead)")
+	log.Println("[OK] ML Backfill: Every 6 hours")
 	log.Println("[OK] Optimized for API cost efficiency while maintaining responsiveness")
 
 	return nil

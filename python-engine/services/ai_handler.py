@@ -72,9 +72,15 @@ CONTEXT: Candidate PASSED screener filters (volatility, volume, 4H trend, RSI ac
    - EXCEPTION: Whale Signal is DUMP_IMMINENT/SQUEEZE_LONGS or RSI > 75 (Extreme Reversal)
 
 === EXECUTION PARAMS ===
-- SL: Previous candle low/high ± ATR*0.5 buffer. MAX 1.5% distance.
-- TP: Minimum 1:2 RR. Whale signals aim 3-5%.
-- Leverage: 20x (pump/dump), 15x (trend), 20x (sideways-scalp)
+- SL RULES (CRITICAL - Avoid premature SL hits):
+  * MINIMUM SL: 0.5% from entry (never less - protects from noise)
+  * RECOMMENDED: 1x ATR from entry (adapts to volatility)
+  * MAXIMUM SL: 2.0% from entry (capital protection)
+  * PLACEMENT: Below/Above recent swing low/high + ATR buffer
+- TP RULES:
+  * Minimum 1.5:1 RR (Risk:Reward)
+  * Whale signals aim 2-4% TP
+- Leverage: 15x (pump/dump), 10x (trend), 15x (sideways-scalp)
 
 === OUTPUT (JSON ONLY) ===
 {
@@ -416,10 +422,10 @@ Analyze for SCALPER entry (Mean Reversion / Ping-Pong / Predictive Alpha). Provi
                         # Risk:Reward ratio
                         rr_ratio = tp_distance_pct / sl_distance_pct if sl_distance_pct > 0 else 0
                         
-                        # Constraints
-                        MIN_SL_PCT = 0.1    # Minimum 0.1% SL (avoid noise)
-                        MAX_SL_PCT = 5.0    # Maximum 5.0% SL (avoid big losses)
-                        MIN_RR = 1.1        # Minimum 1.1:1 Risk:Reward
+                        # Constraints (IMPROVED v5.0 - Reduce SL hits)
+                        MIN_SL_PCT = 0.5    # Minimum 0.5% SL (was 0.1% - too tight!)
+                        MAX_SL_PCT = 2.5    # Maximum 2.5% SL (was 5.0% - tighter capital protection)
+                        MIN_RR = 1.3        # Minimum 1.3:1 Risk:Reward (was 1.1 - better quality)
                         
                         rejection_reasons = []
                         
@@ -543,27 +549,26 @@ Analyze for SCALPER entry (Mean Reversion / Ping-Pong / Predictive Alpha). Provi
         vision_confidence = vision_result.get('confidence', 0)
         setup_valid = vision_result.get('setup_valid', 'VALID_SETUP')
 
-        # === 0. PUMP FAST TRACK DETECTION ===
-        # Check if this is a pump candidate with extreme movement
-        is_pump_source = metrics.get('pump_source', False) if metrics else False
-        pump_pct_change = abs(metrics.get('pct_change_3c', 0)) if metrics else 0
+        # === 0. MOMENTUM FAST TRACK DETECTION ===
+        # Use new directional momentum for fast track (replaces old pump scanner)
+        momentum_direction = metrics.get('momentum_direction', 'NEUTRAL') if metrics else 'NEUTRAL'
+        momentum_confidence = metrics.get('momentum_confidence', 0) if metrics else 0
         pump_vol_ratio = metrics.get('vol_ratio', 0) if metrics else 0
-        pump_score = metrics.get('pump_score', 0) if metrics else 0
-        dump_risk = metrics.get('dump_risk', 50) if metrics else 50
+        roc_3 = abs(metrics.get('roc_3', 0)) if metrics else 0
         
-        # EXTREME PUMP/DUMP: >10% move in 3 candles with >5x volume
-        is_extreme_movement = pump_pct_change >= 10 and pump_vol_ratio >= 5
-        # Standard pump candidate from pump scanner
-        is_pump_candidate = is_pump_source or (pump_score >= 50)
+        # Extreme movement: High momentum confidence + strong ROC
+        is_extreme_movement = momentum_confidence >= 80 and roc_3 >= 2.0
+        # Standard strong momentum
+        is_strong_momentum = momentum_direction in ['PUMP', 'DUMP'] and momentum_confidence >= 60
         
-        # Calculate adjusted threshold for pump signals
+        # Calculate adjusted threshold for strong momentum signals
         pump_threshold_reduction = 0
         if is_extreme_movement:
-            pump_threshold_reduction = 20  # EXTREME: 75 -> 55 threshold
-            logging.info(f"[PUMP FAST TRACK] EXTREME movement detected: {pump_pct_change:.1f}% / {pump_vol_ratio:.1f}x vol")
-        elif is_pump_candidate:
-            pump_threshold_reduction = 15  # Standard pump: 75 -> 60 threshold
-            logging.info(f"[PUMP FAST TRACK] Pump candidate detected: score={pump_score}, dump_risk={dump_risk}%")
+            pump_threshold_reduction = 15  # High confidence momentum: 75 -> 60
+            logging.info(f"[MOMENTUM FAST TRACK] Strong movement: {momentum_direction} {momentum_confidence}%, ROC3={roc_3:.1f}%")
+        elif is_strong_momentum:
+            pump_threshold_reduction = 10  # Standard momentum: 75 -> 65
+            logging.info(f"[MOMENTUM FAST TRACK] Direction: {momentum_direction} ({momentum_confidence}%)")
 
         # === 1. ML PREDICTION (if available) ===
         ml_win_prob = 0.5
@@ -646,6 +651,60 @@ Analyze for SCALPER entry (Mean Reversion / Ping-Pong / Predictive Alpha). Provi
                 "ml_is_trained": ml_is_trained
             }
 
+        # === NEW v5.0: QUALITY FILTER VETO ===
+        # Check screener quality metrics and apply penalties/veto
+        quality_veto_reasons = []
+        quality_penalty = 0
+        
+        if metrics:
+            # 1. Market Structure Check
+            structure = metrics.get('structure', 'UNKNOWN')
+            if structure == 'CHOPPY':
+                quality_penalty += 15
+                quality_veto_reasons.append("CHOPPY market structure")
+            
+            # 2. 1H Confirmation Check
+            h1_confirmed = metrics.get('h1_confirmed', True)
+            h1_conflict = metrics.get('h1_conflict', False)
+            if h1_conflict or not h1_confirmed:
+                quality_penalty += 20
+                quality_veto_reasons.append(f"1H timeframe conflict: {metrics.get('h1_reason', 'N/A')}")
+            
+            # 3. S/R Proximity Check
+            sr_near = metrics.get('sr_near', False)
+            if sr_near:
+                sr_level = metrics.get('sr_level_type', 'S/R')
+                sr_dist = metrics.get('sr_distance_pct', 0)
+                quality_penalty += 10
+                quality_veto_reasons.append(f"Entry near {sr_level} ({sr_dist:.2f}%)")
+            
+            # 4. Volume Sustainability Check
+            vol_sustained = metrics.get('vol_sustained', True)
+            vol_strong = metrics.get('vol_strong_candles', 3)
+            if not vol_sustained and vol_strong == 0:
+                quality_penalty += 10
+                quality_veto_reasons.append("No sustained volume")
+        
+        # Log quality issues
+        if quality_veto_reasons:
+            logging.info(f"[QUALITY] Issues detected: {', '.join(quality_veto_reasons)} | Total penalty: -{quality_penalty}")
+        
+        # Hard veto if too many quality issues stack up
+        if quality_penalty >= 40:
+            return {
+                "final_signal": "WAIT",
+                "combined_confidence": 0,
+                "agreement": False,
+                "setup_valid": setup_valid,
+                "logic_analysis": logic_result,
+                "vision_analysis": vision_result,
+                "recommendation": f"SKIP (Quality Veto: {', '.join(quality_veto_reasons)})",
+                "ml_win_probability": ml_win_prob,
+                "ml_insights": ml_insights,
+                "quality_veto": True,
+                "quality_issues": quality_veto_reasons
+            }
+
         # === 5. HYBRID AGREEMENT LOGIC ===
         agreement = False
 
@@ -688,28 +747,33 @@ Analyze for SCALPER entry (Mean Reversion / Ping-Pong / Predictive Alpha). Provi
                 boost = int((ml_win_prob - 0.5) * 20)  # Up to +10 points
                 combined_confidence = min(100, combined_confidence + boost)
                 logging.info(f"[ML] Confidence boosted by {boost} (Win Prob: {ml_win_prob:.0%})")
+            
+            # NEW v5.0: Apply Quality Penalty
+            if quality_penalty > 0:
+                combined_confidence = max(0, combined_confidence - quality_penalty)
+                logging.info(f"[QUALITY] Confidence reduced by {quality_penalty} (issues: {len(quality_veto_reasons)})")
 
-        # === 7. PUMP CONFIDENCE BOOST ===
-        # For extreme movements, auto-boost confidence if direction matches
-        pump_boost = 0
-        if is_extreme_movement and agreement and dump_risk < 50:
-            # EXTREME movement + AI agrees + low dump risk = HIGH CONFIDENCE
-            pump_boost = min(15, int((pump_pct_change - 10) * 1.5))  # +15 max for 20%+ moves
-            combined_confidence = min(100, combined_confidence + pump_boost)
-            logging.info(f"[PUMP FAST TRACK] Confidence boosted +{pump_boost} (extreme movement)")
-        elif is_pump_candidate and agreement:
-            # Standard pump candidate gets small boost based on pump_score
-            pump_boost = min(10, int(pump_score / 10))  # +10 max for score 100
-            combined_confidence = min(100, combined_confidence + pump_boost)
-            logging.info(f"[PUMP FAST TRACK] Confidence boosted +{pump_boost} (pump candidate)")
+        # === 7. MOMENTUM CONFIDENCE BOOST ===
+        # For strong momentum, boost confidence if direction matches
+        momentum_boost = 0
+        if is_extreme_movement and agreement:
+            # Extreme movement + AI agrees = boost confidence
+            momentum_boost = min(10, int(momentum_confidence / 10))  # +10 max for 100% conf
+            combined_confidence = min(100, combined_confidence + momentum_boost)
+            logging.info(f"[MOMENTUM] Confidence boosted +{momentum_boost} (extreme movement)")
+        elif is_strong_momentum and agreement:
+            # Strong momentum gets small boost
+            momentum_boost = min(5, int(momentum_confidence / 20))  # +5 max
+            combined_confidence = min(100, combined_confidence + momentum_boost)
+            logging.info(f"[MOMENTUM] Confidence boosted +{momentum_boost} (strong direction)")
 
-        # Final Decision (use adaptive threshold from ML, with pump adjustment)
+        # Final Decision (use adaptive threshold from ML, with momentum adjustment)
         final_signal = logic_signal if agreement else "WAIT"
         base_threshold = ml_threshold if HAS_LEARNER else settings.MIN_CONFIDENCE
-        effective_threshold = max(50, base_threshold - pump_threshold_reduction)  # Floor at 50%
+        effective_threshold = max(55, base_threshold - pump_threshold_reduction)  # Floor at 55%
         
         if pump_threshold_reduction > 0:
-            logging.info(f"[PUMP FAST TRACK] Threshold reduced: {base_threshold}% -> {effective_threshold}%")
+            logging.info(f"[MOMENTUM] Threshold reduced: {base_threshold}% -> {effective_threshold}%")
 
         recommendation = "SKIP"
         if agreement and combined_confidence >= effective_threshold:
@@ -763,9 +827,14 @@ Analyze for SCALPER entry (Mean Reversion / Ping-Pong / Predictive Alpha). Provi
             "ml_threshold": effective_threshold,
             "ml_insights": ml_insights,
             "ml_is_trained": ml_is_trained,
-            # Pump tracking metadata
-            "is_pump_candidate": is_pump_candidate,
+            # Momentum tracking metadata
+            "momentum_direction": momentum_direction,
+            "momentum_confidence": momentum_confidence,
             "is_extreme_movement": is_extreme_movement,
-            "pump_boost_applied": pump_boost,
-            "pump_threshold_reduction": pump_threshold_reduction
+            "is_strong_momentum": is_strong_momentum,
+            "momentum_boost_applied": momentum_boost,
+            "threshold_reduction": pump_threshold_reduction,
+            # Quality filter metadata
+            "quality_penalty": quality_penalty,
+            "quality_issues": quality_veto_reasons if quality_veto_reasons else []
         }
