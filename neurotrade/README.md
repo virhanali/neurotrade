@@ -1,73 +1,113 @@
-# React + TypeScript + Vite
+# ⚛️ NeuroTrade Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+> **The Command Center for AI Trading**
 
-Currently, two official plugins are available:
+This is the React-based frontend application for NeuroTrade, designed to provide comprehensive visibility and control over the autonomous trading system. It communicates with the Go backend via REST APIs.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## 🖥️ key Features
 
-## React Compiler
+### 1. **Live Trading Dashboard**
+*   **Real-time PnL:** Watch your equity grow (or shrink) in real-time.
+*   **Active Positions:** Monitor open trades with live price updates and dynamic PnL coloring.
+*   **Mode Switcher:** Seamlessly toggle between **REAL** (Live Money) and **PAPER** (Simulation) modes with a single click.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### 2. **AI Brain Center (Analytics)**
+*   **Deep Insights:** Visualize *why* the AI took a trade.
+*   **Confidence Heatmaps:** See the distribution of AI confidence levels.
+*   **Whale Radar:** Track institutional signals acting in the market.
+*   **Market Hours Analysis:** Understand which hours yield the best trading opportunities.
 
-## Expanding the ESLint configuration
+### 3. **Trade History**
+*   **Performance Tracking:** Detailed log of past trades including profit/loss, fees, and duration.
+*   **Outcome Analysis:** See how simulated "learning" trades would have performed.
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+### 4. **Modern UX/UI**
+*   **Dark Mode First:** Sleek, professional dark theme designed for long trading sessions.
+*   **Responsive:** Fully optimized for Mobile, Tablet, and Desktop.
+*   **Fast:** Built with **Vite** for lightning-fast loading and HMR.
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+---
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+## 🛠️ Tech Stack
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+*   **Framework:** React 18
+*   **Language:** TypeScript
+*   **Build Tool:** Vite
+*   **Styling:** TailwindCSS
+*   **State Management:** TanStack Query (React Query)
+*   **Icons:** Lucide React
+*   **Data Fetching:** Axios
+
+---
+
+## 📂 Project Structure
+
+```bash
+src/
+├── api/             # API client & endpoints definition
+├── components/      # Reusable UI components
+│   ├── common/      # Buttons, Inputs, Cards
+│   ├── dashboard/   # Dashboard-specific widgets
+│   └── layout/      # Sidebar, Header, Layout wrappers
+├── hooks/           # Custom React hooks (useUser, usePositions)
+├── pages/           # Main page views
+│   ├── DashboardPage.tsx    # Main overview
+│   ├── MLAnalyticsPage.tsx  # AI Brain Center
+│   ├── PositionsPage.tsx    # Live & Pending positions
+│   └── ...
+├── types/           # TypeScript interface definitions
+└── utils/           # Helper functions & formatting
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+---
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## 🚀 Development
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+### Prerequisites
+*   Node.js 18+
+*   npm or yarn
+
+### Setup
+
+1.  **Install Dependencies:**
+    ```bash
+    npm install
+    ```
+
+2.  **Start Dev Server:**
+    ```bash
+    npm run dev
+    ```
+    The app will run at `http://localhost:5173`.
+
+3.  **Build for Production:**
+    ```bash
+    npm run build
+    ```
+    Output will be in `dist/` folder.
+
+---
+
+## 🔗 Backend Integration
+
+The frontend expects the Go backend to be available (proxy setup in `vite.config.ts` handles API requests to `/api`):
+
+```typescript
+// vite.config.ts defaults
+proxy: {
+  '/api': {
+    target: 'http://localhost:8080',
+    changeOrigin: true,
+  }
+}
 ```
+
+Ensure your backend server is running on port **8080** (or update the config) for data to populate.
+
+---
+
+## 🎨 Design Philosophy
+
+*   **Clarity:** Data should be easy to read at a glance.
+*   **Speed:** Actions (approving trades, panic selling) must be instant.
+*   **Transparency:** Always show the user *why* something is happening (Brain Center).

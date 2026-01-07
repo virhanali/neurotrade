@@ -224,6 +224,8 @@ type UpdateSettingsRequest struct {
 	FixedOrderSize   float64 `json:"fixedOrderSize"`
 	Leverage         float64 `json:"leverage"`
 	AutoTradeEnabled bool    `json:"autoTradeEnabled"`
+	BinanceAPIKey    string  `json:"binanceApiKey"`
+	BinanceAPISecret string  `json:"binanceApiSecret"`
 }
 
 // POST /api/settings - Update user settings (JSON Support)
@@ -263,6 +265,14 @@ func (h *WebHandler) HandleUpdateSettings(c echo.Context) error {
 	user.FixedOrderSize = req.FixedOrderSize
 	user.Leverage = req.Leverage
 	user.IsAutoTradeEnabled = req.AutoTradeEnabled
+
+	// Update API Keys if provided
+	if req.BinanceAPIKey != "" {
+		user.BinanceAPIKey = req.BinanceAPIKey
+	}
+	if req.BinanceAPISecret != "" {
+		user.BinanceAPISecret = req.BinanceAPISecret
+	}
 
 	// Safety: Add validation for REAL mode
 	if user.Mode == domain.ModeReal {

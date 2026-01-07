@@ -2,7 +2,7 @@
 FROM node:20-alpine AS frontend-builder
 WORKDIR /app
 COPY neurotrade/package*.json ./
-RUN npm ci
+RUN npm install --legacy-peer-deps
 COPY neurotrade ./
 RUN npm run build
 

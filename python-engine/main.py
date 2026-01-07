@@ -522,15 +522,18 @@ async def ai_behavior_analytics():
         from sqlalchemy import text
         
         with learner.engine.connect() as conn:
-            # 1. AI Agreement Rate
+            # 1. AI Agreement Breakdown
             agreement = conn.execute(text("""
                 SELECT 
                     COUNT(*) as total,
-                    SUM(CASE WHEN logic_signal = vision_signal THEN 1 ELSE 0 END) as agreed
+                    SUM(CASE WHEN logic_signal = vision_signal THEN 1 ELSE 0 END) as consensus,
+                    SUM(CASE WHEN logic_signal IN ('LONG', 'SHORT') AND vision_signal != logic_signal THEN 1 ELSE 0 END) as vision_vetoed,
+                    SUM(CASE WHEN vision_signal IN ('LONG', 'SHORT') AND logic_signal != vision_signal THEN 1 ELSE 0 END) as logic_vetoed
                 FROM ai_analysis_cache
                 WHERE created_at > NOW() - INTERVAL '7 days'
             """)).fetchone()
-            agreement_rate = (agreement[1] / agreement[0] * 100) if agreement[0] > 0 else 0
+            
+            agreement_rate = (agreement[1] / agreement[0] * 100) if agreement[0] and agreement[0] > 0 else 0
             
             # 2. Confidence Distribution
             confidence_dist = conn.execute(text("""
@@ -597,12 +600,14 @@ async def ai_behavior_analytics():
                 LIMIT 10
             """)).fetchall()
             
-            # 7. Total Stats
+            # 7. Total Stats & Accuracy Matrix
             totals = conn.execute(text("""
                 SELECT 
                     COUNT(*) as total_analyzed,
                     SUM(CASE WHEN recommendation = 'EXECUTE' THEN 1 ELSE 0 END) as total_execute,
-                    SUM(CASE WHEN outcome IS NOT NULL THEN 1 ELSE 0 END) as with_outcome
+                    SUM(CASE WHEN outcome IS NOT NULL THEN 1 ELSE 0 END) as with_outcome,
+                    SUM(CASE WHEN outcome = 'WIN' THEN 1 ELSE 0 END) as wins,
+                    SUM(CASE WHEN outcome = 'LOSS' THEN 1 ELSE 0 END) as losses
                 FROM ai_analysis_cache
                 WHERE created_at > NOW() - INTERVAL '7 days'
             """)).fetchone()
@@ -614,8 +619,15 @@ async def ai_behavior_analytics():
                 "total_analyzed": totals[0] or 0,
                 "total_execute": totals[1] or 0,
                 "with_outcome": totals[2] or 0,
+                "wins": totals[3] or 0,
+                "losses": totals[4] or 0,
                 "execute_rate": round((totals[1] or 0) / max(totals[0], 1) * 100, 1),
-                "ai_agreement_rate": round(agreement_rate, 1)
+                "ai_agreement_rate": round(agreement_rate, 1),
+                "agreement_breakdown": {
+                    "consensus": agreement[1] or 0,
+                    "vision_vetoed": agreement[2] or 0,
+                    "logic_vetoed": agreement[3] or 0
+                }
             },
             "confidence_distribution": [
                 {"level": row[0], "count": row[1]} for row in confidence_dist

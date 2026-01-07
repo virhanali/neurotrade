@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useUser, useUpdateSettings } from '@/hooks/useUser';
-import { Loader2, AlertTriangle, CheckCircle, Gamepad2, Shield, Zap, Eye, EyeOff } from 'lucide-react';
+import { Loader2, AlertTriangle, CheckCircle, Gamepad2, Shield, Zap, Eye, EyeOff, Pencil, X } from 'lucide-react';
 import { cn, formatCurrency } from '@/utils/helpers';
 
 export function SettingsPage() {
@@ -12,10 +12,14 @@ export function SettingsPage() {
     const [fixedOrderSize, setFixedOrderSize] = useState('10.00');
     const [leverage, setLeverage] = useState('20');
     const [autoTradeEnabled, setAutoTradeEnabled] = useState(false);
+
+    // API Key State
     const [apiKey, setApiKey] = useState('');
     const [apiSecret, setApiSecret] = useState('');
     const [showApiKey, setShowApiKey] = useState(false);
     const [showApiSecret, setShowApiSecret] = useState(false);
+    const [isEditingKey, setIsEditingKey] = useState(false);
+    const [isEditingSecret, setIsEditingSecret] = useState(false);
 
     // Toast state
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -28,6 +32,8 @@ export function SettingsPage() {
             setLeverage(user.leverage.toString());
             setAutoTradeEnabled(user.autoTradeEnabled);
             setApiKey(user.binanceApiKey || '');
+            // We don't sync secret back from backend for security, it is write-only typically or masked
+            // If we want to show it's set, we handle that in the UI rendering logic
         }
     }, [user]);
 
@@ -52,6 +58,9 @@ export function SettingsPage() {
                 binanceApiSecret: apiSecret,
             });
             setToast({ message: 'Settings saved successfully!', type: 'success' });
+            // Reset edit modes
+            setIsEditingKey(false);
+            setIsEditingSecret(false);
         } catch (error: any) {
             setToast({
                 message: error.response?.data?.error || 'Failed to save settings',
@@ -309,8 +318,8 @@ export function SettingsPage() {
                         </div>
                     </div>
 
-
                     <div className="space-y-4">
+                        {/* API Key Field */}
                         <div>
                             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                                 API Key
@@ -320,18 +329,52 @@ export function SettingsPage() {
                                     type={showApiKey ? "text" : "password"}
                                     value={apiKey}
                                     onChange={(e) => setApiKey(e.target.value)}
-                                    placeholder="Enter your Binance API Key"
-                                    className="w-full px-4 py-2.5 pr-10 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-slate-900 dark:text-white"
+                                    // If user has key and NOT editing, show mask. Else show placeholder.
+                                    placeholder={user?.binanceApiKey && !isEditingKey ? "••••••••••••••••••••••••" : "Enter your Binance API Key"}
+                                    // Disable if user has key and NOT editing
+                                    disabled={!!user?.binanceApiKey && !isEditingKey}
+                                    className={cn(
+                                        "w-full px-4 py-2.5 pr-20 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-slate-900 dark:text-white",
+                                        !!user?.binanceApiKey && !isEditingKey && "opacity-60 cursor-not-allowed"
+                                    )}
                                 />
-                                <button
-                                    type="button"
-                                    onClick={() => setShowApiKey(!showApiKey)}
-                                    className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
-                                >
-                                    {showApiKey ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                                </button>
+                                <div className="absolute right-2 top-1.5 flex items-center gap-1">
+                                    {/* Edit / Cancel Key Button */}
+                                    {user?.binanceApiKey && (
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                if (isEditingKey) {
+                                                    // Cancel Edit: Revert to masked (or stored value logic if available, here rely on refresh or just show masked)
+                                                    setApiKey(user.binanceApiKey || '');
+                                                    setIsEditingKey(false);
+                                                } else {
+                                                    // Start Edit: Clear the field for security so they type new one
+                                                    setApiKey('');
+                                                    setIsEditingKey(true);
+                                                }
+                                            }}
+                                            className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors rounded-md hover:bg-slate-200 dark:hover:bg-slate-700"
+                                            title={isEditingKey ? "Cancel Edit" : "Edit API Key"}
+                                        >
+                                            {isEditingKey ? <X className="w-4 h-4" /> : <Pencil className="w-4 h-4" />}
+                                        </button>
+                                    )}
+
+                                    {/* Show/Hide Toggle */}
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowApiKey(!showApiKey)}
+                                        className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors rounded-md hover:bg-slate-200 dark:hover:bg-slate-700"
+                                        title={showApiKey ? "Hide Key" : "Show Key"}
+                                    >
+                                        {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                    </button>
+                                </div>
                             </div>
                         </div>
+
+                        {/* API Secret Field */}
                         <div>
                             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                                 API Secret
@@ -341,16 +384,45 @@ export function SettingsPage() {
                                     type={showApiSecret ? "text" : "password"}
                                     value={apiSecret}
                                     onChange={(e) => setApiSecret(e.target.value)}
-                                    placeholder="Enter your Binance API Secret (only needs to be entered once)"
-                                    className="w-full px-4 py-2.5 pr-10 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-slate-900 dark:text-white"
+                                    // Logic for Secret: If we assume existing key implies existing secret, we mask it too
+                                    placeholder={!!user?.binanceApiKey && !isEditingSecret ? "••••••••••••••••••••••••" : "Enter your Binance API Secret"}
+                                    disabled={!!user?.binanceApiKey && !isEditingSecret}
+                                    className={cn(
+                                        "w-full px-4 py-2.5 pr-20 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-slate-900 dark:text-white",
+                                        !!user?.binanceApiKey && !isEditingSecret && "opacity-60 cursor-not-allowed"
+                                    )}
                                 />
-                                <button
-                                    type="button"
-                                    onClick={() => setShowApiSecret(!showApiSecret)}
-                                    className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
-                                >
-                                    {showApiSecret ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                                </button>
+                                <div className="absolute right-2 top-1.5 flex items-center gap-1">
+                                    {/* Edit / Cancel Secret Button */}
+                                    {user?.binanceApiKey && (
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                if (isEditingSecret) {
+                                                    setApiSecret('');
+                                                    setIsEditingSecret(false);
+                                                } else {
+                                                    setApiSecret('');
+                                                    setIsEditingSecret(true); // Clear only on edit start
+                                                }
+                                            }}
+                                            className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors rounded-md hover:bg-slate-200 dark:hover:bg-slate-700"
+                                            title={isEditingSecret ? "Cancel Edit" : "Edit Secret"}
+                                        >
+                                            {isEditingSecret ? <X className="w-4 h-4" /> : <Pencil className="w-4 h-4" />}
+                                        </button>
+                                    )}
+
+                                    {/* Show/Hide Toggle */}
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowApiSecret(!showApiSecret)}
+                                        className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors rounded-md hover:bg-slate-200 dark:hover:bg-slate-700"
+                                        title={showApiSecret ? "Hide Secret" : "Show Secret"}
+                                    >
+                                        {showApiSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                    </button>
+                                </div>
                             </div>
                             <p className="mt-1 text-xs text-slate-500">
                                 Stored securely. Leave blank if unchanged.

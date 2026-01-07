@@ -192,7 +192,8 @@ class BinanceExecutor:
             return {"error": str(e)}
         finally:
             if is_temp and client:
-                await client.close()
+                # Sync client doesn't need await close, or precise closing
+                pass
 
     async def execute_close(self, symbol: str, side: str, quantity: float, 
                           api_key: Optional[str] = None, api_secret: Optional[str] = None) -> Dict:
@@ -251,7 +252,8 @@ class BinanceExecutor:
             return {"error": str(e)}
         finally:
             if is_temp and client:
-                await client.close()
+                # Sync client cleanup
+                pass
 
     async def get_balance(self, api_key: Optional[str] = None, api_secret: Optional[str] = None) -> Dict:
         """
@@ -286,7 +288,8 @@ class BinanceExecutor:
             return {"error": str(e)}
         finally:
             if is_temp and client:
-                await client.close()
+                # Sync client cleanup
+                pass
 
 # Global Instance
 executor = BinanceExecutor()
