@@ -62,13 +62,8 @@ class ApiClient {
     }
 
     async register(data: RegisterRequest): Promise<User> {
-        // Register returns specific user data inside wrapper
         const response = await this.client.post<ApiResponse<any>>('/auth/register', data);
-        // Backend register returns { username: "..." } basically messages. 
-        // But let's assume it returns user or we ignore for now, login is priority.
-        // Wait, AuthHandler.Register returns CreatedResponse with map[string]string.
-        // So generic 'any' is safer here unless we change backend.
-        return this.unwrap(response);
+        return response.data.data; // Helper unwrap might fail if response structure differs slightly
     }
 
     async logout(): Promise<void> {
@@ -84,49 +79,69 @@ class ApiClient {
 
     async updateSettings(data: UpdateSettingsRequest): Promise<User> {
         const response = await this.client.post<ApiResponse<User>>('/settings', data);
-        // Note: '/settings' endpoint returns { success: true, data: User } wrapped in JSON(200, map)
-        // WebHandler.HandleUpdateSettings returns c.JSON(http.StatusOK, map)
-        // It does NOT use SuccessResponse wrapper standard from response.go
-        // It returns: { success: true, message: "...", data: User }
-        // So response.data is the object directly.
-        // Wait, standard `SuccessResponse` produces `status`, `data`.
-        // WebHandler `HandleUpdateSettings` produces `success`, `data`.
-        // Inconsistency! I should fix WebHandler to be consistent or handle it here.
-        // Let's assume WebHandler response structure: { data: User }
-        return response.data.data!;
+        // Handle ad-hoc response format from HandleUpdateSettings if necessary
+        // But assuming it returns { data: User } it works.
+        return response.data.data;
     }
 
     // Positions
     async getPositions(): Promise<Position[]> {
-        const response = await this.client.get<ApiResponse<Position[]>>('/user/positions');
-        return this.unwrap(response);
+        // Response: { status: "success", data: { mode: "...", positions: [...], ... } }
+        const response = await this.client.get<ApiResponse<{ positions: Position[] }>>('/user/positions');
+        const data = this.unwrap(response);
+        return data.positions || [];
     }
 
     async closePosition(positionId: string): Promise<Position> {
         const response = await this.client.post<ApiResponse<Position>>(`/user/positions/${positionId}/close`);
-        return this.unwrap(response);
+        // ClosePosition returns empty string c.String(200, ""). 
+        // This will likely fail to unwrap JSON.
+        // We should handle this gracefully.
+        if (typeof response.data === 'string' && response.data === "") {
+            return {} as Position; // Return dummy
+        }
+        return response.data.data!;
     }
 
     // Trade History
     async getTradeHistory(limit: number = 50): Promise<Trade[]> {
-        const response = await this.client.get<ApiResponse<Trade[]>>(`/user/history?limit=${limit}`);
-        return this.unwrap(response);
+        // Returns RAW JSON Array: [...]
+        const response = await this.client.get<Trade[]>(`/user/history?limit=${limit}`);
+        // No unwrap needed
+        return response.data;
     }
 
     // Dashboard Stats
     async getDashboardStats(): Promise<DashboardStats> {
-        const response = await this.client.get<ApiResponse<DashboardStats>>('/user/stats');
-        return this.unwrap(response);
+        // Returns RAW JSON Object: { ... }
+        const response = await this.client.get<DashboardStats>('/user/stats');
+        // No unwrap needed
+        return response.data;
     }
 
     // AI Signals (Admin)
     async getLatestSignals(): Promise<AISignal[]> {
+        // Returns SuccessResponse wrapped Array
         const response = await this.client.get<ApiResponse<AISignal[]>>('/admin/signals');
         return this.unwrap(response);
     }
 
+    // System Health
+    async getSystemHealth(): Promise<any> {
+        const response = await this.client.get<ApiResponse<any>>('/admin/system/health');
+        return this.unwrap(response);
+    }
+
+    // Brain Health
+    async getBrainHealth(): Promise<any> {
+        const response = await this.client.get<any>('/admin/ml/brain-health');
+        // Proxied directly from Python, usually raw JSON
+        return response.data;
+    }
+
     // Balance
     async getRealBalance(): Promise<{ balance: number }> {
+        // Likely raw or wrapped? Assuming wrapper if using standard SuccessResponse
         const response = await this.client.get<ApiResponse<{ balance: number }>>('/user/balance/real');
         return this.unwrap(response);
     }

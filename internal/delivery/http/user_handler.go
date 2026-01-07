@@ -156,50 +156,42 @@ func (h *UserHandler) GetPositions(c echo.Context) error {
 		return InternalServerErrorResponse(c, "Failed to get user", err)
 	}
 
-	// For now, we only support PAPER mode (Phase 3)
-	if user.Mode == domain.ModePaper {
-		positions, err := h.positionRepo.GetByUserID(ctx, userID)
-		if err != nil {
-			return InternalServerErrorResponse(c, "Failed to get positions", err)
+	// Fetch ALL active positions from DB
+	// Currently the DB does not distinguish between REAL/PAPER in the positions table (legacy schema).
+	// So we return all positions stored.
+	positions, err := h.positionRepo.GetByUserID(ctx, userID)
+	if err != nil {
+		return InternalServerErrorResponse(c, "Failed to get positions", err)
+	}
+
+	// Convert to output format
+	output := make([]dto.PositionOutput, 0, len(positions))
+	for _, pos := range positions {
+		closedAt := ""
+		if pos.ClosedAt != nil {
+			closedAt = pos.ClosedAt.Format(time.RFC3339)
 		}
 
-		// Convert to output format
-		output := make([]dto.PositionOutput, 0, len(positions))
-		for _, pos := range positions {
-			closedAt := ""
-			if pos.ClosedAt != nil {
-				closedAt = pos.ClosedAt.Format(time.RFC3339)
-			}
-
-			output = append(output, dto.PositionOutput{
-				ID:         pos.ID.String(),
-				Symbol:     pos.Symbol,
-				Side:       pos.Side,
-				EntryPrice: pos.EntryPrice,
-				SLPrice:    pos.SLPrice,
-				TPPrice:    pos.TPPrice,
-				Size:       pos.Size,
-				ExitPrice:  pos.ExitPrice,
-				PnL:        pos.PnL,
-				Status:     pos.Status,
-				CreatedAt:  pos.CreatedAt.Format(time.RFC3339),
-				ClosedAt:   &closedAt,
-			})
-		}
-
-		return SuccessResponse(c, map[string]interface{}{
-			"mode":      user.Mode,
-			"positions": output,
-			"count":     len(output),
+		output = append(output, dto.PositionOutput{
+			ID:         pos.ID.String(),
+			Symbol:     pos.Symbol,
+			Side:       pos.Side,
+			EntryPrice: pos.EntryPrice,
+			SLPrice:    pos.SLPrice,
+			TPPrice:    pos.TPPrice,
+			Size:       pos.Size,
+			ExitPrice:  pos.ExitPrice,
+			PnL:        pos.PnL,
+			Status:     pos.Status,
+			CreatedAt:  pos.CreatedAt.Format(time.RFC3339),
+			ClosedAt:   &closedAt,
 		})
 	}
 
-	// REAL mode: fetch from Binance API (Phase 5 - not implemented yet)
 	return SuccessResponse(c, map[string]interface{}{
 		"mode":      user.Mode,
-		"positions": []interface{}{},
-		"count":     0,
-		"message":   "Real trading not implemented yet",
+		"positions": output,
+		"count":     len(output),
 	})
 }
 
@@ -597,5 +589,62 @@ func (h *UserHandler) UpdateSettings(c echo.Context) error {
 			"leverage":         user.Leverage,
 			"autoTradeEnabled": user.IsAutoTradeEnabled,
 		},
+	})
+}
+
+// GetRealBalance returns the user's real balance (cached or fresh)
+// GET /api/user/balance/real
+func (h *UserHandler) GetRealBalance(c echo.Context) error {
+	userID, err := middleware.GetUserID(c)
+	if err != nil {
+		return UnauthorizedResponse(c, "User not authenticated")
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request().Context(), 5*time.Second)
+	defer cancel()
+
+	user, err := h.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return InternalServerErrorResponse(c, "Failed to get user", err)
+	}
+
+	bal := 0.0
+	if user.RealBalanceCache != nil {
+		bal = *user.RealBalanceCache
+	}
+
+	return SuccessResponse(c, map[string]interface{}{
+		"balance": bal,
+	})
+}
+
+// RefreshRealBalance forces a fetch of real balance from external service
+// POST /api/user/balance/refresh
+func (h *UserHandler) RefreshRealBalance(c echo.Context) error {
+	userID, err := middleware.GetUserID(c)
+	if err != nil {
+		return UnauthorizedResponse(c, "User not authenticated")
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request().Context(), 10*time.Second)
+	defer cancel()
+
+	// Call AI/Trading service to get balance from Binance
+	bal, err := h.aiService.GetRealBalance(ctx)
+	if err != nil {
+		// If fails, return cached if avail, or error
+		// return InternalServerErrorResponse(c, "Failed to fetch real balance from exchange", err)
+		// For robustness, log error and return 0 or cached
+		log.Printf("Failed to refresh balance: %v", err)
+		return InternalServerErrorResponse(c, "Failed to refresh balance from exchange", err)
+	}
+
+	// Update DB Cache
+	if err := h.userRepo.UpdateRealBalance(ctx, userID, bal); err != nil {
+		log.Printf("Failed to update real balance cache: %v", err)
+	}
+
+	return SuccessResponse(c, map[string]interface{}{
+		"balance": bal,
 	})
 }

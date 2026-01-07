@@ -84,6 +84,8 @@ func SetupRoutes(e *echo.Echo, config *RouterConfig) {
 		user.POST("/positions/:id/decline", config.UserHandler.DeclinePosition)
 		user.POST("/settings/autotrade", config.UserHandler.ToggleAutoTrade)
 		user.GET("/analytics/pnl", config.UserHandler.GetAnalyticsPnL)
+		user.GET("/balance/real", config.UserHandler.GetRealBalance)
+		user.POST("/balance/refresh", config.UserHandler.RefreshRealBalance)
 	}
 
 	// Settings route - accessible by authenticated users
