@@ -349,16 +349,23 @@ func (pb *PythonBridge) GetRealBalance(ctx context.Context) (float64, error) {
 		return 0, fmt.Errorf("failed to fetch balance: status=%d, body=%s", resp.StatusCode, string(body))
 	}
 
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return 0, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	log.Printf("[PythonBridge] Raw Balance Response: %s", string(body))
+
 	var result struct {
 		Total float64 `json:"total"`
 		Free  float64 `json:"free"`
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.Unmarshal(body, &result); err != nil {
 		log.Printf("[PythonBridge] Failed to decode balance response: %v", err)
 		return 0, fmt.Errorf("failed to decode balance response: %w", err)
 	}
 
 	log.Printf("[PythonBridge] Balance fetched: total=%.2f, free=%.2f", result.Total, result.Free)
-	return result.Free, nil
+	return result.Total, nil
 }

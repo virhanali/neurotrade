@@ -11,8 +11,7 @@ import {
     Sun,
     Moon,
     Activity,
-    Shield,
-    RotateCcw
+    Shield
 } from 'lucide-react';
 import { useUser } from '@/hooks/useUser';
 import { useTheme } from '@/hooks/useTheme';
@@ -30,7 +29,7 @@ const navItems = [
 export function DashboardLayout() {
     const location = useLocation();
     const queryClient = useQueryClient();
-    const { data: user } = useUser();
+    const { data: user, isLoading: isUserLoading } = useUser();
     const { data: positions } = usePositions();
     const { theme, toggleTheme } = useTheme();
 
@@ -64,15 +63,7 @@ export function DashboardLayout() {
         }
     };
 
-    const handleRefreshBalance = async () => {
-        if (user?.mode !== 'REAL') return;
-        try {
-            await api.refreshRealBalance();
-            await queryClient.invalidateQueries({ queryKey: ['user'] });
-        } catch (error) {
-            console.error('Failed to refresh balance:', error);
-        }
-    };
+
 
     return (
         <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
@@ -94,15 +85,7 @@ export function DashboardLayout() {
                     <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400 text-sm mb-1">
                         <Wallet className="w-4 h-4" />
                         <span>Total Equity</span>
-                        {user?.mode === 'REAL' && (
-                            <button
-                                onClick={handleRefreshBalance}
-                                className="ml-1 p-0.5 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-                                title="Force Refresh Balance from Exchange"
-                            >
-                                <RotateCcw className="w-3 h-3 text-slate-400" />
-                            </button>
-                        )}
+
                     </div>
                     <div className="flex items-baseline justify-between gap-2">
                         <span className="text-2xl font-bold text-slate-900 dark:text-white">
@@ -112,15 +95,22 @@ export function DashboardLayout() {
                         {/* Mode Switcher Button */}
                         <button
                             onClick={handleToggleMode}
+                            disabled={isUserLoading}
                             className={cn(
-                                'text-[10px] font-bold px-2 py-1 rounded-lg cursor-pointer transition-all border shadow-sm',
-                                user?.mode === 'REAL'
-                                    ? 'bg-rose-500 hover:bg-rose-600 text-white border-rose-600'
-                                    : 'bg-emerald-500 hover:bg-emerald-600 text-white border-emerald-600'
+                                'text-[10px] font-bold px-2 py-1 rounded-lg transition-all border shadow-sm flex items-center justify-center min-w-[50px]',
+                                isUserLoading
+                                    ? 'bg-slate-200 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-transparent cursor-wait'
+                                    : user?.mode === 'REAL'
+                                        ? 'bg-rose-500 hover:bg-rose-600 text-white border-rose-600 cursor-pointer'
+                                        : 'bg-emerald-500 hover:bg-emerald-600 text-white border-emerald-600 cursor-pointer'
                             )}
                             title="Click to switch trading mode"
                         >
-                            {user?.mode || 'PAPER'}
+                            {isUserLoading ? (
+                                <div className="w-8 h-3 rounded-sm bg-slate-400 dark:bg-slate-600 animate-pulse" />
+                            ) : (
+                                user?.mode || 'PAPER'
+                            )}
                         </button>
                     </div>
                 </div>
