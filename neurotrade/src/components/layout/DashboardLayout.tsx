@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Outlet, NavLink, useLocation } from 'react-router-dom';
+import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { useQueryClient } from '@tanstack/react-query';
 import {
     LayoutDashboard,
@@ -36,6 +37,8 @@ export function DashboardLayout() {
     const { data: positions } = usePositions();
     const { theme, toggleTheme } = useTheme();
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+    const [showModeConfirm, setShowModeConfirm] = useState(false);
+    const [isToggling, setIsToggling] = useState(false);
 
     const balance = user?.mode === 'REAL'
         ? user.realBalance ?? 0
@@ -49,9 +52,11 @@ export function DashboardLayout() {
         ? [...navItems, { path: '/admin', label: 'Admin', icon: Shield }]
         : navItems;
 
-    const handleToggleMode = async () => {
+    const handleToggleClick = () => setShowModeConfirm(true);
+
+    const executeToggleMode = async () => {
         const newMode = user?.mode === 'REAL' ? 'PAPER' : 'REAL';
-        if (!confirm(`Switch to ${newMode} trading mode?`)) return;
+        setIsToggling(true);
 
         try {
             await api.updateSettings({ mode: newMode });
@@ -63,7 +68,10 @@ export function DashboardLayout() {
             window.location.reload();
         } catch (error) {
             console.error('Failed to toggle mode:', error);
-            alert('Failed to switch trading mode');
+            // Ideally use a toast here
+        } finally {
+            setIsToggling(false);
+            setShowModeConfirm(false);
         }
     };
 
@@ -118,7 +126,7 @@ export function DashboardLayout() {
 
                         {/* Mode Switcher Button */}
                         <button
-                            onClick={handleToggleMode}
+                            onClick={handleToggleClick}
                             disabled={isUserLoading}
                             className={cn(
                                 'text-[10px] font-bold px-2 py-1 rounded-lg transition-all border shadow-sm flex items-center justify-center min-w-[50px]',
@@ -231,6 +239,18 @@ export function DashboardLayout() {
                     <Outlet />
                 </div>
             </main>
+
+            {/* Confirm Dialog */}
+            <ConfirmDialog
+                isOpen={showModeConfirm}
+                title={`Switch to ${user?.mode === 'REAL' ? 'Paper' : 'Real'} Mode?`}
+                message={`You are about to switch to ${user?.mode === 'REAL' ? 'PAPER (Simulation)' : 'REAL (Live Money)'} trading mode. The dashboard will reload.`}
+                confirmText={user?.mode === 'REAL' ? "Switch to Paper" : "Switch to Real"}
+                variant={user?.mode === 'REAL' ? 'info' : 'warning'}
+                isLoading={isToggling}
+                onConfirm={executeToggleMode}
+                onCancel={() => setShowModeConfirm(false)}
+            />
         </div>
     );
 }

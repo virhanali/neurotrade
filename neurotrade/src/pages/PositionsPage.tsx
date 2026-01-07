@@ -4,6 +4,7 @@ import { Loader2, X } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/api/client';
 import { useState } from 'react';
+import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 
 export function PositionsPage() {
     const { data: positions, isLoading } = usePositions();
@@ -65,6 +66,7 @@ export function PositionsPage() {
 function PositionRow({ position }: { position: any }) {
     const queryClient = useQueryClient();
     const [closing, setClosing] = useState(false);
+    const [showConfirm, setShowConfirm] = useState(false);
 
     const closeMutation = useMutation({
         mutationFn: () => api.closePosition(position.id),
@@ -75,58 +77,72 @@ function PositionRow({ position }: { position: any }) {
     });
 
     const handleClose = () => {
-        if (confirm('Are you sure you want to close this position?')) {
-            setClosing(true);
-            closeMutation.mutate();
-        }
+        setShowConfirm(true);
+    };
+
+    const confirmClose = () => {
+        setClosing(true);
+        closeMutation.mutate();
     };
 
     return (
-        <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-            <td className="px-6 py-4">
-                <span className="font-semibold text-slate-900 dark:text-white">{position.symbol}</span>
-                <span className="ml-2 text-xs text-slate-500">{position.leverage}x</span>
-            </td>
-            <td className="px-6 py-4">
-                <span className={cn(
-                    'px-2 py-1 rounded text-xs font-bold',
-                    position.side === 'LONG'
-                        ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400'
-                        : 'bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400'
-                )}>
-                    {position.side}
-                </span>
-            </td>
-            <td className="px-6 py-4 text-slate-900 dark:text-white font-mono">
-                {formatCurrency(position.entryPrice, 4)}
-            </td>
-            <td className="px-6 py-4 text-slate-900 dark:text-white font-mono">
-                {formatCurrency(position.currentPrice, 4)}
-            </td>
-            <td className="px-6 py-4 text-slate-500">
-                {formatCurrency(position.margin)} margin
-            </td>
-            <td className="px-6 py-4">
-                <div className={cn('font-bold', getPnlColor(position.unrealizedPnl))}>
-                    {formatCurrency(position.unrealizedPnl)}
-                </div>
-                <div className={cn('text-sm', getPnlColor(position.unrealizedPnlPercent))}>
-                    {formatPercent(position.unrealizedPnlPercent)}
-                </div>
-            </td>
-            <td className="px-6 py-4 text-sm">
-                <div className="text-emerald-500">TP: {position.takeProfit ? formatCurrency(position.takeProfit, 4) : '-'}</div>
-                <div className="text-rose-500">SL: {position.stopLoss ? formatCurrency(position.stopLoss, 4) : '-'}</div>
-            </td>
-            <td className="px-6 py-4 text-right">
-                <button
-                    onClick={handleClose}
-                    disabled={closing}
-                    className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-900/20 dark:hover:bg-rose-900/40 text-rose-600 dark:text-rose-400 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
-                >
-                    {closing ? <Loader2 className="w-4 h-4 animate-spin" /> : <X className="w-4 h-4" />}
-                </button>
-            </td>
-        </tr>
+        <>
+            <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                <td className="px-6 py-4">
+                    <span className="font-semibold text-slate-900 dark:text-white">{position.symbol}</span>
+                    <span className="ml-2 text-xs text-slate-500">{position.leverage}x</span>
+                </td>
+                <td className="px-6 py-4">
+                    <span className={cn(
+                        'px-2 py-1 rounded text-xs font-bold',
+                        position.side === 'LONG'
+                            ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400'
+                            : 'bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400'
+                    )}>
+                        {position.side}
+                    </span>
+                </td>
+                <td className="px-6 py-4 text-slate-900 dark:text-white font-mono">
+                    {formatCurrency(position.entryPrice, 4)}
+                </td>
+                <td className="px-6 py-4 text-slate-900 dark:text-white font-mono">
+                    {formatCurrency(position.currentPrice, 4)}
+                </td>
+                <td className="px-6 py-4 text-slate-500">
+                    {formatCurrency(position.margin)} margin
+                </td>
+                <td className="px-6 py-4">
+                    <div className={cn('font-bold', getPnlColor(position.unrealizedPnl))}>
+                        {formatCurrency(position.unrealizedPnl)}
+                    </div>
+                    <div className={cn('text-sm', getPnlColor(position.unrealizedPnlPercent))}>
+                        {formatPercent(position.unrealizedPnlPercent)}
+                    </div>
+                </td>
+                <td className="px-6 py-4 text-sm">
+                    <div className="text-emerald-500">TP: {position.takeProfit ? formatCurrency(position.takeProfit, 4) : '-'}</div>
+                    <div className="text-rose-500">SL: {position.stopLoss ? formatCurrency(position.stopLoss, 4) : '-'}</div>
+                </td>
+                <td className="px-6 py-4 text-right">
+                    <button
+                        onClick={handleClose}
+                        disabled={closing}
+                        className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-900/20 dark:hover:bg-rose-900/40 text-rose-600 dark:text-rose-400 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+                    >
+                        {closing ? <Loader2 className="w-4 h-4 animate-spin" /> : <X className="w-4 h-4" />}
+                    </button>
+                </td>
+            </tr>
+            <ConfirmDialog
+                isOpen={showConfirm}
+                title="Close Position"
+                message={`Are you sure you want to close your ${position.side} position on ${position.symbol}?`}
+                confirmText="Close Position"
+                variant="danger"
+                isLoading={closing}
+                onConfirm={confirmClose}
+                onCancel={() => setShowConfirm(false)}
+            />
+        </>
     );
 }

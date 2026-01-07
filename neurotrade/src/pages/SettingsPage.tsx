@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useUser, useUpdateSettings } from '@/hooks/useUser';
-import { Loader2, AlertTriangle, CheckCircle, Gamepad2, Shield, Zap } from 'lucide-react';
+import { Loader2, AlertTriangle, CheckCircle, Gamepad2, Shield, Zap, Eye, EyeOff } from 'lucide-react';
 import { cn, formatCurrency } from '@/utils/helpers';
 
 export function SettingsPage() {
@@ -12,6 +12,10 @@ export function SettingsPage() {
     const [fixedOrderSize, setFixedOrderSize] = useState('10.00');
     const [leverage, setLeverage] = useState('20');
     const [autoTradeEnabled, setAutoTradeEnabled] = useState(false);
+    const [apiKey, setApiKey] = useState('');
+    const [apiSecret, setApiSecret] = useState('');
+    const [showApiKey, setShowApiKey] = useState(false);
+    const [showApiSecret, setShowApiSecret] = useState(false);
 
     // Toast state
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -23,6 +27,7 @@ export function SettingsPage() {
             setFixedOrderSize(user.fixedOrderSize.toFixed(2));
             setLeverage(user.leverage.toString());
             setAutoTradeEnabled(user.autoTradeEnabled);
+            setApiKey(user.binanceApiKey || '');
         }
     }, [user]);
 
@@ -43,6 +48,8 @@ export function SettingsPage() {
                 fixedOrderSize: parseFloat(fixedOrderSize),
                 leverage: parseInt(leverage),
                 autoTradeEnabled,
+                binanceApiKey: apiKey,
+                binanceApiSecret: apiSecret,
             });
             setToast({ message: 'Settings saved successfully!', type: 'success' });
         } catch (error: any) {
@@ -288,6 +295,68 @@ export function SettingsPage() {
                             </div>
                         </div>
                     </label>
+                </div>
+
+                {/* Exchange Connection */}
+                <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-6">
+                    <div className="flex items-center gap-3 mb-6">
+                        <div className="p-2 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg text-yellow-600 dark:text-yellow-400">
+                            <Shield className="w-5 h-5" />
+                        </div>
+                        <div>
+                            <h3 className="text-lg font-bold text-slate-900 dark:text-white">Exchange Keys</h3>
+                            <p className="text-sm text-slate-500">Connect your Binance Futures account</p>
+                        </div>
+                    </div>
+
+
+                    <div className="space-y-4">
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                                API Key
+                            </label>
+                            <div className="relative">
+                                <input
+                                    type={showApiKey ? "text" : "password"}
+                                    value={apiKey}
+                                    onChange={(e) => setApiKey(e.target.value)}
+                                    placeholder="Enter your Binance API Key"
+                                    className="w-full px-4 py-2.5 pr-10 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-slate-900 dark:text-white"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => setShowApiKey(!showApiKey)}
+                                    className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+                                >
+                                    {showApiKey ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                                </button>
+                            </div>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                                API Secret
+                            </label>
+                            <div className="relative">
+                                <input
+                                    type={showApiSecret ? "text" : "password"}
+                                    value={apiSecret}
+                                    onChange={(e) => setApiSecret(e.target.value)}
+                                    placeholder="Enter your Binance API Secret (only needs to be entered once)"
+                                    className="w-full px-4 py-2.5 pr-10 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-slate-900 dark:text-white"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => setShowApiSecret(!showApiSecret)}
+                                    className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+                                >
+                                    {showApiSecret ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                                </button>
+                            </div>
+                            <p className="mt-1 text-xs text-slate-500">
+                                Stored securely. Leave blank if unchanged.
+                            </p>
+                        </div>
+                    </div>
                 </div>
 
                 {/* Submit */}

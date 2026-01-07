@@ -145,7 +145,7 @@ func (s *BodyguardService) closePosition(ctx context.Context, pos *domain.Positi
 
 		// Execute Close via Python Engine -> Binance
 		// Retry logic could be added here, but bodyguard retries every 10s anyway
-		res, err := s.aiService.ExecuteClose(ctx, pos.Symbol, closeSide, pos.Size)
+		res, err := s.aiService.ExecuteClose(ctx, pos.Symbol, closeSide, pos.Size, user.BinanceAPIKey, user.BinanceAPISecret)
 		if err != nil {
 			log.Printf("[ERR] Bodyguard: FAILED to execute REAL CLOSE for %s: %v", pos.Symbol, err)
 			return err // Return error so Bodyguard will retry in next cycle

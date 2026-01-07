@@ -32,4 +32,5 @@ type UserOutput struct {
 	FixedOrderSize   float64  `json:"fixedOrderSize"`
 	Leverage         float64  `json:"leverage"`
 	AutoTradeEnabled bool     `json:"autoTradeEnabled"`
+	BinanceAPIKey    string   `json:"binanceApiKey,omitempty"`
 }

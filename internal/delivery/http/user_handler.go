@@ -61,7 +61,7 @@ func (h *UserHandler) GetMe(c echo.Context) error {
 
 		log.Printf("[INFO] Fetching REAL balance from Binance for user %s", userID)
 
-		realBal, err := h.aiService.GetRealBalance(bgCtx)
+		realBal, err := h.aiService.GetRealBalance(bgCtx, user.BinanceAPIKey, user.BinanceAPISecret)
 		if err == nil && realBal > 0 {
 			// Update memory object
 			user.RealBalanceCache = &realBal
@@ -100,6 +100,7 @@ func (h *UserHandler) GetMe(c echo.Context) error {
 		FixedOrderSize:   user.FixedOrderSize,
 		Leverage:         user.Leverage,
 		AutoTradeEnabled: user.IsAutoTradeEnabled,
+		BinanceAPIKey:    user.BinanceAPIKey,
 	})
 }
 
@@ -540,6 +541,8 @@ func (h *UserHandler) UpdateSettings(c echo.Context) error {
 		FixedOrderSize   float64 `json:"fixedOrderSize" form:"fixed_order_size"`
 		Leverage         float64 `json:"leverage" form:"leverage"`
 		AutoTradeEnabled *bool   `json:"autoTradeEnabled" form:"auto_trade_enabled"`
+		BinanceAPIKey    string  `json:"binanceApiKey" form:"binance_api_key"`
+		BinanceAPISecret string  `json:"binanceApiSecret" form:"binance_api_secret"`
 	}
 
 	if err := c.Bind(&req); err != nil {
@@ -574,6 +577,13 @@ func (h *UserHandler) UpdateSettings(c echo.Context) error {
 
 	if req.AutoTradeEnabled != nil {
 		user.IsAutoTradeEnabled = *req.AutoTradeEnabled
+	}
+
+	if req.BinanceAPIKey != "" {
+		user.BinanceAPIKey = req.BinanceAPIKey
+	}
+	if req.BinanceAPISecret != "" {
+		user.BinanceAPISecret = req.BinanceAPISecret
 	}
 	user.UpdatedAt = time.Now()
 
@@ -634,8 +644,14 @@ func (h *UserHandler) RefreshRealBalance(c echo.Context) error {
 	ctx, cancel := context.WithTimeout(c.Request().Context(), 10*time.Second)
 	defer cancel()
 
+	// Get User first to get keys
+	user, err := h.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return InternalServerErrorResponse(c, "Failed to get user", err)
+	}
+
 	// Call AI/Trading service to get balance from Binance
-	bal, err := h.aiService.GetRealBalance(ctx)
+	bal, err := h.aiService.GetRealBalance(ctx, user.BinanceAPIKey, user.BinanceAPISecret)
 	if err != nil {
 		// If fails, return cached if avail, or error
 		// return InternalServerErrorResponse(c, "Failed to fetch real balance from exchange", err)

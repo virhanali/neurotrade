@@ -55,7 +55,8 @@ func (r *UserRepositoryImpl) Create(ctx context.Context, user *domain.User) erro
 func (r *UserRepositoryImpl) GetByID(ctx context.Context, id uuid.UUID) (*domain.User, error) {
 	query := `
 		SELECT id, username, password_hash, role,
-		       paper_balance, real_balance_cache, mode, is_auto_trade_enabled, fixed_order_size, leverage, created_at, updated_at
+		       paper_balance, real_balance_cache, mode, is_auto_trade_enabled, fixed_order_size, leverage, 
+               COALESCE(binance_api_key, ''), COALESCE(binance_api_secret, ''), created_at, updated_at
 		FROM users
 		WHERE id = $1
 	`
@@ -72,6 +73,8 @@ func (r *UserRepositoryImpl) GetByID(ctx context.Context, id uuid.UUID) (*domain
 		&user.IsAutoTradeEnabled,
 		&user.FixedOrderSize,
 		&user.Leverage,
+		&user.BinanceAPIKey,
+		&user.BinanceAPISecret,
 		&user.CreatedAt,
 		&user.UpdatedAt,
 	)
@@ -87,7 +90,8 @@ func (r *UserRepositoryImpl) GetByID(ctx context.Context, id uuid.UUID) (*domain
 func (r *UserRepositoryImpl) GetByUsername(ctx context.Context, username string) (*domain.User, error) {
 	query := `
 		SELECT id, username, password_hash, role,
-		       paper_balance, real_balance_cache, mode, is_auto_trade_enabled, fixed_order_size, leverage, created_at, updated_at
+		       paper_balance, real_balance_cache, mode, is_auto_trade_enabled, fixed_order_size, leverage, 
+               COALESCE(binance_api_key, ''), COALESCE(binance_api_secret, ''), created_at, updated_at
 		FROM users
 		WHERE username = $1
 	`
@@ -104,6 +108,8 @@ func (r *UserRepositoryImpl) GetByUsername(ctx context.Context, username string)
 		&user.IsAutoTradeEnabled,
 		&user.FixedOrderSize,
 		&user.Leverage,
+		&user.BinanceAPIKey,
+		&user.BinanceAPISecret,
 		&user.CreatedAt,
 		&user.UpdatedAt,
 	)
@@ -207,8 +213,9 @@ func (r *UserRepositoryImpl) UpdateAutoTradeStatus(ctx context.Context, userID u
 func (r *UserRepositoryImpl) UpdateSettings(ctx context.Context, user *domain.User) error {
 	query := `
 		UPDATE users
-		SET mode = $1, fixed_order_size = $2, leverage = $3, is_auto_trade_enabled = $4, updated_at = NOW()
-		WHERE id = $5
+		SET mode = $1, fixed_order_size = $2, leverage = $3, is_auto_trade_enabled = $4, 
+            binance_api_key = $5, binance_api_secret = $6, updated_at = NOW()
+		WHERE id = $7
 	`
 
 	_, err := r.db.Exec(ctx, query,
@@ -216,6 +223,8 @@ func (r *UserRepositoryImpl) UpdateSettings(ctx context.Context, user *domain.Us
 		user.FixedOrderSize,
 		user.Leverage,
 		user.IsAutoTradeEnabled,
+		user.BinanceAPIKey,
+		user.BinanceAPISecret,
 		user.ID,
 	)
 

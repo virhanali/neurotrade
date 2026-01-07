@@ -36,46 +36,54 @@ func NewScheduler(tradingService *usecase.TradingService, balance float64, mode 
 func (s *Scheduler) Start() error {
 	log.Printf("Starting scheduler... [Mode: %s]", s.mode)
 
-	// OPTIMIZED for API cost & performance:
-	// Overlap (London+NY): 13:00-16:00 UTC → AGGRESSIVE (every 10s)
-	// Golden Hours: 00:00-04:00, 07:00-11:00, 13:00-18:00 UTC → NORMAL (every 30s)
-	// Dead Hours: Everything else → SLOW (every 2 min)
+	// OPTIMIZED for API cost & performance (UPDATED TO AVOID BANS):
+	// Overlap (London+NY): 13:00-16:00 UTC → AGGRESSIVE (every 30s)
+	// Golden Hours: 00:00-04:00, 07:00-11:00, 13:00-18:00 UTC → NORMAL (every 1 min)
+	// Dead Hours: Everything else → SLOW (every 5 min)
 
-	_, err := s.cron.AddFunc("*/10 * * * * *", func() {
+	// Base trigger: Every 30 seconds (High frequency)
+	// We handle the finer logic (1m, 5m) inside the function
+	_, err := s.cron.AddFunc("*/30 * * * * *", func() {
 		ctx := context.Background()
 		now := time.Now().UTC()
 		hour := now.Hour()
 		second := now.Second()
 
 		// === SESSION CLASSIFICATION (UTC) ===
-		// Overlap (London+NY): 13:00-16:00 UTC → AGGRESSIVE (every 10s)
-		// Golden Hours: 00:00-04:00, 07:00-11:00, 13:00-18:00 UTC → NORMAL (every 30s)
-		// Dead Hours: Everything else → SLOW (every 2 min)
+		// Overlap (London+NY): 13:00-16:00 UTC → AGGRESSIVE (every 30s)
+		// Golden Hours: 00:00-04:00, 07:00-11:00, 13:00-18:00 UTC → NORMAL (every 1 min)
+		// Dead Hours: Everything else → SLOW (every 5 min)
 
 		isOverlapHour := hour >= 13 && hour < 16
 		isGoldenHour := (hour >= 0 && hour < 4) || (hour >= 7 && hour < 11) || (hour >= 13 && hour < 18)
 
-		// DYNAMIC FREQUENCY:
+		// DYNAMIC FREQUENCY (RELAXED TO AVOID BANS):
 		if isOverlapHour {
-			// Overlap hours: run EVERY 10 seconds
+			// Overlap hours: run EVERY 30 seconds (:00, :30)
+			if second != 0 && second != 30 {
+				return
+			}
 		} else if isGoldenHour {
-			// Golden hours: run at :00, :15, :30, :45 (every 15s)
-			if second != 0 && second != 15 && second != 30 && second != 45 {
+			// Golden hours: run EVERY 1 minute (:00)
+			if second != 0 {
 				return
 			}
 		} else {
-			// Dead hours: run only at :00, :05 of each minute (every 2 min)
-			if second != 0 && second != 59 {
+			// Dead hours: run EVERY 5 minutes
+			// Note: This requires the cron to trigger at least once/minute.
+			// Current cron triggers every 10s, so this works.
+			minute := now.Minute()
+			if second != 0 || minute%5 != 0 {
 				return
 			}
 		}
 
 		// Log with frequency indicator
-		freq := "10s [NORMAL]"
-		if isOverlapHour {
-			freq = "10s [AGGRESSIVE]"
-		} else if isGoldenHour {
-			freq = "10s [NORMAL]"
+		freq := "30s [AGGRESSIVE]"
+		if isGoldenHour {
+			freq = "1m [NORMAL]"
+		} else if !isOverlapHour && !isGoldenHour {
+			freq = "5m [SLOW]"
 		}
 
 		log.Printf("[CRON] Scan triggered (%s) [Mode: %s]", freq, s.mode)
@@ -92,7 +100,7 @@ func (s *Scheduler) Start() error {
 	// Start cron scheduler
 	s.cron.Start()
 	log.Println("[OK] Scheduler started successfully")
-	log.Println("[OK] Dynamic frequency: 5s (Overlap) | 30s (Golden) | 2m (Dead)")
+	log.Println("[OK] Dynamic frequency: 30s (Overlap) | 1m (Golden) | 5m (Dead)")
 	log.Println("[OK] Optimized for API cost efficiency while maintaining responsiveness")
 
 	return nil

@@ -115,7 +115,7 @@ func (s *VirtualBrokerService) CheckPositions(ctx context.Context) error {
 			}
 
 			// Execute Real Close
-			res, err := s.aiService.ExecuteClose(ctx, position.Symbol, closeSide, position.Size)
+			res, err := s.aiService.ExecuteClose(ctx, position.Symbol, closeSide, position.Size, user.BinanceAPIKey, user.BinanceAPISecret)
 			if err != nil {
 				log.Printf("[ERR] VirtualBroker: FAILED to execute REAL CLOSE for %s: %v", position.Symbol, err)
 				continue // Don't close position in DB if execution failed

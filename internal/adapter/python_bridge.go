@@ -245,12 +245,14 @@ func (pb *PythonBridge) SendFeedback(ctx context.Context, feedback *domain.Feedb
 // ==========================================
 
 // ExecuteEntry executes a real entry order via Python Engine
-func (pb *PythonBridge) ExecuteEntry(ctx context.Context, symbol, side string, amountUSDT float64, leverage int) (*domain.ExecutionResult, error) {
+func (pb *PythonBridge) ExecuteEntry(ctx context.Context, symbol, side string, amountUSDT float64, leverage int, apiKey, apiSecret string) (*domain.ExecutionResult, error) {
 	reqBody := map[string]interface{}{
 		"symbol":      symbol,
 		"side":        side,
 		"amount_usdt": amountUSDT,
 		"leverage":    leverage,
+		"api_key":     apiKey,
+		"api_secret":  apiSecret,
 	}
 
 	jsonData, err := json.Marshal(reqBody)
@@ -286,11 +288,13 @@ func (pb *PythonBridge) ExecuteEntry(ctx context.Context, symbol, side string, a
 }
 
 // ExecuteClose executes a real close order via Python Engine
-func (pb *PythonBridge) ExecuteClose(ctx context.Context, symbol, side string, quantity float64) (*domain.ExecutionResult, error) {
+func (pb *PythonBridge) ExecuteClose(ctx context.Context, symbol, side string, quantity float64, apiKey, apiSecret string) (*domain.ExecutionResult, error) {
 	reqBody := map[string]interface{}{
-		"symbol":   symbol,
-		"side":     side,
-		"quantity": quantity,
+		"symbol":     symbol,
+		"side":       side,
+		"quantity":   quantity,
+		"api_key":    apiKey,
+		"api_secret": apiSecret,
 	}
 
 	jsonData, err := json.Marshal(reqBody)
@@ -326,15 +330,25 @@ func (pb *PythonBridge) ExecuteClose(ctx context.Context, symbol, side string, q
 }
 
 // GetRealBalance fetches real wallet balance from Python Engine
-func (pb *PythonBridge) GetRealBalance(ctx context.Context) (float64, error) {
+func (pb *PythonBridge) GetRealBalance(ctx context.Context, apiKey, apiSecret string) (float64, error) {
 	url := fmt.Sprintf("%s/execute/balance", pb.baseURL)
-	log.Printf("[PythonBridge] Fetching balance from: %s", url)
 
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	reqBody := map[string]interface{}{
+		"api_key":    apiKey,
+		"api_secret": apiSecret,
+	}
+	jsonData, err := json.Marshal(reqBody)
+	if err != nil {
+		return 0, fmt.Errorf("failed to marshal balance request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
 		log.Printf("[PythonBridge] Failed to create request: %v", err)
 		return 0, fmt.Errorf("failed to create request: %w", err)
 	}
+
+	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := pb.httpClient.Do(req)
 	if err != nil {

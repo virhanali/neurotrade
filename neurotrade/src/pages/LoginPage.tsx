@@ -14,6 +14,16 @@ export function LoginPage() {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
+
+        if (!username.trim()) {
+            setError('Please enter your username');
+            return;
+        }
+        if (!password) {
+            setError('Please enter your password');
+            return;
+        }
+
         setLoading(true);
 
         try {
@@ -54,7 +64,6 @@ export function LoginPage() {
                                 onChange={(e) => setUsername(e.target.value)}
                                 className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
                                 placeholder="Enter your username"
-                                required
                             />
                         </div>
 
@@ -70,7 +79,6 @@ export function LoginPage() {
                                     onChange={(e) => setPassword(e.target.value)}
                                     className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all pr-12"
                                     placeholder="Enter your password"
-                                    required
                                 />
                                 <button
                                     type="button"

@@ -373,7 +373,7 @@ func (ts *TradingService) createPositionForUser(ctx context.Context, user *domai
 		}
 
 		// Pass TOTAL NOTIONAL VALUE to Python Executor
-		execResult, err := ts.aiService.ExecuteEntry(ctx, signal.Symbol, side, totalNotionalValue, int(leverage))
+		execResult, err := ts.aiService.ExecuteEntry(ctx, signal.Symbol, side, totalNotionalValue, int(leverage), user.BinanceAPIKey, user.BinanceAPISecret)
 		if err != nil {
 			return fmt.Errorf("REAL ORDER FAILED for %s: %w", signal.Symbol, err)
 		}
@@ -465,7 +465,7 @@ func (ts *TradingService) ClosePosition(ctx context.Context, positionID uuid.UUI
 		}
 
 		log.Printf("[REAL] Closing Position for %s: %s %s", user.Username, position.Symbol, closeSide)
-		execResult, err := ts.aiService.ExecuteClose(ctx, position.Symbol, closeSide, position.Size)
+		execResult, err := ts.aiService.ExecuteClose(ctx, position.Symbol, closeSide, position.Size, user.BinanceAPIKey, user.BinanceAPISecret)
 		if err != nil {
 			return fmt.Errorf("REAL CLOSE FAILED for %s: %w", position.Symbol, err)
 		}

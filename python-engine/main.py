@@ -676,6 +676,8 @@ class ExecuteEntryRequest(BaseModel):
     side: str  # LONG/SHORT
     amount_usdt: float
     leverage: int = 20
+    api_key: Optional[str] = None
+    api_secret: Optional[str] = None
 
 @app.post("/execute/entry")
 async def execute_entry(request: ExecuteEntryRequest):
@@ -687,7 +689,9 @@ async def execute_entry(request: ExecuteEntryRequest):
         symbol=request.symbol,
         side=request.side,
         amount_usdt=request.amount_usdt,
-        leverage=request.leverage
+        leverage=request.leverage,
+        api_key=request.api_key,
+        api_secret=request.api_secret
     )
     
     if "error" in result:
@@ -699,6 +703,8 @@ class ExecuteCloseRequest(BaseModel):
     symbol: str
     side: str  # SELL (if Long), BUY (if Short)
     quantity: float
+    api_key: Optional[str] = None
+    api_secret: Optional[str] = None
 
 @app.post("/execute/close")
 async def execute_close(request: ExecuteCloseRequest):
@@ -708,7 +714,9 @@ async def execute_close(request: ExecuteCloseRequest):
     result = await executor.execute_close(
         symbol=request.symbol,
         side=request.side,
-        quantity=request.quantity
+        quantity=request.quantity,
+        api_key=request.api_key,
+        api_secret=request.api_secret
     )
     
     if "error" in result:
@@ -716,12 +724,19 @@ async def execute_close(request: ExecuteCloseRequest):
         
     return result
 
-@app.get("/execute/balance")
-async def get_real_balance():
+class BalanceRequest(BaseModel):
+    api_key: Optional[str] = None
+    api_secret: Optional[str] = None
+
+@app.post("/execute/balance")
+async def get_real_balance(request: BalanceRequest):
     """
     Get real USDT balance from Binance
     """
-    result = await executor.get_balance()
+    result = await executor.get_balance(
+        api_key=request.api_key,
+        api_secret=request.api_secret
+    )
     
     if "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])

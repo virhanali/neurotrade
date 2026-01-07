@@ -10,6 +10,7 @@ export interface User {
     fixedOrderSize: number;
     leverage: number;
     autoTradeEnabled: boolean;
+    binanceApiKey?: string;
     createdAt: string;
 }
 
@@ -81,6 +82,8 @@ export interface UpdateSettingsRequest {
     fixedOrderSize?: number;
     leverage?: number;
     autoTradeEnabled?: boolean;
+    binanceApiKey?: string;
+    binanceApiSecret?: string;
 }
 
 // API Response Types

@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"log"
 	"net/http"
 	"time"
 
@@ -45,11 +46,13 @@ func (h *AuthHandler) Login(c echo.Context) error {
 
 	user, err := h.userRepo.GetByUsername(ctx, req.Username)
 	if err != nil {
+		log.Printf("[AUTH] Login failed: User not found '%s', error: %v", req.Username, err)
 		return UnauthorizedResponse(c, "Invalid credentials")
 	}
 
 	// Verify password
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
+		log.Printf("[AUTH] Login failed: Password mismatch for user '%s'", req.Username)
 		return UnauthorizedResponse(c, "Invalid credentials")
 	}
 

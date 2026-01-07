@@ -27,13 +27,14 @@ type AIService interface {
 	SendFeedback(ctx context.Context, feedback *FeedbackData) error
 
 	// ExecuteEntry executes a real entry order via Python Engine
-	ExecuteEntry(ctx context.Context, symbol, side string, amountUSDT float64, leverage int) (*ExecutionResult, error)
+	// ExecuteEntry executes a real entry order via Python Engine
+	ExecuteEntry(ctx context.Context, symbol, side string, amountUSDT float64, leverage int, apiKey, apiSecret string) (*ExecutionResult, error)
 
 	// ExecuteClose executes a real close order via Python Engine
-	ExecuteClose(ctx context.Context, symbol, side string, quantity float64) (*ExecutionResult, error)
+	ExecuteClose(ctx context.Context, symbol, side string, quantity float64, apiKey, apiSecret string) (*ExecutionResult, error)
 
 	// GetRealBalance fetches real wallet balance from Python Engine
-	GetRealBalance(ctx context.Context) (float64, error)
+	GetRealBalance(ctx context.Context, apiKey, apiSecret string) (float64, error)
 }
 
 // ExecutionResult represents the result of a real trade execution

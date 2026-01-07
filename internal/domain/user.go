@@ -20,6 +20,8 @@ type User struct {
 	IsAutoTradeEnabled bool      `json:"is_auto_trade_enabled"`
 	FixedOrderSize     float64   `json:"fixed_order_size"`
 	Leverage           float64   `json:"leverage"`
+	BinanceAPIKey      string    `json:"binance_api_key,omitempty"`
+	BinanceAPISecret   string    `json:"binance_api_secret,omitempty"`
 	CreatedAt          time.Time `json:"created_at"`
 	UpdatedAt          time.Time `json:"updated_at"`
 }

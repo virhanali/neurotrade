@@ -17,6 +17,24 @@ export function RegisterPage() {
         e.preventDefault();
         setError('');
         setSuccess('');
+
+        if (!username.trim()) {
+            setError('Account name is required');
+            return;
+        }
+        if (!email.trim() || !/^\S+@\S+\.\S+$/.test(email)) {
+            setError('A valid email is required');
+            return;
+        }
+        if (!password) {
+            setError('Password is required');
+            return;
+        }
+        if (password.length < 6) {
+            setError('Password must be at least 6 characters');
+            return;
+        }
+
         setLoading(true);
 
         try {
@@ -60,7 +78,6 @@ export function RegisterPage() {
                                 onChange={(e) => setUsername(e.target.value)}
                                 className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
                                 placeholder="Choose a username"
-                                required
                             />
                         </div>
 
@@ -75,7 +92,6 @@ export function RegisterPage() {
                                 onChange={(e) => setEmail(e.target.value)}
                                 className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
                                 placeholder="Enter your email"
-                                required
                             />
                         </div>
 
@@ -91,8 +107,6 @@ export function RegisterPage() {
                                     onChange={(e) => setPassword(e.target.value)}
                                     className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all pr-12"
                                     placeholder="Choose a strong password"
-                                    required
-                                    minLength={6}
                                 />
                                 <button
                                     type="button"

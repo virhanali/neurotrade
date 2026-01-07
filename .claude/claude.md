@@ -239,3 +239,26 @@ Located in `internal/`. Handles state, money management, and safety.
     *   Updated all Backend SQL queries to use `positions` table.
 
 **Status:** Codebase is Clean & Consistent. Database is Auto-Migrated.
+
+### Session: 2026-01-07 (v5.2 - UX & Stability)
+**Focus:** User Experience Polish, Auth Fixes, and API Stability (Anti-Ban).
+
+#### ✅ UI/UX Improvements:
+1.  **Auth & Settings:**
+    *   **Custom Validation:** Removed native browser popups on Login/Register for cleaner UX.
+    *   **API Key Masking:** Added "Eye" toggle to hide/show API keys in Settings.
+    *   **Edit Capability:** Users can now seamlessy update API keys.
+2.  **Dialogs:**
+    *   Replaced native `window.confirm()` and `alert()` with custom **React Portal Modals** (`ConfirmDialog`).
+
+#### 🔧 Critical Fixes:
+1.  **Auth System Repair:**
+    *   Fixed `Invalid credentials` error caused by database trying to scan `NULL` API keys into Go strings. Implemented `COALESCE` fix in Repository layer.
+    *   Solved issue where API Keys were not saving to DB (same root cause).
+2.  **Anti-Ban Logic (Binance):**
+    *   **Relaxed Scheduler:** Adjusted Cronscan frequency from 10s -> 30s (Aggressive), 1m (Normal), 5m (Slow) to respect API limits.
+    *   Optimized Scheduler trigger to `*/30` seconds.
+3.  **Logging:**
+    *   Silenced duplicate/spammy `httpx` logs in Python Engine for cleaner debugging.
+
+**System Status:** Stable Auth, Safer Scanning, Polished UI.
