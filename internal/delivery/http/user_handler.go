@@ -392,3 +392,210 @@ func (h *UserHandler) GetAnalyticsPnL(c echo.Context) error {
 		"period":          period,
 	})
 }
+
+// GetTradeHistory returns closed positions for the user
+// GET /api/user/history
+func (h *UserHandler) GetTradeHistory(c echo.Context) error {
+	userID, err := middleware.GetUserID(c)
+	if err != nil {
+		return UnauthorizedResponse(c, "User not authenticated")
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request().Context(), 5*time.Second)
+	defer cancel()
+
+	// Get closed positions (full Position objects)
+	positions, err := h.positionRepo.GetClosedPositions(ctx, userID, 100)
+	if err != nil {
+		return InternalServerErrorResponse(c, "Failed to get trade history", err)
+	}
+
+	// Convert to output format
+	output := make([]map[string]interface{}, 0, len(positions))
+	for _, pos := range positions {
+		closedAt := ""
+		if pos.ClosedAt != nil {
+			closedAt = pos.ClosedAt.Format(time.RFC3339)
+		}
+
+		pnl := 0.0
+		pnlPercent := 0.0
+		if pos.PnL != nil {
+			pnl = *pos.PnL
+		}
+		if pos.PnLPercent != nil {
+			pnlPercent = *pos.PnLPercent
+		}
+
+		closeReason := "MANUAL"
+		if pos.ClosedBy != nil {
+			closeReason = *pos.ClosedBy
+		}
+
+		output = append(output, map[string]interface{}{
+			"id":                   pos.ID.String(),
+			"symbol":               pos.Symbol,
+			"side":                 pos.Side,
+			"entryPrice":           pos.EntryPrice,
+			"currentPrice":         pos.ExitPrice,
+			"quantity":             pos.Size,
+			"margin":               pos.Size,
+			"leverage":             pos.Leverage,
+			"realizedPnl":          pnl,
+			"realizedPnlPercent":   pnlPercent,
+			"unrealizedPnl":        0,
+			"unrealizedPnlPercent": 0,
+			"takeProfit":           pos.TPPrice,
+			"stopLoss":             pos.SLPrice,
+			"status":               pos.Status,
+			"mode":                 "PAPER",
+			"closeReason":          closeReason,
+			"createdAt":            pos.CreatedAt.Format(time.RFC3339),
+			"closedAt":             closedAt,
+		})
+	}
+
+	return c.JSON(http.StatusOK, output)
+}
+
+// GetDashboardStats returns trading statistics for the dashboard
+// GET /api/user/stats
+func (h *UserHandler) GetDashboardStats(c echo.Context) error {
+	userID, err := middleware.GetUserID(c)
+	if err != nil {
+		return UnauthorizedResponse(c, "User not authenticated")
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request().Context(), 5*time.Second)
+	defer cancel()
+
+	// Get closed positions for stats calculation
+	positions, err := h.positionRepo.GetClosedPositions(ctx, userID, 1000)
+	if err != nil {
+		return InternalServerErrorResponse(c, "Failed to get statistics", err)
+	}
+
+	var totalTrades, wins, losses int
+	var totalPnl, bestTrade, worstTrade float64
+	var todayPnl, todayPnlPercent float64
+
+	startOfDay := time.Now().Truncate(24 * time.Hour)
+
+	for _, pos := range positions {
+		pnl := 0.0
+		if pos.PnL != nil {
+			pnl = *pos.PnL
+		}
+
+		totalTrades++
+		totalPnl += pnl
+
+		if pnl > 0 {
+			wins++
+			if pnl > bestTrade {
+				bestTrade = pnl
+			}
+		} else {
+			losses++
+			if pnl < worstTrade {
+				worstTrade = pnl
+			}
+		}
+
+		// Today's PnL
+		if pos.ClosedAt != nil && pos.ClosedAt.After(startOfDay) {
+			todayPnl += pnl
+		}
+	}
+
+	winRate := 0.0
+	if totalTrades > 0 {
+		winRate = float64(wins) / float64(totalTrades)
+	}
+
+	// Get user for paper balance (to calculate today's %)
+	user, err := h.userRepo.GetByID(ctx, userID)
+	if err == nil && user.PaperBalance > 0 {
+		todayPnlPercent = (todayPnl / user.PaperBalance) * 100
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"totalTrades":     totalTrades,
+		"totalWins":       wins,
+		"totalLosses":     losses,
+		"winRate":         winRate,
+		"totalPnl":        totalPnl,
+		"todayPnl":        todayPnl,
+		"todayPnlPercent": todayPnlPercent,
+		"bestTrade":       bestTrade,
+		"worstTrade":      worstTrade,
+	})
+}
+
+// UpdateSettings updates user settings (mode, margin, leverage, auto-trade)
+// POST /api/settings
+func (h *UserHandler) UpdateSettings(c echo.Context) error {
+	userID, err := middleware.GetUserID(c)
+	if err != nil {
+		return UnauthorizedResponse(c, "User not authenticated")
+	}
+
+	var req struct {
+		Mode             string  `json:"mode" form:"mode"`
+		FixedOrderSize   float64 `json:"fixedOrderSize" form:"fixed_order_size"`
+		Leverage         float64 `json:"leverage" form:"leverage"`
+		AutoTradeEnabled bool    `json:"autoTradeEnabled" form:"auto_trade_enabled"`
+	}
+
+	if err := c.Bind(&req); err != nil {
+		return BadRequestResponse(c, "Invalid request payload")
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request().Context(), 5*time.Second)
+	defer cancel()
+
+	// Get current user
+	user, err := h.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return InternalServerErrorResponse(c, "Failed to get user", err)
+	}
+
+	// Validate mode
+	if req.Mode != "" {
+		if req.Mode != "PAPER" && req.Mode != "REAL" {
+			return BadRequestResponse(c, "Invalid mode. Must be 'PAPER' or 'REAL'")
+		}
+		user.Mode = req.Mode
+	}
+
+	// Validate and update settings
+	if req.FixedOrderSize > 0 {
+		user.FixedOrderSize = req.FixedOrderSize
+	}
+
+	if req.Leverage > 0 {
+		user.Leverage = req.Leverage
+	}
+
+	user.IsAutoTradeEnabled = req.AutoTradeEnabled
+	user.UpdatedAt = time.Now()
+
+	// Save to database
+	if err := h.userRepo.UpdateSettings(ctx, user); err != nil {
+		return InternalServerErrorResponse(c, "Failed to save settings", err)
+	}
+
+	log.Printf("[SETTINGS] User %s updated: Mode=%s, Margin=%.2f, Leverage=%.0fx, AutoTrade=%v",
+		user.Username, user.Mode, user.FixedOrderSize, user.Leverage, user.IsAutoTradeEnabled)
+
+	return SuccessResponse(c, map[string]interface{}{
+		"success": true,
+		"message": "Settings saved successfully",
+		"user": map[string]interface{}{
+			"mode":             user.Mode,
+			"fixedOrderSize":   user.FixedOrderSize,
+			"leverage":         user.Leverage,
+			"autoTradeEnabled": user.IsAutoTradeEnabled,
+		},
+	})
+}

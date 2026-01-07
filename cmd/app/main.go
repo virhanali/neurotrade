@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"html/template"
 	"log"
 	"net/http"
 	"os"
@@ -295,23 +294,13 @@ func main() {
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 
-	// Load HTML templates (Phase 5)
-	templates, err := template.ParseGlob("web/templates/*.html")
-	if err != nil {
-		log.Fatalf("Failed to load templates: %v", err)
-	}
-	log.Println("[OK] HTML templates loaded")
-
-	// Serve static files
-	e.Static("/static", "web/static")
-
 	// Initialize HTTP handlers
 	authHandler := httpdelivery.NewAuthHandler(userRepo)
 	userHandler := httpdelivery.NewUserHandler(userRepo, positionRepo, tradingService, aiService)
-	adminHandler := httpdelivery.NewAdminHandler(db, marketScanScheduler, signalRepo, positionRepo, templates, cfg.Python.URL)
+	adminHandler := httpdelivery.NewAdminHandler(db, marketScanScheduler, signalRepo, positionRepo, cfg.Python.URL)
 
 	// Initialize web handler (Phase 5 - HTML pages)
-	webHandler := httpdelivery.NewWebHandler(templates, userRepo, positionRepo, db, priceService)
+	webHandler := httpdelivery.NewWebHandler(userRepo, positionRepo, db, priceService)
 
 	// Create auth middleware wrapper for web routes
 	webAuthMiddleware := func(next echo.HandlerFunc) echo.HandlerFunc {

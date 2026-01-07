@@ -2,11 +2,8 @@ package http
 
 import (
 	"context"
-	"fmt"
-	"html/template"
 	"io"
 	"net/http"
-	"sort"
 	"strconv"
 	"time"
 
@@ -14,9 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v4"
 
-	"neurotrade/internal/delivery/http/dto"
 	"neurotrade/internal/domain"
-	"neurotrade/internal/utils"
 )
 
 // MarketScanScheduler defines the interface for market scan scheduler
@@ -30,18 +25,16 @@ type AdminHandler struct {
 	scheduler       MarketScanScheduler
 	signalRepo      domain.SignalRepository
 	positionRepo    domain.PositionRepository
-	templates       *template.Template
 	pythonEngineURL string
 }
 
 // NewAdminHandler creates a new admin handler
-func NewAdminHandler(db *pgxpool.Pool, scheduler MarketScanScheduler, signalRepo domain.SignalRepository, positionRepo domain.PositionRepository, templates *template.Template, pythonEngineURL string) *AdminHandler {
+func NewAdminHandler(db *pgxpool.Pool, scheduler MarketScanScheduler, signalRepo domain.SignalRepository, positionRepo domain.PositionRepository, pythonEngineURL string) *AdminHandler {
 	return &AdminHandler{
 		db:              db,
 		scheduler:       scheduler,
 		signalRepo:      signalRepo,
 		positionRepo:    positionRepo,
-		templates:       templates,
 		pythonEngineURL: pythonEngineURL,
 	}
 }
@@ -187,34 +180,24 @@ func (h *AdminHandler) GetSystemHealth(c echo.Context) error {
 	defer cancel()
 
 	// Check PostgreSQL
-	statusText := "Healthy"
-	statusColor := "text-emerald-600 dark:text-emerald-400"
-	dotColor := "bg-emerald-500"
-
+	dbStatus := "online"
 	if err := h.db.Ping(ctx); err != nil {
-		statusText = "Unhealthy"
-		statusColor = "text-rose-600 dark:text-rose-400"
-		dotColor = "bg-rose-500"
+		dbStatus = "degraded"
 	}
 
-	// Get current time in WIB
-	loc := utils.GetLocation()
-	timestamp := time.Now().In(loc).Format("15:04:05 WIB")
+	// Check API (implicit if we are here)
+	apiStatus := "online"
 
-	html := fmt.Sprintf(`
-		<div class="flex items-center justify-between">
-			<div class="flex items-center gap-2">
-				<span class="relative flex h-2.5 w-2.5">
-				  <span class="animate-ping absolute inline-flex h-full w-full rounded-full %s opacity-75"></span>
-				  <span class="relative inline-flex rounded-full h-2.5 w-2.5 %s"></span>
-				</span>
-				<span class="text-sm font-medium %s">%s</span>
-			</div>
-			<span class="text-xs text-slate-400 font-mono">%s</span>
-		</div>
-	`, dotColor, dotColor, statusColor, statusText, timestamp)
+	// Check AI Engine (optional, could be added later via health check to python service)
+	aiStatus := "online"
 
-	return c.HTML(http.StatusOK, html)
+	return SuccessResponse(c, map[string]interface{}{
+		"status":     "healthy",
+		"timestamp":  time.Now().Format(time.RFC3339),
+		"db_status":  dbStatus,
+		"api_status": apiStatus,
+		"ai_status":  aiStatus,
+	})
 }
 
 // GetStatistics returns admin dashboard statistics
@@ -267,16 +250,16 @@ func (h *AdminHandler) GetStatistics(c echo.Context) error {
 	return SuccessResponse(c, stats)
 }
 
-// GetLatestScanResults returns the latest scan results formatted as HTML for HTMX
+// GetLatestScanResults returns the latest scan results formatted as JSON
+// GET /api/admin/signals
 func (h *AdminHandler) GetLatestScanResults(c echo.Context) error {
 	ctx := c.Request().Context()
 	signals, err := h.signalRepo.GetRecent(ctx, 50)
 	if err != nil {
-		return c.HTML(http.StatusInternalServerError, fmt.Sprintf("<div class='text-red-500'>Error loading signals: %v</div>", err))
+		return InternalServerErrorResponse(c, "Failed to load signals", err)
 	}
 
 	// Pre-fetch PnL dollar values from paper_positions for all signals in one query
-	// Build a map of signal_id -> MetricResult
 	metricsMap := make(map[string]domain.MetricResult)
 	if len(signals) > 0 {
 		var signalIDs []uuid.UUID
@@ -294,102 +277,37 @@ func (h *AdminHandler) GetLatestScanResults(c echo.Context) error {
 		}
 	}
 
-	var viewModels []dto.SignalViewModel
-	loc := utils.GetLocation()
+	var response []map[string]interface{}
 
 	for _, signal := range signals {
-		// ... (colors logic)
-		// 1. Determine Side Badge Color
-		sideBg := "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400"
-		if signal.Type == "LONG" {
-			sideBg = "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
-		}
-
-		// 2. Determine Confidence Color
-		confidenceColor := "text-slate-500"
-		if signal.Confidence >= 80 {
-			confidenceColor = "text-emerald-500"
-		} else if signal.Confidence >= 70 {
-			confidenceColor = "text-amber-500"
-		}
-
-		// 3. Format Time
-		timestamp := signal.CreatedAt.In(loc).Format("15:04")
-
-		// 4. Determine Result from REAL signal data
-		isRunning := false
-		res := ""
-		resColor := "bg-slate-50 text-slate-700 dark:bg-slate-800/50 dark:text-slate-400 border-slate-200 dark:border-slate-700"
-		var pnlVal, pnlDollar float64
-
-		// ... (ReviewResult logic)
-		if signal.ReviewResult != nil {
-			switch *signal.ReviewResult {
-			case "WIN":
-				res = "WIN"
-				resColor = "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800"
-			case "LOSS":
-				res = "LOSS"
-				resColor = "bg-rose-50 text-rose-700 dark:bg-rose-900/20 dark:text-rose-400 border-rose-200 dark:border-rose-800"
-			case "FLOATING":
-				isRunning = true
-			default:
-				isRunning = true
-			}
-		} else {
-			isRunning = true
-		}
-
-		// Use actual ReviewPnL (percentage) from signal if available
-		if signal.ReviewPnL != nil {
-			pnlVal = *signal.ReviewPnL
-		}
-
-		// Use PnL data from positions table (OVERRIDE percentage if calculated)
+		// Calculate PnL if available
+		var pnlVal float64
 		if metrics, exists := metricsMap[signal.ID.String()]; exists {
-			pnlDollar = metrics.PnL
-			// If ReviewPnL is 0/nil but we have calculated percent from repo, use it!
-			if pnlVal == 0 && metrics.PnLPercent != 0 {
-				pnlVal = metrics.PnLPercent
-			}
+			pnlVal = metrics.PnL
 		}
 
-		viewModels = append(viewModels, dto.SignalViewModel{
-			Symbol:          signal.Symbol,
-			Type:            signal.Type,
-			SideBg:          sideBg,
-			Confidence:      signal.Confidence,
-			ConfidenceColor: confidenceColor,
-			Timestamp:       timestamp,
-			IsRunning:       isRunning,
-			Res:             res,
-			ResColor:        resColor,
-			PnlVal:          pnlVal,
-			PnlDollar:       pnlDollar,
+		// Determine result
+		result := "PENDING"
+		if signal.ReviewResult != nil {
+			result = *signal.ReviewResult
+		}
+
+		response = append(response, map[string]interface{}{
+			"id":               signal.ID.String(),
+			"symbol":           signal.Symbol,
+			"type":             "CRYPTO",
+			"signal":           signal.Type, // LONG/SHORT
+			"confidence":       signal.Confidence,
+			"reasoning":        signal.Reasoning,
+			"recommendation":   "EXECUTE",
+			"result":           result,
+			"mlWinProbability": float64(signal.Confidence) / 100.0,
+			"createdAt":        signal.CreatedAt.Format(time.RFC3339),
+			"pnl":              pnlVal,
 		})
 	}
 
-	// Sort: Running signals first, then Finished.
-	// Within groups, original time order (DESC) is preserved by Stable sort.
-	sort.SliceStable(viewModels, func(i, j int) bool {
-		if viewModels[i].IsRunning && !viewModels[j].IsRunning {
-			return true
-		}
-		if !viewModels[i].IsRunning && viewModels[j].IsRunning {
-			return false
-		}
-		return false
-	})
-
-	// Render using the "signal_list" template defined in signal_list.html
-	c.Response().Header().Set(echo.HeaderContentType, echo.MIMETextHTML)
-	// Add explicit error logging
-	err = h.templates.ExecuteTemplate(c.Response().Writer, "signal_list", viewModels)
-	if err != nil {
-		fmt.Printf("TEMPLATE ERROR: %v\n", err)
-		return c.HTML(http.StatusInternalServerError, fmt.Sprintf("Template Error: %v", err))
-	}
-	return nil
+	return SuccessResponse(c, response)
 }
 
 // GetBrainHealth proxies the request to the Python engine

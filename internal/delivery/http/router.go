@@ -27,7 +27,7 @@ func SetupRoutes(e *echo.Echo, config *RouterConfig) {
 			if strings.HasSuffix(path, "/api/user/positions/html") {
 				return true
 			}
-			if strings.HasSuffix(path, "/api/admin/market-scan/results") {
+			if strings.HasSuffix(path, "/api/admin/signals") {
 				return true
 			}
 			if path == "/health" || path == "/api/admin/system/health" {
@@ -76,6 +76,8 @@ func SetupRoutes(e *echo.Echo, config *RouterConfig) {
 		user.GET("/me", config.UserHandler.GetMe)
 		user.POST("/mode/toggle", config.UserHandler.ToggleMode)
 		user.GET("/positions", config.UserHandler.GetPositions)
+		user.GET("/history", config.UserHandler.GetTradeHistory)
+		user.GET("/stats", config.UserHandler.GetDashboardStats)
 		user.POST("/panic-button", config.UserHandler.PanicButton)
 		user.POST("/positions/:id/close", config.UserHandler.ClosePosition)
 		user.POST("/positions/:id/approve", config.UserHandler.ApprovePosition)
@@ -84,6 +86,9 @@ func SetupRoutes(e *echo.Echo, config *RouterConfig) {
 		user.GET("/analytics/pnl", config.UserHandler.GetAnalyticsPnL)
 	}
 
+	// Settings route - accessible by authenticated users
+	api.POST("/settings", config.UserHandler.UpdateSettings, custommiddleware.AuthMiddleware)
+
 	// Admin routes (protected with Auth + Admin middleware)
 	admin := api.Group("/admin", custommiddleware.AuthMiddleware, custommiddleware.AdminMiddleware)
 	{
@@ -91,7 +96,7 @@ func SetupRoutes(e *echo.Echo, config *RouterConfig) {
 		admin.PUT("/strategies/active", config.AdminHandler.SetActiveStrategy)
 		admin.GET("/system/health", config.AdminHandler.GetSystemHealth)
 		admin.GET("/statistics", config.AdminHandler.GetStatistics)
-		admin.GET("/market-scan/results", config.AdminHandler.GetLatestScanResults)
+		admin.GET("/signals", config.AdminHandler.GetLatestScanResults) // Renamed from market-scan/results
 		admin.GET("/ml/brain-health", config.AdminHandler.GetBrainHealth)
 
 	}
