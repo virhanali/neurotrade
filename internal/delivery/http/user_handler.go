@@ -560,6 +560,18 @@ func (h *UserHandler) UpdateSettings(c echo.Context) error {
 		if req.Mode != "PAPER" && req.Mode != "REAL" {
 			return BadRequestResponse(c, "Invalid mode. Must be 'PAPER' or 'REAL'")
 		}
+
+		// If switching to REAL mode, ensure Binance API keys are configured
+		if req.Mode == "REAL" {
+			// Check if new keys are being provided in this request, or if existing keys are set
+			hasNewKeys := req.BinanceAPIKey != "" && req.BinanceAPISecret != ""
+			hasExistingKeys := user.BinanceAPIKey != "" && user.BinanceAPISecret != ""
+
+			if !hasNewKeys && !hasExistingKeys {
+				return BadRequestResponse(c, "Cannot switch to REAL mode without Binance API keys. Please configure your API keys first.")
+			}
+		}
+
 		user.Mode = req.Mode
 	}
 
@@ -576,12 +588,27 @@ func (h *UserHandler) UpdateSettings(c echo.Context) error {
 		user.IsAutoTradeEnabled = *req.AutoTradeEnabled
 	}
 
-	if req.BinanceAPIKey != "" {
+	// Handle Binance API keys with validation
+	log.Printf("[SETTINGS-DEBUG] Received: apiKeyLen=%d, apiSecretLen=%d", len(req.BinanceAPIKey), len(req.BinanceAPISecret))
+
+	if req.BinanceAPIKey != "" && req.BinanceAPISecret != "" {
+		// Test the API keys before saving
+		log.Printf("[SETTINGS] Validating Binance API keys for user %s...", user.Username)
+
+		testCtx, testCancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer testCancel()
+
+		_, testErr := h.aiService.GetRealBalance(testCtx, req.BinanceAPIKey, req.BinanceAPISecret)
+		if testErr != nil {
+			log.Printf("[SETTINGS] API key validation failed for user %s: %v", user.Username, testErr)
+			return BadRequestResponse(c, "Invalid Binance API keys. Please check your API Key, Secret, IP whitelist, and ensure 'Enable Futures' permission is enabled.")
+		}
+
+		log.Printf("[SETTINGS] API keys validated successfully for user %s", user.Username)
 		user.BinanceAPIKey = req.BinanceAPIKey
-	}
-	if req.BinanceAPISecret != "" {
 		user.BinanceAPISecret = req.BinanceAPISecret
 	}
+
 	user.UpdatedAt = time.Now()
 
 	// Save to database

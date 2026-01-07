@@ -89,17 +89,23 @@ export function SettingsPage() {
             {/* Toast */}
             {toast && (
                 <div className={cn(
-                    'fixed top-4 right-4 z-50 flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg animate-slide-up',
+                    'fixed top-4 right-4 z-50 flex items-start gap-3 px-5 py-4 rounded-xl shadow-2xl animate-slide-up max-w-md',
                     toast.type === 'success'
-                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                        : 'bg-rose-50 text-rose-700 border border-rose-200'
+                        ? 'bg-emerald-100 text-emerald-800 border-2 border-emerald-300 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-700'
+                        : 'bg-rose-100 text-rose-800 border-2 border-rose-300 dark:bg-rose-900/40 dark:text-rose-300 dark:border-rose-700'
                 )}>
                     {toast.type === 'success' ? (
-                        <CheckCircle className="w-5 h-5" />
+                        <CheckCircle className="w-6 h-6 shrink-0 mt-0.5" />
                     ) : (
-                        <AlertTriangle className="w-5 h-5" />
+                        <AlertTriangle className="w-6 h-6 shrink-0 mt-0.5" />
                     )}
-                    <span className="font-medium">{toast.message}</span>
+                    <span className="font-semibold text-sm leading-relaxed">{toast.message}</span>
+                    <button
+                        onClick={() => setToast(null)}
+                        className="ml-auto shrink-0 p-1.5 hover:bg-black/10 dark:hover:bg-white/10 rounded-lg transition-colors"
+                    >
+                        <X className="w-4 h-4" />
+                    </button>
                 </div>
             )}
 
@@ -361,15 +367,17 @@ export function SettingsPage() {
                                         </button>
                                     )}
 
-                                    {/* Show/Hide Toggle */}
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowApiKey(!showApiKey)}
-                                        className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors rounded-md hover:bg-slate-200 dark:hover:bg-slate-700"
-                                        title={showApiKey ? "Hide Key" : "Show Key"}
-                                    >
-                                        {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                                    </button>
+                                    {/* Show/Hide Toggle - only show when there's actual value */}
+                                    {apiKey && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowApiKey(!showApiKey)}
+                                            className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors rounded-md hover:bg-slate-200 dark:hover:bg-slate-700"
+                                            title={showApiKey ? "Hide Key" : "Show Key"}
+                                        >
+                                            {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                        </button>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -413,15 +421,17 @@ export function SettingsPage() {
                                         </button>
                                     )}
 
-                                    {/* Show/Hide Toggle */}
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowApiSecret(!showApiSecret)}
-                                        className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors rounded-md hover:bg-slate-200 dark:hover:bg-slate-700"
-                                        title={showApiSecret ? "Hide Secret" : "Show Secret"}
-                                    >
-                                        {showApiSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                                    </button>
+                                    {/* Show/Hide Toggle - only show when there's actual value to show/hide */}
+                                    {apiSecret && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowApiSecret(!showApiSecret)}
+                                            className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors rounded-md hover:bg-slate-200 dark:hover:bg-slate-700"
+                                            title={showApiSecret ? "Hide Secret" : "Show Secret"}
+                                        >
+                                            {showApiSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                        </button>
+                                    )}
                                 </div>
                             </div>
                             <p className="mt-1 text-xs text-slate-500">
@@ -432,7 +442,7 @@ export function SettingsPage() {
                 </div>
 
                 {/* Submit */}
-                <div className="flex justify-end">
+                <div className="flex flex-col items-end gap-3">
                     <button
                         type="submit"
                         disabled={!isFormValid || updateSettings.isPending}
@@ -447,6 +457,12 @@ export function SettingsPage() {
                             'Save Configuration'
                         )}
                     </button>
+                    <a
+                        href="/connect-guide"
+                        className="text-sm text-slate-500 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors underline underline-offset-2"
+                    >
+                        Need help? Learn how to connect your Binance API →
+                    </a>
                 </div>
             </form>
         </div>

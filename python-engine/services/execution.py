@@ -26,7 +26,7 @@ class BinanceExecutor:
                 'enableRateLimit': True
             })
         else:
-            logger.warning("[EXEC] Binance credentials not found in ENV. Real trading disabled unless keys provided.")
+            logger.warning("[EXEC] Binance credentials not found in ENV.")
 
         # Cache for market rules (precisions)
         self.markets = {}
@@ -52,7 +52,6 @@ class BinanceExecutor:
         """
         
         if api_key and api_secret:
-            logger.info(f"[EXEC-DEBUG] Using CUSTOM API Key from request")
             client = ccxt.binance({
                 'apiKey': api_key,
                 'secret': api_secret,
@@ -64,7 +63,6 @@ class BinanceExecutor:
             })
             return client, True
         
-        logger.info(f"[EXEC-DEBUG] Using DEFAULT client (from ENV)")
         return self.default_client, False
 
     async def _ensure_markets_loaded(self, client):

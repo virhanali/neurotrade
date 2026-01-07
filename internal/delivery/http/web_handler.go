@@ -260,19 +260,43 @@ func (h *WebHandler) HandleUpdateSettings(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch user"})
 	}
 
+	// === VALIDATION: Block REAL mode without API keys ===
+	if req.Mode == domain.ModeReal {
+		hasNewKeys := req.BinanceAPIKey != "" && req.BinanceAPISecret != ""
+		hasExistingKeys := user.BinanceAPIKey != "" && user.BinanceAPISecret != ""
+
+		if !hasNewKeys && !hasExistingKeys {
+			return c.JSON(http.StatusBadRequest, map[string]string{
+				"error": "Please enter your Binance API Key and Secret to enable Real Trading.",
+			})
+		}
+	}
+
+	// === VALIDATION: Test API keys before saving ===
+	if req.BinanceAPIKey != "" && req.BinanceAPISecret != "" {
+		log.Printf("[SETTINGS] Validating Binance API keys for user %s...", user.Username)
+
+		testCtx, testCancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer testCancel()
+
+		_, testErr := h.aiService.GetRealBalance(testCtx, req.BinanceAPIKey, req.BinanceAPISecret)
+		if testErr != nil {
+			log.Printf("[SETTINGS] API key validation failed for user %s: %v", user.Username, testErr)
+			return c.JSON(http.StatusBadRequest, map[string]string{
+				"error": "Invalid API Key. Please verify your Key & Secret are correct, and your server IP is whitelisted on Binance.",
+			})
+		}
+
+		log.Printf("[SETTINGS] API keys validated successfully for user %s", user.Username)
+		user.BinanceAPIKey = req.BinanceAPIKey
+		user.BinanceAPISecret = req.BinanceAPISecret
+	}
+
 	// Update Fields
 	user.Mode = req.Mode
 	user.FixedOrderSize = req.FixedOrderSize
 	user.Leverage = req.Leverage
 	user.IsAutoTradeEnabled = req.AutoTradeEnabled
-
-	// Update API Keys if provided
-	if req.BinanceAPIKey != "" {
-		user.BinanceAPIKey = req.BinanceAPIKey
-	}
-	if req.BinanceAPISecret != "" {
-		user.BinanceAPISecret = req.BinanceAPISecret
-	}
 
 	// Safety: Add validation for REAL mode
 	if user.Mode == domain.ModeReal {
