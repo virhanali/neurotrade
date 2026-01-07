@@ -1,4 +1,5 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import {
     LayoutDashboard,
     TrendingUp,
@@ -27,6 +28,7 @@ const navItems = [
 
 export function DashboardLayout() {
     const location = useLocation();
+    const queryClient = useQueryClient();
     const { data: user } = useUser();
     const { data: positions } = usePositions();
     const { theme, toggleTheme } = useTheme();
@@ -42,6 +44,24 @@ export function DashboardLayout() {
     const allNavItems = isAdmin
         ? [...navItems, { path: '/admin', label: 'Admin', icon: Shield }]
         : navItems;
+
+    const handleToggleMode = async () => {
+        const newMode = user?.mode === 'REAL' ? 'PAPER' : 'REAL';
+        if (!confirm(`Switch to ${newMode} trading mode?`)) return;
+
+        try {
+            await api.updateSettings({ mode: newMode });
+
+            await queryClient.invalidateQueries({ queryKey: ['user'] });
+            await queryClient.invalidateQueries({ queryKey: ['positions'] });
+            await queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
+
+            window.location.reload();
+        } catch (error) {
+            console.error('Failed to toggle mode:', error);
+            alert('Failed to switch trading mode');
+        }
+    };
 
     return (
         <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
@@ -64,18 +84,24 @@ export function DashboardLayout() {
                         <Wallet className="w-4 h-4" />
                         <span>Total Equity</span>
                     </div>
-                    <div className="flex items-baseline gap-2">
+                    <div className="flex items-baseline justify-between gap-2">
                         <span className="text-2xl font-bold text-slate-900 dark:text-white">
                             {formatCurrency(balance)}
                         </span>
-                        <span className={cn(
-                            'text-xs font-medium px-1.5 py-0.5 rounded',
-                            user?.mode === 'REAL'
-                                ? 'bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400'
-                                : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
-                        )}>
+
+                        {/* Mode Switcher Button */}
+                        <button
+                            onClick={handleToggleMode}
+                            className={cn(
+                                'text-[10px] font-bold px-2 py-1 rounded-lg cursor-pointer transition-all border shadow-sm',
+                                user?.mode === 'REAL'
+                                    ? 'bg-rose-500 hover:bg-rose-600 text-white border-rose-600'
+                                    : 'bg-emerald-500 hover:bg-emerald-600 text-white border-emerald-600'
+                            )}
+                            title="Click to switch trading mode"
+                        >
                             {user?.mode || 'PAPER'}
-                        </span>
+                        </button>
                     </div>
                 </div>
 

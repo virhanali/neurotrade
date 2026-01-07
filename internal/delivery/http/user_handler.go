@@ -91,12 +91,15 @@ func (h *UserHandler) GetMe(c echo.Context) error {
 	}
 
 	return SuccessResponse(c, dto.UserOutput{
-		ID:           user.ID.String(),
-		Username:     user.Username,
-		Role:         user.Role,
-		Mode:         user.Mode,
-		PaperBalance: user.PaperBalance,
-		RealBalance:  user.RealBalanceCache,
+		ID:               user.ID.String(),
+		Username:         user.Username,
+		Role:             user.Role,
+		Mode:             user.Mode,
+		PaperBalance:     user.PaperBalance,
+		RealBalance:      user.RealBalanceCache,
+		FixedOrderSize:   user.FixedOrderSize,
+		Leverage:         user.Leverage,
+		AutoTradeEnabled: user.IsAutoTradeEnabled,
 	})
 }
 

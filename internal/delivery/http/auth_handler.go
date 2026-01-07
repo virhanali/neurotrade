@@ -75,11 +75,14 @@ func (h *AuthHandler) Login(c echo.Context) error {
 	return SuccessResponse(c, dto.LoginResponse{
 		Token: token,
 		User: &dto.UserOutput{
-			ID:           user.ID.String(),
-			Username:     user.Username,
-			Role:         user.Role,
-			Mode:         user.Mode,
-			PaperBalance: user.PaperBalance,
+			ID:               user.ID.String(),
+			Username:         user.Username,
+			Role:             user.Role,
+			Mode:             user.Mode,
+			PaperBalance:     user.PaperBalance,
+			FixedOrderSize:   user.FixedOrderSize,
+			Leverage:         user.Leverage,
+			AutoTradeEnabled: user.IsAutoTradeEnabled,
 		},
 	})
 }
