@@ -32,7 +32,7 @@ RUN apk --no-cache add ca-certificates tzdata curl wget && \
 # Copy binary and assets from builder
 COPY --from=builder /app/main .
 COPY --from=builder /app/configs ./configs
-COPY --from=builder /app/web ./web
+
 
 # Create logs directory
 RUN mkdir -p /app/logs && \
