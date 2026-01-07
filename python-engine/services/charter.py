@@ -9,6 +9,11 @@ from io import BytesIO
 from typing import Optional
 import matplotlib.pyplot as plt
 import gc
+import warnings
+
+# Suppress annoying font glyph warnings
+warnings.filterwarnings("ignore", module="matplotlib.backends.backend_agg")
+warnings.filterwarnings("ignore", message=".*Glyph.*missing from current font")
 
 
 class ChartGenerator:
