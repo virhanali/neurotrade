@@ -50,10 +50,6 @@ class BinanceExecutor:
         Get a CCXT client: either a NEW custom one or the DEFAULT one.
         Returns (client, is_temp)
         """
-        # DEBUG: Log whether custom keys are received
-        key_preview = api_key[:8] + '...' if api_key and len(api_key) > 8 else api_key
-        secret_preview = api_secret[:4] + '***' if api_secret and len(api_secret) > 4 else api_secret
-        logger.info(f"[EXEC-DEBUG] _get_client called. api_key={key_preview}, api_secret={secret_preview}")
         
         if api_key and api_secret:
             logger.info(f"[EXEC-DEBUG] Using CUSTOM API Key from request")
