@@ -84,9 +84,10 @@ export interface UpdateSettingsRequest {
 }
 
 // API Response Types
+// API Response Types
 export interface ApiResponse<T> {
-    success: boolean;
-    data?: T;
+    status: 'success' | 'error';
+    data: T;
     error?: string;
     message?: string;
 }

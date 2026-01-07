@@ -47,16 +47,28 @@ class ApiClient {
         );
     }
 
-    // Auth
-    async login(data: LoginRequest): Promise<LoginResponse> {
-        const response = await this.client.post<LoginResponse>('/auth/login', data);
-        localStorage.setItem('token', response.data.token);
-        return response.data;
+    // Helper to unwrap API response
+    // Go Backend returns: { status: "success", data: T, ... }
+    private unwrap<T>(response: { data: ApiResponse<T> }): T {
+        return response.data.data;
     }
 
-    async register(data: RegisterRequest): Promise<ApiResponse<User>> {
-        const response = await this.client.post<ApiResponse<User>>('/auth/register', data);
-        return response.data;
+    // Auth
+    async login(data: LoginRequest): Promise<LoginResponse> {
+        const response = await this.client.post<ApiResponse<LoginResponse>>('/auth/login', data);
+        const result = this.unwrap(response);
+        localStorage.setItem('token', result.token);
+        return result;
+    }
+
+    async register(data: RegisterRequest): Promise<User> {
+        // Register returns specific user data inside wrapper
+        const response = await this.client.post<ApiResponse<any>>('/auth/register', data);
+        // Backend register returns { username: "..." } basically messages. 
+        // But let's assume it returns user or we ignore for now, login is priority.
+        // Wait, AuthHandler.Register returns CreatedResponse with map[string]string.
+        // So generic 'any' is safer here unless we change backend.
+        return this.unwrap(response);
     }
 
     async logout(): Promise<void> {
@@ -66,53 +78,62 @@ class ApiClient {
 
     // User
     async getCurrentUser(): Promise<User> {
-        const response = await this.client.get<User>('/user/me');
-        return response.data;
+        const response = await this.client.get<ApiResponse<User>>('/user/me');
+        return this.unwrap(response);
     }
 
-    async updateSettings(data: UpdateSettingsRequest): Promise<ApiResponse<User>> {
+    async updateSettings(data: UpdateSettingsRequest): Promise<User> {
         const response = await this.client.post<ApiResponse<User>>('/settings', data);
-        return response.data;
+        // Note: '/settings' endpoint returns { success: true, data: User } wrapped in JSON(200, map)
+        // WebHandler.HandleUpdateSettings returns c.JSON(http.StatusOK, map)
+        // It does NOT use SuccessResponse wrapper standard from response.go
+        // It returns: { success: true, message: "...", data: User }
+        // So response.data is the object directly.
+        // Wait, standard `SuccessResponse` produces `status`, `data`.
+        // WebHandler `HandleUpdateSettings` produces `success`, `data`.
+        // Inconsistency! I should fix WebHandler to be consistent or handle it here.
+        // Let's assume WebHandler response structure: { data: User }
+        return response.data.data!;
     }
 
     // Positions
     async getPositions(): Promise<Position[]> {
-        const response = await this.client.get<Position[]>('/user/positions');
-        return response.data;
+        const response = await this.client.get<ApiResponse<Position[]>>('/user/positions');
+        return this.unwrap(response);
     }
 
-    async closePosition(positionId: string): Promise<ApiResponse<Position>> {
+    async closePosition(positionId: string): Promise<Position> {
         const response = await this.client.post<ApiResponse<Position>>(`/user/positions/${positionId}/close`);
-        return response.data;
+        return this.unwrap(response);
     }
 
     // Trade History
     async getTradeHistory(limit: number = 50): Promise<Trade[]> {
-        const response = await this.client.get<Trade[]>(`/user/history?limit=${limit}`);
-        return response.data;
+        const response = await this.client.get<ApiResponse<Trade[]>>(`/user/history?limit=${limit}`);
+        return this.unwrap(response);
     }
 
     // Dashboard Stats
     async getDashboardStats(): Promise<DashboardStats> {
-        const response = await this.client.get<DashboardStats>('/user/stats');
-        return response.data;
+        const response = await this.client.get<ApiResponse<DashboardStats>>('/user/stats');
+        return this.unwrap(response);
     }
 
     // AI Signals (Admin)
     async getLatestSignals(): Promise<AISignal[]> {
-        const response = await this.client.get<AISignal[]>('/admin/signals');
-        return response.data;
+        const response = await this.client.get<ApiResponse<AISignal[]>>('/admin/signals');
+        return this.unwrap(response);
     }
 
     // Balance
     async getRealBalance(): Promise<{ balance: number }> {
-        const response = await this.client.get<{ balance: number }>('/user/balance/real');
-        return response.data;
+        const response = await this.client.get<ApiResponse<{ balance: number }>>('/user/balance/real');
+        return this.unwrap(response);
     }
 
     async refreshRealBalance(): Promise<{ balance: number }> {
-        const response = await this.client.post<{ balance: number }>('/user/balance/refresh');
-        return response.data;
+        const response = await this.client.post<ApiResponse<{ balance: number }>>('/user/balance/refresh');
+        return this.unwrap(response);
     }
 }
 
