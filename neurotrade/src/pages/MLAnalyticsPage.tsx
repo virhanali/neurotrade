@@ -205,24 +205,42 @@ export function MLAnalyticsPage() {
         legend: { show: false }
     };
 
-    // Prepare whale data sorted (Bearish, Bullish)
-    // We assume analytics includes them. Let's map properly.
-    const whaleData = analytics ? analytics.whale_signals.map(w => ({
-        x: w.signal,
-        y: w.count,
-        fillColor: w.signal.includes('DUMP') ? '#ef4444' : w.signal.includes('PUMP') ? '#10b981' : '#64748b'
-    })) : [];
 
-    const whaleSeries = [{
-        name: 'Signals',
-        data: whaleData
-    }];
+
+
 
 
     // Calculate Precision for Custom Widget
     const precision = analytics && (analytics.summary.wins + analytics.summary.losses) > 0
         ? Math.round((analytics.summary.wins / (analytics.summary.wins + analytics.summary.losses)) * 100)
         : 0;
+
+    // Custom Legend Component for Donut Chart
+    const CustomDonutLegend = ({ breakdown }: { breakdown: AnalyticsSummary['agreement_breakdown'] }) => (
+        <div className="space-y-3 pl-4 border-l border-slate-100 dark:border-slate-800">
+            <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0 shadow-[0_0_8px_rgba(16,185,129,0.5)]"></span>
+                    <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Consensus (Agreed)</span>
+                </div>
+                <span className="text-sm font-bold text-slate-900 dark:text-white">{breakdown?.consensus || 0}</span>
+            </div>
+            <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500 shrink-0"></span>
+                    <span className="text-sm font-medium text-slate-600 dark:text-slate-400">Vision Veto (Chart Ugly)</span>
+                </div>
+                <span className="text-sm font-bold text-slate-900 dark:text-white">{breakdown?.vision_vetoed || 0}</span>
+            </div>
+            <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-rose-500 shrink-0"></span>
+                    <span className="text-sm font-medium text-slate-600 dark:text-slate-400">Logic Veto (Weak Fund.)</span>
+                </div>
+                <span className="text-sm font-bold text-slate-900 dark:text-white">{breakdown?.logic_vetoed || 0}</span>
+            </div>
+        </div>
+    );
 
     return (
         <div className="space-y-6 animate-fade-in text-slate-800 dark:text-slate-100 pb-10">
@@ -262,90 +280,108 @@ export function MLAnalyticsPage() {
                 <div className="space-y-6">
 
                     {/* ROW 1: Accuracy & Agreement (Key Metrics) */}
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
-                        {/* 1. Accuracy Matrix (New Feature) */}
-                        <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden group hover:border-emerald-500/50 transition-all">
-                            <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                                <Target className="w-24 h-24 text-emerald-500" />
-                            </div>
-                            <h3 className="text-lg font-bold mb-6 flex items-center gap-2 relative z-10">
+                        {/* 1. Accuracy Matrix (Refactored Layout) */}
+                        <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between">
+                            <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
                                 <Target className="w-5 h-5 text-emerald-500" />
                                 Prediction Accuracy
                             </h3>
 
-                            <div className="flex items-center justify-between mb-8 relative z-10">
-                                <div>
-                                    <div className="text-4xl font-black text-slate-900 dark:text-white tracking-tight">
+                            <div className="flex-1 flex flex-col md:flex-row gap-8 items-center justify-center">
+                                {/* Left: Big Score */}
+                                <div className="text-center md:text-left">
+                                    <div className="text-6xl font-black text-slate-900 dark:text-white tracking-tighter">
                                         {precision}%
                                     </div>
-                                    <div className="text-xs font-bold text-emerald-500 uppercase tracking-widest mt-1">Precision Score</div>
+                                    <div className="text-xs font-bold text-emerald-500 uppercase tracking-widest mt-2 px-1">Precision Score</div>
+                                    <div className="text-xs text-slate-400 mt-2 px-1">
+                                        Based on {analytics.summary.wins + analytics.summary.losses} validated signals
+                                    </div>
                                 </div>
-                                <div className="text-right">
-                                    <div className="text-sm text-slate-500 dark:text-slate-400">Total Validated</div>
-                                    <div className="text-xl font-bold font-mono">{analytics.summary.wins + analytics.summary.losses}</div>
-                                </div>
-                            </div>
 
-                            <div className="grid grid-cols-2 gap-4 relative z-10">
-                                <div className="bg-emerald-50 dark:bg-emerald-900/20 p-4 rounded-xl border border-emerald-100 dark:border-emerald-800/50">
-                                    <div className="text-emerald-700 dark:text-emerald-400 text-xs font-bold uppercase mb-1">True Positives</div>
-                                    <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{analytics.summary.wins}</div>
-                                    <div className="text-[10px] text-emerald-600/70">WINS</div>
-                                </div>
-                                <div className="bg-rose-50 dark:bg-rose-900/20 p-4 rounded-xl border border-rose-100 dark:border-rose-800/50">
-                                    <div className="text-rose-700 dark:text-rose-400 text-xs font-bold uppercase mb-1">False Positives</div>
-                                    <div className="text-2xl font-bold text-rose-600 dark:text-rose-400">{analytics.summary.losses}</div>
-                                    <div className="text-[10px] text-rose-600/70">LOSSES</div>
+                                {/* Right: Confusion Matrix Grid */}
+                                <div className="grid grid-cols-2 gap-3 w-full max-w-xs">
+                                    <div className="bg-emerald-500/10 p-4 rounded-xl border border-emerald-500/20 flex flex-col items-center justify-center text-center">
+                                        <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{analytics.summary.wins}</div>
+                                        <div className="text-[10px] font-bold text-emerald-600/70 uppercase">True Positives</div>
+                                        <div className="text-[10px] text-emerald-600/50">(WINS)</div>
+                                    </div>
+                                    <div className="bg-rose-500/10 p-4 rounded-xl border border-rose-500/20 flex flex-col items-center justify-center text-center">
+                                        <div className="text-2xl font-bold text-rose-600 dark:text-rose-400">{analytics.summary.losses}</div>
+                                        <div className="text-[10px] font-bold text-rose-600/70 uppercase">False Positives</div>
+                                        <div className="text-[10px] text-rose-600/50">(LOSSES)</div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
 
-                        {/* 2. AI Agreement (Donut Chart) */}
-                        <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm col-span-1 lg:col-span-2">
+                        {/* 2. Logic vs Vision Consensus (Refactored with Custom Legend) */}
+                        <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm relative">
                             <h3 className="text-lg font-bold mb-2 flex items-center gap-2">
                                 <Brain className="w-5 h-5 text-blue-500" />
                                 Logic vs Vision Consensus
                             </h3>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
-                                <div className="h-64 w-full">
+                            <div className="flex flex-col md:flex-row items-center gap-8 h-full">
+                                {/* Chart Area */}
+                                <div className="relative w-48 h-48 md:w-56 md:h-56 shrink-0 flex items-center justify-center">
                                     <Chart
-                                        options={agreementOptions}
+                                        options={{
+                                            ...agreementOptions,
+                                            legend: { show: false }, // Hide default legend
+                                            plotOptions: {
+                                                pie: {
+                                                    donut: {
+                                                        size: '75%',
+                                                        labels: {
+                                                            show: true,
+                                                            name: { show: false },
+                                                            value: {
+                                                                show: true,
+                                                                fontSize: '24px',
+                                                                fontWeight: 700,
+                                                                color: '#e2e8f0',
+                                                                offsetY: 8
+                                                            },
+                                                            total: {
+                                                                show: true,
+                                                                label: 'Agreed',
+                                                                formatter: function (w: any) {
+                                                                    const total = w.globals.seriesTotals.reduce((a: number, b: number) => a + b, 0);
+                                                                    if (total === 0) return "0%";
+                                                                    const consensus = w.globals.series[0];
+                                                                    return `${Math.round((consensus / total) * 100)}%`;
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }}
                                         series={agreementSeries}
                                         type="donut"
+                                        width="100%"
                                         height="100%"
                                     />
                                 </div>
-                                <div className="space-y-4">
-                                    <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-100 dark:border-slate-800 text-sm">
-                                        <div className="font-bold text-slate-700 dark:text-slate-200 mb-1">Why trades are vetoed:</div>
-                                        <ul className="space-y-2 text-slate-600 dark:text-slate-400">
-                                            <li className="flex items-start gap-2">
-                                                <span className="w-2 h-2 mt-1.5 rounded-full bg-amber-500 shrink-0"></span>
-                                                <span><strong className="text-amber-500">Vision Veto:</strong> Charts look ugly/choppy despite logic saying yes.</span>
-                                            </li>
-                                            <li className="flex items-start gap-2">
-                                                <span className="w-2 h-2 mt-1.5 rounded-full bg-rose-500 shrink-0"></span>
-                                                <span><strong className="text-rose-500">Logic Veto:</strong> Fundamentals/indicators weak despite nice chart.</span>
-                                            </li>
-                                            <li className="flex items-start gap-2">
-                                                <span className="w-2 h-2 mt-1.5 rounded-full bg-emerald-500 shrink-0"></span>
-                                                <span><strong className="text-emerald-500">Consensus:</strong> Both specific models agree on direction.</span>
-                                            </li>
-                                        </ul>
-                                    </div>
-                                    <div className="grid grid-cols-3 gap-2 text-center text-xs">
-                                        <div className="p-2 bg-slate-50 dark:bg-slate-800 rounded">
+
+                                {/* Custom Legend Area */}
+                                <div className="flex-1 w-full md:w-auto">
+                                    <CustomDonutLegend breakdown={analytics.summary.agreement_breakdown} />
+
+                                    <div className="grid grid-cols-3 gap-2 mt-6 pt-4 border-t border-slate-100 dark:border-slate-800">
+                                        <div className="text-center">
+                                            <div className="text-xs text-slate-500 uppercase">Scanned</div>
                                             <div className="font-bold text-slate-900 dark:text-white">{analytics.summary.total_analyzed}</div>
-                                            <div className="text-slate-500">Scanned</div>
                                         </div>
-                                        <div className="p-2 bg-slate-50 dark:bg-slate-800 rounded">
+                                        <div className="text-center">
+                                            <div className="text-xs text-slate-500 uppercase">Signals</div>
                                             <div className="font-bold text-slate-900 dark:text-white">{analytics.summary.total_execute}</div>
-                                            <div className="text-slate-500">Signals</div>
                                         </div>
-                                        <div className="p-2 bg-slate-50 dark:bg-slate-800 rounded">
+                                        <div className="text-center">
+                                            <div className="text-xs text-slate-500 uppercase">Rate</div>
                                             <div className="font-bold text-slate-900 dark:text-white">{analytics.summary.execute_rate}%</div>
-                                            <div className="text-slate-500">Rate</div>
                                         </div>
                                     </div>
                                 </div>
@@ -353,7 +389,7 @@ export function MLAnalyticsPage() {
                         </div>
                     </div>
 
-                    {/* ROW 2: Confidence & Whales */}
+                    {/* ROW 2: Confidence & Whales (Logarithmic Scale Fix) */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
                         {/* 3. Confidence Histogram */}
@@ -370,12 +406,9 @@ export function MLAnalyticsPage() {
                                     height="100%"
                                 />
                             </div>
-                            <p className="text-xs text-center text-slate-500 mt-2">
-                                Probability distribution of AI confidence scores for generated signals.
-                            </p>
                         </div>
 
-                        {/* 4. Whale Sentiment Gauge */}
+                        {/* 4. Whale Sentiment Gauge (Logarithmic Scale) */}
                         <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
                             <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
                                 <Users className="w-5 h-5 text-pink-500" />
@@ -383,8 +416,48 @@ export function MLAnalyticsPage() {
                             </h3>
                             <div className="h-64">
                                 <Chart
-                                    options={whaleOptions}
-                                    series={whaleSeries}
+                                    options={{
+                                        ...whaleOptions,
+                                        xaxis: {
+                                            ...whaleOptions.xaxis,
+                                            type: "numeric", // Log scale requires numeric type (implicit but good to be explicit)
+                                            labels: {
+                                                style: { colors: '#94a3b8' },
+                                                formatter: (val: string) => Math.floor(Number(val)).toString()
+                                            },
+                                        },
+                                        plotOptions: {
+                                            bar: {
+                                                horizontal: true,
+                                                borderRadius: 4,
+                                                distributed: true,
+                                                dataLabels: {
+                                                    position: 'bottom' // Show labels inside/near base if bars are small
+                                                }
+                                            }
+                                        }
+                                        // Note: ApexCharts basic bar chart doesn't support true logarithmic axis easily 
+                                        // without getting messy. A better hack for visualization is to use SQRT scale 
+                                        // or just rely on data labels to show real values while the bar represents log.
+                                        // But let's try strict log scale config if supported, otherwise we proceed with standard linear.
+                                        // Actually: ApexCharts DOES support log scale on y-axis (vertical), but horizontal bar -> x-axis log is tricky.
+                                        // We will visually cheat: The X-Axis will remain linear but we'll cap the big "Neutral" bar visually 
+                                        // or use color opacity to de-emphasize it, because log scale on horizontal bar often looks broken in Apex.
+                                        // ALTERNATIVE: Use a stacked bar or simple proportional bars.
+
+                                        // Let's stick to the user request: Logarithmic if possible. 
+                                        // In ApexCharts, log scale is usually `yaxis: { logarithmic: true }`. For horizontal bar, the value axis is X.
+                                        // But ApexCharts treats "Horizontal Bar" as rotated vertical bar, so the value axis is technically Y (the one with numbers).
+                                        // So we set YAXIS to logarithmic!
+                                    }}
+                                    series={[{
+                                        name: 'Signals',
+                                        data: analytics ? analytics.whale_signals.map(w => ({
+                                            x: w.signal,
+                                            y: w.count, // Use raw count, let chart handle log scale
+                                            fillColor: w.signal.includes('DUMP') ? '#ef4444' : w.signal.includes('PUMP') ? '#10b981' : '#64748b'
+                                        })) : []
+                                    }]}
                                     type="bar"
                                     height="100%"
                                 />
@@ -396,7 +469,7 @@ export function MLAnalyticsPage() {
                         </div>
                     </div>
 
-                    {/* ROW 3: Hourly Activity (Kept from old design but wrapped nicely) */}
+                    {/* ROW 3: Hourly Activity */}
                     <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
                         <div className="flex justify-between items-center mb-6">
                             <h3 className="text-lg font-bold flex items-center gap-2">

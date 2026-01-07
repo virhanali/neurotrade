@@ -333,6 +333,13 @@ func (pb *PythonBridge) ExecuteClose(ctx context.Context, symbol, side string, q
 func (pb *PythonBridge) GetRealBalance(ctx context.Context, apiKey, apiSecret string) (float64, error) {
 	url := fmt.Sprintf("%s/execute/balance", pb.baseURL)
 
+	// DEBUG: Log key preview (masked)
+	keyPreview := ""
+	if len(apiKey) > 8 {
+		keyPreview = apiKey[:8] + "..."
+	}
+	log.Printf("[PythonBridge-DEBUG] GetRealBalance called. apiKey='%s', apiSecretLen=%d", keyPreview, len(apiSecret))
+
 	reqBody := map[string]interface{}{
 		"api_key":    apiKey,
 		"api_secret": apiSecret,
