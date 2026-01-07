@@ -117,16 +117,26 @@ func (r *UserRepositoryImpl) GetByUsername(ctx context.Context, username string)
 
 // UpdateBalance updates user's balance
 func (r *UserRepositoryImpl) UpdateBalance(ctx context.Context, userID uuid.UUID, balance float64, mode string) error {
-	// For Phase 3, we only support paper trading
-	query := `
-		UPDATE users
-		SET paper_balance = $1, updated_at = NOW()
-		WHERE id = $2
-	`
+	var query string
+
+	if mode == domain.ModeReal {
+		query = `
+			UPDATE users
+			SET real_balance_cache = $1, updated_at = NOW()
+			WHERE id = $2
+		`
+	} else {
+		// Default to PAPER
+		query = `
+			UPDATE users
+			SET paper_balance = $1, updated_at = NOW()
+			WHERE id = $2
+		`
+	}
 
 	_, err := r.db.Exec(ctx, query, balance, userID)
 	if err != nil {
-		return fmt.Errorf("failed to update user balance: %w", err)
+		return fmt.Errorf("failed to update user balance (mode=%s): %w", mode, err)
 	}
 
 	return nil

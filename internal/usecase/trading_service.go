@@ -163,10 +163,10 @@ func (ts *TradingService) ProcessMarketScan(ctx context.Context, balance float64
 
 		// Distribute signal to ALL users
 		for _, user := range users {
-			// Only create position if user is in PAPER mode (and later check for Enabled AutoTrade flag)
-			if user.Mode != domain.ModePaper {
-				continue
-			}
+			// Check if AutoTrade is enabled for this user (REAL or PAPER)
+			// Users with AutoTrade disabled will only receive the Signal Notification (if configured)
+			// but we can still create a PENDING_APPROVAL position if desired.
+			// For now, allow all modes to proceed to createPositionForUser.
 
 			// Auto-create paper position for this user
 			// We pass the specific user object now
@@ -362,7 +362,8 @@ func (ts *TradingService) createPositionForUser(ctx context.Context, user *domai
 	positionSize := (entrySizeUSDT * leverage) / signal.EntryPrice
 
 	// === REAL TRADING EXECUTION ===
-	if user.Mode == "REAL" {
+	// Only execute if User is in REAL mode AND AutoTrade is Enabled
+	if user.Mode == "REAL" && user.IsAutoTradeEnabled {
 		log.Printf("[REAL] Executing Entry for %s: %s %s Notional: %.2f USDT (Margin: %.2f, Leverage: %.0fx)",
 			user.Username, signal.Symbol, side, totalNotionalValue, entrySizeUSDT, leverage)
 
@@ -510,9 +511,20 @@ func (ts *TradingService) ClosePosition(ctx context.Context, positionID uuid.UUI
 	// Update user balance (user struct already fetched above)
 	// Re-fetch strictly not needed unless balance changed mid-process, but safe to use `user` from earlier
 
-	newBalance := user.PaperBalance + pnl
-	if err := ts.userRepo.UpdateBalance(ctx, position.UserID, newBalance, domain.ModePaper); err != nil {
-		return fmt.Errorf("failed to update balance: %w", err)
+	// Update Balance based on Mode
+	if user.Mode == domain.ModeReal {
+		if user.RealBalanceCache != nil {
+			newBalance := *user.RealBalanceCache + pnl
+			if err := ts.userRepo.UpdateBalance(ctx, position.UserID, newBalance, domain.ModeReal); err != nil {
+				// Don't error out entire close operation just for cache update failure
+				log.Printf("WARN: Failed to update local REAL balance cache: %v", err)
+			}
+		}
+	} else {
+		newBalance := user.PaperBalance + pnl
+		if err := ts.userRepo.UpdateBalance(ctx, position.UserID, newBalance, domain.ModePaper); err != nil {
+			return fmt.Errorf("failed to update balance: %w", err)
+		}
 	}
 
 	// Determine result

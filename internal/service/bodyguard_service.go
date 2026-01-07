@@ -190,8 +190,17 @@ func (s *BodyguardService) closePosition(ctx context.Context, pos *domain.Positi
 		return err
 	}
 
-	// 4. Update Balance (ONLY FOR PAPER MODE)
-	if user.Mode == domain.ModePaper {
+	// 4. Update Balance based on Mode
+	if user.Mode == domain.ModeReal {
+		if user.RealBalanceCache != nil {
+			newBalance := *user.RealBalanceCache + pnl
+			// Update local cache immediately
+			if err := s.userRepo.UpdateBalance(ctx, user.ID, newBalance, domain.ModeReal); err != nil {
+				log.Printf("[WARN] Failed to update local REAL balance: %v", err)
+			}
+		}
+	} else {
+		// Paper Mode
 		newBalance := user.PaperBalance + pnl
 		if err := s.userRepo.UpdateBalance(ctx, user.ID, newBalance, domain.ModePaper); err != nil {
 			log.Printf("[WARN] Failed to update user balance: %v", err)

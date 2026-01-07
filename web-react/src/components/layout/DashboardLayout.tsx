@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Outlet, NavLink, useLocation } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -11,7 +12,9 @@ import {
     Sun,
     Moon,
     Activity,
-    Shield
+    Shield,
+    Menu,
+    X
 } from 'lucide-react';
 import { useUser } from '@/hooks/useUser';
 import { useTheme } from '@/hooks/useTheme';
@@ -32,6 +35,7 @@ export function DashboardLayout() {
     const { data: user, isLoading: isUserLoading } = useUser();
     const { data: positions } = usePositions();
     const { theme, toggleTheme } = useTheme();
+    const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
     const balance = user?.mode === 'REAL'
         ? user.realBalance ?? 0
@@ -67,17 +71,37 @@ export function DashboardLayout() {
 
     return (
         <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
+            {/* Mobile Overlay */}
+            {isMobileMenuOpen && (
+                <div
+                    className="fixed inset-0 bg-black/50 z-30 md:hidden backdrop-blur-sm"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                />
+            )}
+
             {/* Sidebar */}
-            <aside className="fixed left-0 top-0 h-full w-64 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 z-40">
-                {/* Logo */}
-                <div className="flex items-center gap-3 px-6 py-5 border-b border-slate-200 dark:border-slate-800">
-                    <div className="p-2 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl">
-                        <Brain className="w-6 h-6 text-white" />
+            <aside className={cn(
+                "fixed left-0 top-0 h-full w-64 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 z-40 transition-transform duration-300 ease-in-out shadow-2xl md:shadow-none",
+                isMobileMenuOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
+            )}>
+                {/* Logo & Close Button */}
+                <div className="flex items-center justify-between px-6 py-5 border-b border-slate-200 dark:border-slate-800">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl">
+                            <Brain className="w-6 h-6 text-white" />
+                        </div>
+                        <div>
+                            <h1 className="text-lg font-bold text-slate-900 dark:text-white">NeuroTrade</h1>
+                            <p className="text-xs text-slate-500">AI Trading Platform</p>
+                        </div>
                     </div>
-                    <div>
-                        <h1 className="text-lg font-bold text-slate-900 dark:text-white">NeuroTrade</h1>
-                        <p className="text-xs text-slate-500">AI Trading Platform</p>
-                    </div>
+                    {/* Close button for mobile */}
+                    <button
+                        onClick={() => setIsMobileMenuOpen(false)}
+                        className="md:hidden p-1 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+                    >
+                        <X className="w-6 h-6" />
+                    </button>
                 </div>
 
                 {/* Balance Card */}
@@ -121,6 +145,7 @@ export function DashboardLayout() {
                         <NavLink
                             key={path}
                             to={path}
+                            onClick={() => setIsMobileMenuOpen(false)} // Close menu on click
                             className={({ isActive }) => cn(
                                 'flex items-center gap-3 px-4 py-3 rounded-xl mb-1 transition-all duration-200',
                                 isActive
@@ -152,22 +177,35 @@ export function DashboardLayout() {
             </aside>
 
             {/* Main Content */}
-            <main className="ml-64 min-h-screen">
+            <main className="md:ml-64 min-h-screen transition-all duration-300">
                 {/* Header */}
                 <header className="sticky top-0 z-30 bg-white/80 dark:bg-slate-900/80 backdrop-blur-lg border-b border-slate-200 dark:border-slate-800">
-                    <div className="px-8 py-4 flex items-center justify-between">
-                        <h2 className="text-xl font-bold text-slate-900 dark:text-white capitalize">
-                            {location.pathname.replace('/', '') || 'Dashboard'}
-                        </h2>
+                    <div className="px-4 md:px-8 py-4 flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                            {/* Hamburger Menu Trigger */}
+                            <button
+                                onClick={() => setIsMobileMenuOpen(true)}
+                                className="md:hidden p-2 -ml-2 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg"
+                            >
+                                <Menu className="w-6 h-6" />
+                            </button>
+
+                            <h2 className="text-xl font-bold text-slate-900 dark:text-white capitalize">
+                                {location.pathname.replace('/', '') || 'Dashboard'}
+                            </h2>
+                        </div>
 
                         {/* Right side actions */}
-                        <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-2 md:gap-4">
                             {/* Active Positions Badge */}
                             {openPositionsCount > 0 && (
                                 <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 dark:bg-emerald-900/20 rounded-full">
                                     <Activity className="w-4 h-4 text-emerald-500 animate-pulse" />
-                                    <span className="text-sm font-medium text-emerald-600 dark:text-emerald-400">
+                                    <span className="text-sm font-medium text-emerald-600 dark:text-emerald-400 hidden md:inline">
                                         {openPositionsCount} Active
+                                    </span>
+                                    <span className="text-sm font-medium text-emerald-600 dark:text-emerald-400 md:hidden">
+                                        {openPositionsCount}
                                     </span>
                                 </div>
                             )}
@@ -189,7 +227,7 @@ export function DashboardLayout() {
                 </header>
 
                 {/* Page Content */}
-                <div className="p-8">
+                <div className="p-4 md:p-8">
                     <Outlet />
                 </div>
             </main>

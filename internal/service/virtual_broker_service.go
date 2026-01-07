@@ -142,8 +142,17 @@ func (s *VirtualBrokerService) CheckPositions(ctx context.Context) error {
 			continue
 		}
 
-		// Update user balance (ONLY PAPER MODE)
-		if user.Mode == domain.ModePaper {
+		// Update user balance based on Mode
+		if user.Mode == domain.ModeReal {
+			if user.RealBalanceCache != nil {
+				newBalance := *user.RealBalanceCache + netPnL
+				// Update local cache immediately for UI responsiveness
+				if err := s.userRepo.UpdateBalance(ctx, user.ID, newBalance, domain.ModeReal); err != nil {
+					log.Printf("ERROR: Failed to update local REAL balance: %v", err)
+				}
+			}
+		} else {
+			// Paper Mode
 			newBalance := user.PaperBalance + netPnL
 			if err := s.userRepo.UpdateBalance(ctx, user.ID, newBalance, domain.ModePaper); err != nil {
 				log.Printf("ERROR: Failed to update user balance: %v", err)
