@@ -1,9 +1,9 @@
 # Stage 1: Build Frontend
 FROM node:20-alpine AS frontend-builder
 WORKDIR /app
-COPY web-react/package*.json ./
+COPY neurotrade/package*.json ./
 RUN npm ci
-COPY web-react ./
+COPY neurotrade ./
 RUN npm run build
 
 # Stage 2: Build Backend

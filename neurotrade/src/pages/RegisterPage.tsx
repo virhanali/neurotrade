@@ -10,21 +10,21 @@ export function RegisterPage() {
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
     const [loading, setLoading] = useState(false);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
+        setSuccess('');
         setLoading(true);
 
         try {
             await api.register({ username, email, password });
-            // After register, maybe auto login? 
-            // Usually register returns User, not Token.
-            // So redirect to login or show success.
-            // Let's assume user must login.
-            alert('Registration successful! Please login.');
-            navigate('/login');
+            setSuccess('Account created successfully! Redirecting to login...');
+            setTimeout(() => {
+                navigate('/login');
+            }, 1500);
         } catch (err: any) {
             setError(err.response?.data?.error || 'Registration failed. Please try again.');
         } finally {
@@ -105,9 +105,16 @@ export function RegisterPage() {
                             </div>
                         </div>
 
+                        {/* Success Message */}
+                        {success && (
+                            <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-400 text-sm animate-fade-in">
+                                {success}
+                            </div>
+                        )}
+
                         {/* Error */}
                         {error && (
-                            <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-400 text-sm">
+                            <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-400 text-sm animate-fade-in">
                                 {error}
                             </div>
                         )}
