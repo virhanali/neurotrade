@@ -11,7 +11,8 @@ import {
     Sun,
     Moon,
     Activity,
-    Shield
+    Shield,
+    RotateCcw
 } from 'lucide-react';
 import { useUser } from '@/hooks/useUser';
 import { useTheme } from '@/hooks/useTheme';
@@ -63,6 +64,16 @@ export function DashboardLayout() {
         }
     };
 
+    const handleRefreshBalance = async () => {
+        if (user?.mode !== 'REAL') return;
+        try {
+            await api.refreshRealBalance();
+            await queryClient.invalidateQueries({ queryKey: ['user'] });
+        } catch (error) {
+            console.error('Failed to refresh balance:', error);
+        }
+    };
+
     return (
         <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
             {/* Sidebar */}
@@ -83,6 +94,15 @@ export function DashboardLayout() {
                     <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400 text-sm mb-1">
                         <Wallet className="w-4 h-4" />
                         <span>Total Equity</span>
+                        {user?.mode === 'REAL' && (
+                            <button
+                                onClick={handleRefreshBalance}
+                                className="ml-1 p-0.5 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                                title="Force Refresh Balance from Exchange"
+                            >
+                                <RotateCcw className="w-3 h-3 text-slate-400" />
+                            </button>
+                        )}
                     </div>
                     <div className="flex items-baseline justify-between gap-2">
                         <span className="text-2xl font-bold text-slate-900 dark:text-white">

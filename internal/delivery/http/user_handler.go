@@ -539,7 +539,7 @@ func (h *UserHandler) UpdateSettings(c echo.Context) error {
 		Mode             string  `json:"mode" form:"mode"`
 		FixedOrderSize   float64 `json:"fixedOrderSize" form:"fixed_order_size"`
 		Leverage         float64 `json:"leverage" form:"leverage"`
-		AutoTradeEnabled bool    `json:"autoTradeEnabled" form:"auto_trade_enabled"`
+		AutoTradeEnabled *bool   `json:"autoTradeEnabled" form:"auto_trade_enabled"`
 	}
 
 	if err := c.Bind(&req); err != nil {
@@ -572,7 +572,9 @@ func (h *UserHandler) UpdateSettings(c echo.Context) error {
 		user.Leverage = req.Leverage
 	}
 
-	user.IsAutoTradeEnabled = req.AutoTradeEnabled
+	if req.AutoTradeEnabled != nil {
+		user.IsAutoTradeEnabled = *req.AutoTradeEnabled
+	}
 	user.UpdatedAt = time.Now()
 
 	// Save to database
