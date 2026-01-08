@@ -1,6 +1,29 @@
 # 🧠 NeuroTrade AI - System Architecture "The Bible"
-**Last Updated:** 2026-01-07 (Session Real Trading)
-**Version:** 5.0 (Real Trading Integration + User Control)
+**Last Updated:** 2026-01-08 (Session: AI Cost Optimization & Debug)
+**Version:** 5.4 (Cost Optimization + API Validation)
+
+---
+
+## 📌 CURRENT SESSION CONTEXT
+
+### 🔴 Active Issue (2026-01-08):
+**FIXED!** Vision signal was always NULL because cache used wrong field names.
+- Bug: `vision_result.get('signal')` → should be `vision_result.get('verdict')`
+- Bug: `vision_result.get('reasoning')` → should be `vision_result.get('analysis')`
+
+**Status:** Fixed in `ai_handler.py`. Deploy to verify.
+
+### ✅ Completed Today:
+1. API Key validation before save (Settings)
+2. Block REAL mode without valid keys
+3. **Cost Optimization:** Skip Vision if Logic conf < 65%
+4. **Cost Optimization:** BTC volatility threshold 0.2% → 0.3%
+5. **Bug Fix:** Vision signal field name mismatch (verdict vs signal)
+
+### 💬 Communication Rules:
+- Balas **singkat & jelas**
+- Update file ini jika ada **info penting**
+- Jangan repeat info yang sudah diketahui
 
 ---
 

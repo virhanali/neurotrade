@@ -789,9 +789,9 @@ Analyze for SCALPER entry (Mean Reversion / Ping-Pong / Predictive Alpha). Provi
                     'logic_signal': logic_result.get('signal'),
                     'logic_confidence': logic_result.get('confidence', 0),
                     'logic_reasoning': logic_result.get('reasoning', ''),
-                    'vision_signal': vision_result.get('signal'),
+                    'vision_signal': vision_result.get('verdict'),  # FIX: Was 'signal', but Vision returns 'verdict'
                     'vision_confidence': vision_result.get('confidence', 0),
-                    'vision_reasoning': vision_result.get('reasoning', ''),
+                    'vision_reasoning': vision_result.get('analysis', ''),  # FIX: Was 'reasoning', but Vision returns 'analysis'
                     'ml_win_probability': ml_win_prob,
                     'ml_threshold': int(ml_threshold),  # Ensure INT for database
                     'ml_is_trained': ml_is_trained,

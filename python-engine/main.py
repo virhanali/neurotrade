@@ -305,16 +305,18 @@ async def analyze_market(request: MarketAnalysisRequest):
         btc_context = data_fetcher.fetch_btc_context(mode="SCALPER")
 
         # --- BTC SLEEP CHECK (15m volatility) ---
-        btc_volatility = abs(btc_context.get('pct_change_1h', 0)) # Note: data_fetcher returns 15m change in this field for SCALPER
-        if btc_volatility < 0.2:
-             logging.info(f"😴 Market Sleepy (BTC Move {btc_volatility}%), skipping Scan to save credits.")
-             return MarketAnalysisResponse(
+        # Threshold increased to 0.3% for better cost optimization
+        BTC_VOLATILITY_THRESHOLD = 0.2  # Skip scan if BTC moves less than this %
+        btc_volatility = abs(btc_context.get('pct_change_1h', 0))  # Note: data_fetcher returns 15m change in this field for SCALPER
+        if btc_volatility < BTC_VOLATILITY_THRESHOLD:
+            logging.info(f"[BTC Sleepy] Market Sleepy (BTC Move {btc_volatility:.2f}% < {BTC_VOLATILITY_THRESHOLD}%), skipping Scan to save credits.")
+            return MarketAnalysisResponse(
                 timestamp=datetime.utcnow(),
                 btc_context=btc_context,
                 opportunities_screened=0,
                 valid_signals=[],
                 execution_time_seconds=0
-             )
+            )
 
         # Run all symbol analyses in parallel
         # NEW: Get Learning Context (Global Wisdom)
@@ -350,30 +352,37 @@ async def analyze_market(request: MarketAnalysisRequest):
                         charter.generate_chart_image, chart_df, symbol, "15M"
                     )
 
-                    # Run AI analysis concurrently (DeepSeek + Gemini)
-                    # Logic args: btc_data, target_4h, target_trigger(15m), balance, symbol, metrics, learning_context
-                    logic_task = asyncio.create_task(
-                        asyncio.to_thread(
-                            ai_handler.analyze_logic,
-                            btc_context,
-                            target_data.get('data_4h', {}),
-                            target_data.get('data_15m', {}),
-                            request.balance,
-                            symbol,
-                            candidate, # Metrics
-                            learning_ctx # Wisdom
-                        )
+                    # === COST OPTIMIZATION: Logic First, Vision Only If Needed ===
+                    # Step 1: Run Logic Analysis (cheaper API)
+                    logic_result = await asyncio.to_thread(
+                        ai_handler.analyze_logic,
+                        btc_context,
+                        target_data.get('data_4h', {}),
+                        target_data.get('data_15m', {}),
+                        request.balance,
+                        symbol,
+                        candidate,  # Metrics
+                        learning_ctx  # Wisdom
                     )
-
-                    # Vision args: chart_buffer
-                    vision_task = asyncio.create_task(
-                        asyncio.to_thread(
-                            ai_handler.analyze_vision,
-                            chart_buffer
-                        )
+                    
+                    # Step 2: Check if Logic warrants Vision analysis
+                    logic_signal = logic_result.get('signal', 'WAIT')
+                    logic_confidence = logic_result.get('confidence', 0)
+                    
+                    # Skip Vision if Logic already says WAIT or low confidence
+                    VISION_THRESHOLD = 65  # Minimum Logic confidence to call Vision
+                    
+                    if logic_signal == 'WAIT' or logic_confidence < VISION_THRESHOLD:
+                        logging.info(f"[SKIP-VISION] {symbol}: Logic={logic_signal} Conf={logic_confidence}% (threshold={VISION_THRESHOLD}%) - Saving Vision API cost")
+                        return None
+                    
+                    # Step 3: Logic passed, now call Vision (more expensive API)
+                    logging.info(f"[CALL-VISION] {symbol}: Logic={logic_signal} Conf={logic_confidence}% - Proceeding with Vision analysis")
+                    
+                    vision_result = await asyncio.to_thread(
+                        ai_handler.analyze_vision,
+                        chart_buffer
                     )
-
-                    logic_result, vision_result = await asyncio.gather(logic_task, vision_task)
 
                     # Combine results (pass metrics for ML prediction + whale data for Tier 1 veto)
                     whale_signal = candidate.get('whale_signal', 'NEUTRAL')
