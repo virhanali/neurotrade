@@ -123,6 +123,24 @@ class DataFetcher:
         ema_200_indicator = EMAIndicator(close=df['close'], window=200)
         df['ema_200'] = ema_200_indicator.ema_indicator()
 
+        # MACD (12, 26, 9) - CRITICAL for momentum detection
+        from ta.trend import MACD
+        macd_indicator = MACD(close=df['close'], window_slow=26, window_fast=12, window_sign=9)
+        df['macd'] = macd_indicator.macd()
+        df['macd_signal'] = macd_indicator.macd_signal()
+        df['macd_diff'] = macd_indicator.macd_diff()  # Histogram
+
+        # MA (7, 25, 99) - Simple Moving Averages for breakout detection
+        from ta.trend import SMAIndicator
+        sma_7 = SMAIndicator(close=df['close'], window=7)
+        df['ma_7'] = sma_7.sma_indicator()
+
+        sma_25 = SMAIndicator(close=df['close'], window=25)
+        df['ma_25'] = sma_25.sma_indicator()
+
+        sma_99 = SMAIndicator(close=df['close'], window=99)
+        df['ma_99'] = sma_99.sma_indicator()
+
         return df
 
     def fetch_btc_context(self, mode: str = "INVESTOR") -> Dict:
