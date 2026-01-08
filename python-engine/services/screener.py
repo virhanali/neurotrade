@@ -270,53 +270,185 @@ class MarketScreener:
             return True  # On error, allow trade (don't block)
 
     def check_1h_confirmation(self, symbol: str, direction: str) -> tuple:
-        """Check if 1H timeframe confirms the suggested direction. Returns (confirmed, reason)."""
+        """
+        Check if 1H timeframe confirms the suggested direction. Returns (confirmed, reason).
+        UPDATED: More flexible for trend reversals and crypto futures trading.
+        """
         try:
             ohlcv = self.fetch_ohlcv_cached(symbol, '1h', 20)
             if not ohlcv or len(ohlcv) < 15:
                 return True, "Insufficient 1H data (allowing trade)"
-            
+
             df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-            
+
             # Calculate 1H EMA 9 and 21
             ema_9 = ta.trend.ema_indicator(df['close'], window=9).iloc[-1]
             ema_21 = ta.trend.ema_indicator(df['close'], window=21).iloc[-1]
             current_price = df['close'].iloc[-1]
-            
+
             # Calculate 1H RSI
             rsi_1h = ta.momentum.rsi(df['close'], window=14).iloc[-1]
-            
+
+            # NEW: Check MACD for momentum confirmation
+            try:
+                macd_1h = df['macd'].iloc[-1] if 'macd' in df else None
+                macd_signal_1h = df['macd_signal'].iloc[-1] if 'macd_signal' in df else None
+                macd_bearish_1h = macd_1h < macd_signal_1h if macd_1h is not None else False
+                macd_bullish_1h = macd_1h > macd_signal_1h if macd_1h is not None else False
+            except:
+                macd_bearish_1h = False
+                macd_bullish_1h = False
+
             # Trend direction from EMAs
             ema_bullish = ema_9 > ema_21 and current_price > ema_9
             ema_bearish = ema_9 < ema_21 and current_price < ema_9
-            
+            ema_neutral = not ema_bullish and not ema_bearish
+
             if direction == "LONG":
-                # For LONG: 1H should not be strongly bearish
-                if ema_bearish and rsi_1h < 40:
-                    return False, f"1H BEARISH (EMA9<EMA21, RSI={rsi_1h:.1f})"
-                elif rsi_1h < 30:  # Extreme oversold is acceptable for reversal
-                    return True, f"1H Extreme Oversold (RSI={rsi_1h:.1f})"
+                # For LONG: Only VETO if 1H is STRONGLY bearish (not just slightly bearish)
+                # OLD: Blocked if ema_bearish and rsi_1h < 40
+                # NEW: Only block if EXTREME bearish confluence
+                if ema_bearish and rsi_1h < 35 and macd_bearish_1h:
+                    # All three bearish = very strong downtrend, avoid longs
+                    return False, f"1H EXTREME BEARISH (EMA-, RSI={rsi_1h:.1f}, MACD-)"
+                elif rsi_1h < 30:  # Extreme oversold = reversal opportunity
+                    return True, f"1H Extreme Oversold Reversal (RSI={rsi_1h:.1f})"
                 elif ema_bullish:
-                    return True, f"1H BULLISH confirmation (EMA9>EMA21)"
+                    return True, f"1H BULLISH confirmation (EMA9>EMA21, RSI={rsi_1h:.1f})"
+                elif ema_neutral or rsi_1h > 40:
+                    # Neutral 1H or RSI not extreme = allow 15M signal
+                    return True, f"1H Neutral/Weak bearish (RSI={rsi_1h:.1f}) - allowing 15M LONG"
                 else:
-                    return True, "1H Neutral (allowing trade)"
-                    
+                    # Mild bearish on 1H = allow trade with reduced confidence (penalty applied separately)
+                    return True, f"1H Mild bearish (RSI={rsi_1h:.1f}) - 15M signal priority"
+
             elif direction == "SHORT":
-                # For SHORT: 1H should not be strongly bullish
-                if ema_bullish and rsi_1h > 60:
-                    return False, f"1H BULLISH (EMA9>EMA21, RSI={rsi_1h:.1f})"
-                elif rsi_1h > 70:  # Extreme overbought is acceptable for reversal
-                    return True, f"1H Extreme Overbought (RSI={rsi_1h:.1f})"
+                # For SHORT: Only VETO if 1H is STRONGLY bullish (not just slightly bullish)
+                # OLD: Blocked if ema_bullish and rsi_1h > 60
+                # NEW: Only block if EXTREME bullish confluence
+                if ema_bullish and rsi_1h > 65 and macd_bullish_1h:
+                    # All three bullish = very strong uptrend, avoid shorts
+                    return False, f"1H EXTREME BULLISH (EMA+, RSI={rsi_1h:.1f}, MACD+)"
+                elif rsi_1h > 70:  # Extreme overbought = reversal opportunity
+                    return True, f"1H Extreme Overbought Reversal (RSI={rsi_1h:.1f})"
                 elif ema_bearish:
-                    return True, f"1H BEARISH confirmation (EMA9<EMA21)"
+                    return True, f"1H BEARISH confirmation (EMA9<EMA21, RSI={rsi_1h:.1f})"
+                elif ema_neutral or rsi_1h < 60:
+                    # Neutral 1H or RSI not extreme = allow 15M signal
+                    return True, f"1H Neutral/Weak bullish (RSI={rsi_1h:.1f}) - allowing 15M SHORT"
                 else:
-                    return True, "1H Neutral (allowing trade)"
-            
+                    # Mild bullish on 1H = allow trade with reduced confidence (penalty applied separately)
+                    return True, f"1H Mild bullish (RSI={rsi_1h:.1f}) - 15M signal priority"
+
             return True, "1H Check passed"
-            
+
         except Exception as e:
             logging.warning(f"[1H CONFIRM] Failed for {symbol}: {e}")
             return True, f"1H check error: {e}"
+
+    def detect_early_reversal(self, df_15m: pd.DataFrame, df_1h: pd.DataFrame) -> dict:
+        """
+        Detect early reversal phase when 15M is reversing but 1H hasn't confirmed yet.
+        This helps prioritize 15M signals during trend transitions.
+
+        Returns dict with:
+        - is_early_reversal: bool
+        - reversal_type: 'BULLISH' | 'BEARISH' | 'NONE'
+        - confidence: 0-100
+        - signals: list of detection signals
+        """
+        try:
+            if len(df_15m) < 20 or len(df_1h) < 10:
+                return {'is_early_reversal': False, 'reversal_type': 'NONE', 'confidence': 0, 'signals': []}
+
+            signals = []
+            reversal_score = 0
+            reversal_type = 'NONE'
+
+            # Get 15M indicators
+            price_15m = df_15m['close'].iloc[-1]
+            rsi_15m = ta.momentum.rsi(df_15m['close'], window=14).iloc[-1]
+            macd_15m = df_15m['macd'].iloc[-1] if 'macd' in df_15m else None
+            macd_signal_15m = df_15m['macd_signal'].iloc[-1] if 'macd_signal' in df_15m else None
+            macd_diff_15m = df_15m['macd_diff'].iloc[-1] if 'macd_diff' in df_15m else None
+            macd_diff_prev_15m = df_15m['macd_diff'].iloc[-2] if 'macd_diff' in df_15m else None
+
+            # Get 1H indicators
+            price_1h = df_1h['close'].iloc[-1]
+            rsi_1h = ta.momentum.rsi(df_1h['close'], window=14).iloc[-1]
+            macd_1h = df_1h['macd'].iloc[-1] if 'macd' in df_1h else None
+            macd_signal_1h = df_1h['macd_signal'].iloc[-1] if 'macd_signal' in df_1h else None
+
+            # BULLISH REVERSAL DETECTION
+            # 15M showing bullish signs but 1H still bearish = early bullish reversal
+            if rsi_15m < 35 and rsi_1h < 45:  # Both oversold/bearish
+                # Check if 15M is recovering (MACD turning up)
+                if macd_diff_15m is not None and macd_diff_prev_15m is not None:
+                    if macd_diff_15m > macd_diff_prev_15m:  # MACD histogram increasing
+                        reversal_score += 30
+                        signals.append("15M MACD recovering from oversold")
+                        reversal_type = 'BULLISH'
+
+                # Check if price making higher lows on 15M
+                lows_15m = df_15m['low'].iloc[-5:].values
+                if len(lows_15m) >= 3:
+                    if lows_15m[-1] > lows_15m[-2] > lows_15m[-3]:
+                        reversal_score += 20
+                        signals.append("15M higher lows pattern")
+                        reversal_type = 'BULLISH'
+
+            # BEARISH REVERSAL DETECTION
+            # 15M showing bearish signs but 1H still bullish = early bearish reversal
+            elif rsi_15m > 65 and rsi_1h > 55:  # Both overbought/bullish
+                # Check if 15M is weakening (MACD turning down)
+                if macd_diff_15m is not None and macd_diff_prev_15m is not None:
+                    if macd_diff_15m < macd_diff_prev_15m:  # MACD histogram decreasing
+                        reversal_score += 30
+                        signals.append("15M MACD weakening from overbought")
+                        reversal_type = 'BEARISH'
+
+                # Check if price making lower highs on 15M
+                highs_15m = df_15m['high'].iloc[-5:].values
+                if len(highs_15m) >= 3:
+                    if highs_15m[-1] < highs_15m[-2] < highs_15m[-3]:
+                        reversal_score += 20
+                        signals.append("15M lower highs pattern")
+                        reversal_type = 'BEARISH'
+
+            # RSI Divergence Detection (Advanced)
+            # Price making new high but RSI making lower high = bearish divergence
+            try:
+                price_last3 = df_15m['close'].iloc[-3:].values
+                rsi_last3 = ta.momentum.rsi(df_15m['close'], window=14).iloc[-3:].values
+
+                if price_last3[-1] > max(price_last3[:-1]) and rsi_last3[-1] < max(rsi_last3[:-1]):
+                    reversal_score += 25
+                    signals.append("Bearish RSI divergence on 15M")
+                    reversal_type = 'BEARISH'
+                elif price_last3[-1] < min(price_last3[:-1]) and rsi_last3[-1] > min(rsi_last3[:-1]):
+                    reversal_score += 25
+                    signals.append("Bullish RSI divergence on 15M")
+                    reversal_type = 'BULLISH'
+            except:
+                pass
+
+            # Confidence calculation
+            confidence = min(100, reversal_score)
+            is_early_reversal = confidence >= 40  # Need at least 40 confidence
+
+            if is_early_reversal:
+                logging.info(f"[EARLY REVERSAL] {reversal_type} detected! Confidence: {confidence}% | Signals: {signals}")
+
+            return {
+                'is_early_reversal': is_early_reversal,
+                'reversal_type': reversal_type,
+                'confidence': confidence,
+                'signals': signals
+            }
+
+        except Exception as e:
+            logging.warning(f"[EARLY REVERSAL] Detection failed: {e}")
+            return {'is_early_reversal': False, 'reversal_type': 'NONE', 'confidence': 0, 'signals': []}
 
     def check_market_structure(self, df_15m: pd.DataFrame) -> dict:
         """Analyze market structure for HH/HL (uptrend) or LH/LL (downtrend)."""
@@ -556,30 +688,99 @@ class MarketScreener:
                 dump_score += 15
                 factors.append(f"ROC5: {roc_5:.1f}% (bearish)")
             
-            # 2. EMA 9/21 Crossover
+            # 2. MACD Crossover (CRITICAL - Primary Momentum Indicator)
+            # MACD histogram crossing zero = momentum shift
+            try:
+                macd = df_15m['macd'].iloc[-1] if 'macd' in df_15m else None
+                macd_signal = df_15m['macd_signal'].iloc[-1] if 'macd_signal' in df_15m else None
+                macd_diff = df_15m['macd_diff'].iloc[-1] if 'macd_diff' in df_15m else None
+                macd_diff_prev = df_15m['macd_diff'].iloc[-2] if 'macd_diff' in df_15m else None
+
+                if macd is not None and macd_signal is not None and macd_diff is not None:
+                    # Bullish MACD crossover (histogram crosses above zero)
+                    if macd_diff > 0 and macd_diff_prev <= 0:
+                        pump_score += 30
+                        factors.append("MACD BULLISH CROSS 🚀")
+                    # Bearish MACD crossover (histogram crosses below zero)
+                    elif macd_diff < 0 and macd_diff_prev >= 0:
+                        dump_score += 30
+                        factors.append("MACD BEARISH CROSS 📉")
+                    # Already bullish momentum
+                    elif macd > macd_signal:
+                        pump_score += 15
+                        factors.append(f"MACD bullish (diff: {macd_diff:.2f})")
+                    # Already bearish momentum
+                    elif macd < macd_signal:
+                        dump_score += 15
+                        factors.append(f"MACD bearish (diff: {macd_diff:.2f})")
+            except Exception as e:
+                logging.warning(f"[MACD] Calculation failed: {e}")
+
+            # 3. EMA 9/21 Crossover (Secondary confirmation)
             ema_9 = ta.trend.ema_indicator(df_15m['close'], window=9).iloc[-1]
             ema_21 = ta.trend.ema_indicator(df_15m['close'], window=21).iloc[-1]
             ema_9_prev = ta.trend.ema_indicator(df_15m['close'], window=9).iloc[-2]
             ema_21_prev = ta.trend.ema_indicator(df_15m['close'], window=21).iloc[-2]
-            
+
             # Bullish crossover (EMA9 crosses above EMA21)
             if ema_9 > ema_21 and ema_9_prev <= ema_21_prev:
-                pump_score += 25
+                pump_score += 20
                 factors.append("EMA9/21 BULLISH CROSS ⬆️")
             # Bearish crossover
             elif ema_9 < ema_21 and ema_9_prev >= ema_21_prev:
-                dump_score += 25
+                dump_score += 20
                 factors.append("EMA9/21 BEARISH CROSS ⬇️")
             # Already bullish
             elif ema_9 > ema_21:
-                pump_score += 10
+                pump_score += 8
                 factors.append("EMA9 > EMA21 (bullish)")
             # Already bearish
             elif ema_9 < ema_21:
-                dump_score += 10
+                dump_score += 8
                 factors.append("EMA9 < EMA21 (bearish)")
-            
-            # 3. RSI Slope
+
+            # 4. MA Breakout Detection (7, 25, 99)
+            # Price breaking above/below multiple MAs = strong signal
+            try:
+                current_price = closes[-1]
+                ma_7 = df_15m['ma_7'].iloc[-1] if 'ma_7' in df_15m else None
+                ma_25 = df_15m['ma_25'].iloc[-1] if 'ma_25' in df_15m else None
+                ma_99 = df_15m['ma_99'].iloc[-1] if 'ma_99' in df_15m else None
+
+                if ma_7 is not None and ma_25 is not None and ma_99 is not None:
+                    # Check if price is above/below all MAs
+                    above_all_mas = current_price > ma_7 and current_price > ma_25 and current_price > ma_99
+                    below_all_mas = current_price < ma_7 and current_price < ma_25 and current_price < ma_99
+
+                    # Check for MA breakout (price crossed MA7 in last 2 candles)
+                    price_prev = closes[-2]
+                    ma_7_prev = df_15m['ma_7'].iloc[-2]
+
+                    # Bullish breakout (price crossed above MA7)
+                    if current_price > ma_7 and price_prev <= ma_7_prev:
+                        pump_score += 25
+                        factors.append("MA7 BREAKOUT UP ⬆️")
+                        if above_all_mas:
+                            pump_score += 10
+                            factors.append("Above ALL MAs (strong trend)")
+                    # Bearish breakout (price crossed below MA7)
+                    elif current_price < ma_7 and price_prev >= ma_7_prev:
+                        dump_score += 25
+                        factors.append("MA7 BREAKOUT DOWN ⬇️")
+                        if below_all_mas:
+                            dump_score += 10
+                            factors.append("Below ALL MAs (strong downtrend)")
+                    # Already trending
+                    elif above_all_mas:
+                        pump_score += 12
+                        factors.append("Above ALL MAs (uptrend)")
+                    elif below_all_mas:
+                        dump_score += 12
+                        factors.append("Below ALL MAs (downtrend)")
+            except Exception as e:
+                logging.warning(f"[MA BREAKOUT] Calculation failed: {e}")
+
+            # 5. RSI Slope (Momentum acceleration)
             rsi_series = ta.momentum.rsi(df_15m['close'], window=14)
             rsi_now = rsi_series.iloc[-1]
             rsi_prev = rsi_series.iloc[-3]  # 3 candles ago
@@ -599,8 +800,8 @@ class MarketScreener:
             elif rsi_now > 65 and rsi_slope < 0:  # Dropping from overbought
                 dump_score += 10
                 factors.append(f"RSI {rsi_now:.0f} dropping from overbought")
-            
-            # 4. Volume-Price Confirmation
+
+            # 6. Volume-Price Confirmation
             vol_avg = np.mean(volumes[-10:-3])
             
             bullish_vol_candles = 0
@@ -621,8 +822,8 @@ class MarketScreener:
             elif bearish_vol_candles >= 2:
                 dump_score += 20
                 factors.append(f"Volume confirms DOWN ({bearish_vol_candles}/3 bearish)")
-            
-            # 5. HH/HL Pattern (Last 5 candles)
+
+            # 7. HH/HL Pattern (Last 5 candles) - Market structure
             recent_highs = highs[-5:]
             recent_lows = lows[-5:]
             
@@ -640,13 +841,17 @@ class MarketScreener:
             
             # Final calculation with anti-fake penalty
             total_score = pump_score + dump_score
-            
+
+            # UPDATED: Lowered threshold from 25 to 20 for crypto futures (more signals)
+            # Crypto is more volatile and needs lower threshold to catch early movements
+            MIN_SCORE_THRESHOLD = 20  # Was 25 before
+
             # Apply fake penalty to confidence
-            if pump_score > dump_score and pump_score >= 25:
+            if pump_score > dump_score and pump_score >= MIN_SCORE_THRESHOLD:
                 direction = "PUMP"
                 base_confidence = int((pump_score / max(total_score, 1)) * 100)
                 confidence = max(0, min(95, base_confidence - fake_penalty))
-            elif dump_score > pump_score and dump_score >= 25:
+            elif dump_score > pump_score and dump_score >= MIN_SCORE_THRESHOLD:
                 direction = "DUMP"
                 base_confidence = int((dump_score / max(total_score, 1)) * 100)
                 confidence = max(0, min(95, base_confidence - fake_penalty))
@@ -1047,31 +1252,62 @@ class MarketScreener:
                             elif rsi > 70:
                                 suggested_direction = "SHORT"  # Extreme overbought
                         
+                        # NEW: Early Reversal Detection
+                        # Detect if we're in early reversal phase (15M reversing, 1H lagging)
+                        early_reversal_data = self.detect_early_reversal(df_15m, df_1h)
+                        is_early_reversal = early_reversal_data.get('is_early_reversal', False)
+                        reversal_type = early_reversal_data.get('reversal_type', 'NONE')
+                        reversal_confidence = early_reversal_data.get('confidence', 0)
+
+                        result['early_reversal'] = is_early_reversal
+                        result['reversal_type'] = reversal_type
+                        result['reversal_confidence'] = reversal_confidence
+
                         # 1H confirmation layer
                         h1_confirmed = True
                         h1_reason = ""
-                        
+
                         if suggested_direction != "NEUTRAL":
                             h1_confirmed, h1_reason = self.check_1h_confirmation(symbol, suggested_direction)
                             result['h1_confirmed'] = h1_confirmed
                             result['h1_reason'] = h1_reason
-                            
+
                             if not h1_confirmed:
-                                # Strong whale signals override 1H rejection
+                                # Priority 1: Strong whale signals override 1H rejection
                                 if whale_sig_final in ['PUMP_IMMINENT', 'DUMP_IMMINENT'] and result.get('whale_confidence', 0) >= 80:
                                     logging.info(f"[1H] {symbol}: {h1_reason} - BUT WHALE SIGNAL OVERRIDE ({whale_sig_final} {result.get('whale_confidence')}%)")
                                     result['h1_override'] = 'WHALE_SIGNAL'
+                                # Priority 2: Early reversal detected - reduce penalty
+                                elif is_early_reversal:
+                                    # Check if reversal type matches suggested direction
+                                    reversal_matches = (
+                                        (reversal_type == 'BULLISH' and suggested_direction == 'LONG') or
+                                        (reversal_type == 'BEARISH' and suggested_direction == 'SHORT')
+                                    )
+                                    if reversal_matches and reversal_confidence >= 50:
+                                        # High confidence early reversal - minimal penalty
+                                        score_penalty = 10  # Reduced from 25
+                                        result['score'] = float(max(0, result['score'] - score_penalty))
+                                        result['h1_override'] = 'EARLY_REVERSAL'
+                                        logging.info(f"[EARLY REVERSAL] {symbol}: {reversal_type} detected ({reversal_confidence}%) - "
+                                                   f"Override 1H conflict with reduced penalty (-{score_penalty})")
+                                    else:
+                                        # Reversal detected but low confidence - standard penalty
+                                        score_penalty = 18  # Slightly reduced from 25
+                                        result['score'] = float(max(0, result['score'] - score_penalty))
+                                        result['h1_conflict'] = True
+                                        logging.info(f"[1H] {symbol}: {suggested_direction} - early reversal phase, reduced penalty (-{score_penalty})")
                                 else:
-                                    # Downgrade: Apply score penalty and flag
+                                    # No override: Apply standard score penalty
                                     score_penalty = 25
                                     result['score'] = float(max(0, result['score'] - score_penalty))
                                     result['h1_conflict'] = True
                                     logging.warning(f"[1H] {symbol}: {suggested_direction} rejected - {h1_reason} (-{score_penalty} score)")
-                                    
-                                    # If score drops too low, downgrade direction
-                                    if result['score'] < 30:
-                                        suggested_direction = "NEUTRAL"
-                                        logging.info(f"[1H] {symbol}: Direction downgraded to NEUTRAL (score too low)")
+
+                                # If score drops too low, downgrade direction
+                                if result['score'] < 30:
+                                    suggested_direction = "NEUTRAL"
+                                    logging.info(f"[1H] {symbol}: Direction downgraded to NEUTRAL (score too low)")
                             else:
                                 logging.info(f"[1H] {symbol}: {suggested_direction} confirmed - {h1_reason}")
                         else:
