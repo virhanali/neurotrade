@@ -7,18 +7,27 @@
 ## 📌 CURRENT SESSION CONTEXT
 
 ### 🔴 Active Issue (2026-01-08):
-**FIXED!** Vision signal was always NULL because cache used wrong field names.
-- Bug: `vision_result.get('signal')` → should be `vision_result.get('verdict')`
-- Bug: `vision_result.get('reasoning')` → should be `vision_result.get('analysis')`
+**ISSUE:** Tidak ada signal selama 2 hari meskipun BTC drop ~4% (dari $93,825 ke $89,972)
 
-**Status:** Fixed in `ai_handler.py`. Deploy to verify.
+**ROOT CAUSE ANALYSIS:**
+1. `BTC_VOLATILITY_THRESHOLD` = 0.2% → Terlalu tinggi, slow gradual moves tidak terdeteksi
+2. `VISION_THRESHOLD` = 65% → Logic confidence harus tinggi sebelum Vision dipanggil
+3. Quality veto penalty >= 40 → Terlalu aggressive membunuh signals
+4. RSI extreme tidak di-consider untuk override
+
+**FIXES APPLIED:**
+1. ✅ BTC threshold: 0.2% → 0.1% + RSI extreme bypass (< 35 or > 65 = action time)
+2. ✅ Vision threshold: 65% → 55%
+3. ✅ Quality veto: 40 → 50 penalty required
+4. ✅ Agreement logic: 75% → 70% logic override + RSI extreme override (> 60% conf + extreme RSI)
+
+**Status:** Deployed. Monitor over next 24h for signal generation.
 
 ### ✅ Completed Today:
 1. API Key validation before save (Settings)
 2. Block REAL mode without valid keys
-3. **Cost Optimization:** Skip Vision if Logic conf < 65%
-4. **Cost Optimization:** BTC volatility threshold 0.2% → 0.3%
-5. **Bug Fix:** Vision signal field name mismatch (verdict vs signal)
+3. **Signal Sensitivity Fix:** Tuned thresholds to catch bigger market moves
+4. **RSI Extreme Override:** Allow signals when RSI is < 30 or > 70
 
 ### 💬 Communication Rules:
 - Balas **singkat & jelas**

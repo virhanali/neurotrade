@@ -689,8 +689,8 @@ Analyze for SCALPER entry (Mean Reversion / Ping-Pong / Predictive Alpha). Provi
         if quality_veto_reasons:
             logging.info(f"[QUALITY] Issues detected: {', '.join(quality_veto_reasons)} | Total penalty: -{quality_penalty}")
         
-        # Hard veto if too many quality issues stack up
-        if quality_penalty >= 40:
+        # Hard veto if too many quality issues
+        if quality_penalty >= 50:
             return {
                 "final_signal": "WAIT",
                 "combined_confidence": 0,
@@ -707,6 +707,10 @@ Analyze for SCALPER entry (Mean Reversion / Ping-Pong / Predictive Alpha). Provi
 
         # === 5. HYBRID AGREEMENT LOGIC ===
         agreement = False
+        
+        # Get RSI from metrics for extreme condition check
+        rsi_value = metrics.get('rsi', 50) if metrics else 50
+        is_rsi_extreme = rsi_value < 30 or rsi_value > 70  # Extreme oversold/overbought
 
         # Scenario A: PERFECT AGREEMENT (Best Quality)
         if logic_signal == "LONG" and vision_verdict == "BULLISH":
@@ -714,12 +718,14 @@ Analyze for SCALPER entry (Mean Reversion / Ping-Pong / Predictive Alpha). Provi
         elif logic_signal == "SHORT" and vision_verdict == "BEARISH":
             agreement = True
 
-        # Scenario B: LOGIC OVERRIDE (Quantity Booster)
-        # If Vision is NEUTRAL (unsure), but DeepSeek is VERY CONFIDENT (>75%), we take it.
-        # DeepSeek sees math (RSI Div) that Vision might miss.
+        # Scenario B: LOGIC OVERRIDE
         elif logic_signal != "WAIT" and vision_verdict == "NEUTRAL":
-            if logic_confidence > 75:
+            if logic_confidence > 70:
                 agreement = True
+                logging.info(f"[AGREEMENT] Logic Override: {logic_confidence}%")
+            elif logic_confidence > 60 and is_rsi_extreme:
+                agreement = True
+                logging.info(f"[AGREEMENT] RSI Extreme Override: RSI={rsi_value}")
 
         # Scenario C: ML BOOST (New in v4.0)
         # ONLY boost if ML is actually trained with real data

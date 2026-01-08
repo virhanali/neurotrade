@@ -304,12 +304,14 @@ async def analyze_market(request: MarketAnalysisRequest):
         # Step 2: Fetch BTC context (SCALPER MODE)
         btc_context = data_fetcher.fetch_btc_context(mode="SCALPER")
 
-        # --- BTC SLEEP CHECK (15m volatility) ---
-        # Threshold increased to 0.3% for better cost optimization
-        BTC_VOLATILITY_THRESHOLD = 0.2  # Skip scan if BTC moves less than this %
-        btc_volatility = abs(btc_context.get('pct_change_1h', 0))  # Note: data_fetcher returns 15m change in this field for SCALPER
-        if btc_volatility < BTC_VOLATILITY_THRESHOLD:
-            logging.info(f"[BTC Sleepy] Market Sleepy (BTC Move {btc_volatility:.2f}% < {BTC_VOLATILITY_THRESHOLD}%), skipping Scan to save credits.")
+        # --- BTC SLEEP CHECK ---
+        BTC_VOLATILITY_THRESHOLD_15M = 0.1
+        btc_volatility_15m = abs(btc_context.get('pct_change_1h', 0))
+        btc_rsi = btc_context.get('rsi_1h', 50)
+        btc_in_extreme = btc_rsi < 35 or btc_rsi > 65
+        
+        if btc_volatility_15m < BTC_VOLATILITY_THRESHOLD_15M and not btc_in_extreme:
+            logging.info(f"[BTC Sleepy] BTC Move {btc_volatility_15m:.2f}% < {BTC_VOLATILITY_THRESHOLD_15M}%, RSI={btc_rsi:.0f} - skipping")
             return MarketAnalysisResponse(
                 timestamp=datetime.utcnow(),
                 btc_context=btc_context,
@@ -317,6 +319,9 @@ async def analyze_market(request: MarketAnalysisRequest):
                 valid_signals=[],
                 execution_time_seconds=0
             )
+        
+        if btc_volatility_15m < BTC_VOLATILITY_THRESHOLD_15M and btc_in_extreme:
+            logging.info(f"[BTC EXTREME] Low vol but RSI={btc_rsi:.0f} - proceeding")
 
         # Run all symbol analyses in parallel
         # NEW: Get Learning Context (Global Wisdom)
@@ -370,7 +375,9 @@ async def analyze_market(request: MarketAnalysisRequest):
                     logic_confidence = logic_result.get('confidence', 0)
                     
                     # Skip Vision if Logic already says WAIT or low confidence
-                    VISION_THRESHOLD = 65  # Minimum Logic confidence to call Vision
+                    # UPDATED: Lowered from 65 to 55 to allow more signals through
+                    # This increases vision API cost but improves signal detection
+                    VISION_THRESHOLD = 55  # Minimum Logic confidence to call Vision
                     
                     if logic_signal == 'WAIT' or logic_confidence < VISION_THRESHOLD:
                         logging.info(f"[SKIP-VISION] {symbol}: Logic={logic_signal} Conf={logic_confidence}% (threshold={VISION_THRESHOLD}%) - Saving Vision API cost")
