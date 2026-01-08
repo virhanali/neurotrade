@@ -750,6 +750,16 @@ Analyze for SCALPER entry (Mean Reversion / Ping-Pong / Predictive Alpha). Provi
         elif logic_signal == "SHORT" and vision_verdict == "BEARISH":
             agreement = True
 
+        # Scenario X: RSI SUPER EXTREME (Override Vision Veto)
+        # If RSI is extremely overextended (>85 or <15), Mean Reversion probability is very high
+        # We allow Logic to override Vision's safe/long-term bias in these rare scalping cases.
+        elif logic_signal == "SHORT" and rsi_value > 85:
+            logging.warning(f"[OVERRIDE] RSI SUPER EXTREME ({rsi_value:.1f}) > 85 - Taking SHORT despite Vision")
+            agreement = True
+        elif logic_signal == "LONG" and rsi_value < 15:
+            logging.warning(f"[OVERRIDE] RSI SUPER EXTREME ({rsi_value:.1f}) < 15 - Taking LONG despite Vision")
+            agreement = True
+
         # Scenario B: LOGIC OVERRIDE
         elif logic_signal != "WAIT" and vision_verdict == "NEUTRAL":
             if logic_confidence > 70:
