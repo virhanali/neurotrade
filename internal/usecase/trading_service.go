@@ -122,6 +122,27 @@ func (ts *TradingService) ProcessMarketScan(ctx context.Context, balance float64
 			log.Printf("Skipping %s: Active position already exists", aiSignal.Symbol)
 			continue
 		}
+
+		// Dedup check 3: Prevent duplicate signals (Spam Protection)
+		// Check if we recently generated a signal for this symbol (created < 60 mins ago)
+		// This prevents creating new signals if the previous one failed to execute but is still "fresh"
+		isDuplicate := false
+		recentSignals, _ := ts.signalRepo.GetBySymbol(ctx, aiSignal.Symbol, 1)
+		if len(recentSignals) > 0 {
+			lastSignal := recentSignals[0]
+			// If last signal was created less than 60 mins ago AND is not REJECTED/FAILED
+			if time.Since(lastSignal.CreatedAt).Minutes() < 60 &&
+				lastSignal.Status != domain.StatusRejected &&
+				lastSignal.Status != domain.StatusFailed {
+				log.Printf("Skipping %s: Recent active signal exists (id=%s, age=%.0fm)",
+					aiSignal.Symbol, lastSignal.ID, time.Since(lastSignal.CreatedAt).Minutes())
+				isDuplicate = true
+			}
+		}
+		if isDuplicate {
+			continue
+		}
+
 		// Skip WAIT signals (not actionable)
 		if aiSignal.FinalSignal == "WAIT" {
 			log.Printf("Skipping %s: signal is WAIT (not actionable)", aiSignal.Symbol)
