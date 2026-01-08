@@ -53,39 +53,9 @@ func (h *UserHandler) GetMe(c echo.Context) error {
 		return InternalServerErrorResponse(c, "Failed to get user details", err)
 	}
 
-	// For REAL mode, try to fetch fresh balance from Binance
-	if user.Mode == domain.ModeReal {
-		// Use a longer timeout for external Binance API call
-		bgCtx, bgCancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer bgCancel()
-
-		log.Printf("[INFO] Fetching REAL balance from Binance for user %s", userID)
-
-		realBal, err := h.aiService.GetRealBalance(bgCtx, user.BinanceAPIKey, user.BinanceAPISecret)
-		if err == nil {
-			// Update memory object (even if balance is 0, it's still valid)
-			user.RealBalanceCache = &realBal
-
-			// Async update DB to not block UI
-			go func(uid uuid.UUID, bal float64) {
-				dbCtx, dbCancel := context.WithTimeout(context.Background(), 2*time.Second)
-				defer dbCancel()
-				if err := h.userRepo.UpdateRealBalance(dbCtx, uid, bal); err != nil {
-					log.Printf("[ERROR] Failed to cache real balance for user %s: %v\n", uid, err)
-				} else {
-					log.Printf("[SUCCESS] Cached real balance for user %s: %.2f USDT\n", uid, bal)
-				}
-			}(user.ID, realBal)
-		} else {
-			// err is guaranteed to be non-nil here
-			log.Printf("[ERROR] Failed to fetch real balance for user %s: %s (using cache: %.2f)\n", userID, err.Error(), func() float64 {
-				if user.RealBalanceCache != nil {
-					return *user.RealBalanceCache
-				}
-				return 0
-			}())
-		}
-	}
+	// Optimization: Do NOT fetch real balance here (Blocking).
+	// Trust the WebSocket / Background Worker to update user.RealBalanceCache.
+	// This makes /api/user/me instant (ms) instead of waiting for Binance API (sec).
 
 	maskedKey := ""
 	if len(user.BinanceAPIKey) > 4 {
