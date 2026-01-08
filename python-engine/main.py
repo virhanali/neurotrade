@@ -337,6 +337,12 @@ async def analyze_market(request: MarketAnalysisRequest):
         async def analyze_single_candidate(candidate: Dict) -> Optional[SignalResult]:
             """Analyze a single candidate - runs concurrently"""
             symbol = candidate['symbol']
+            score = candidate.get('score', 0)
+            
+            MIN_SCORE_FOR_AI = 40
+            if score < MIN_SCORE_FOR_AI:
+                logging.debug(f"[SKIP-AI] {symbol}: Score {score} < {MIN_SCORE_FOR_AI} - Skipping AI")
+                return None
             
             async with semaphore:
                 try:

@@ -195,6 +195,118 @@ class MarketScreener:
         # NEW: Initialize cache and circuit breaker
         self.ohlcv_cache = OHLCVCache()
         self.circuit_breaker = CircuitBreaker(failure_threshold=5, recovery_time=60)
+        
+        # Session for direct Binance API calls (non-CCXT)
+        self.session = session
+    
+    def fetch_market_sentiment(self, symbol: str) -> Dict:
+        """
+        Fetch market sentiment data from Binance Futures API.
+        Combines: Open Interest, Top Trader Positions, Taker Buy/Sell Volume.
+        
+        Returns dict with:
+        - oi_change_pct: OI change in last 5 min (positive = new positions opening)
+        - top_trader_long_ratio: % of top traders going long
+        - taker_buy_ratio: % of taker volume that is buy
+        - sentiment_score: Combined score (-100 to +100, positive = bullish)
+        """
+        # Convert symbol format: "BTC/USDT" -> "BTCUSDT"
+        binance_symbol = symbol.replace("/", "")
+        base_url = "https://fapi.binance.com"
+        
+        result = {
+            'oi_change_pct': 0,
+            'top_trader_long_ratio': 50,
+            'taker_buy_ratio': 50,
+            'sentiment_score': 0,
+            'sentiment_signal': 'NEUTRAL'
+        }
+        
+        try:
+            # 1. Open Interest (current vs 5min ago)
+            try:
+                oi_resp = self.session.get(
+                    f"{base_url}/fapi/v1/openInterest",
+                    params={"symbol": binance_symbol},
+                    timeout=3
+                )
+                if oi_resp.status_code == 200:
+                    current_oi = float(oi_resp.json().get('openInterest', 0))
+                    
+                    # Get OI history (5min period)
+                    oi_hist_resp = self.session.get(
+                        f"{base_url}/futures/data/openInterestHist",
+                        params={"symbol": binance_symbol, "period": "5m", "limit": 2},
+                        timeout=3
+                    )
+                    if oi_hist_resp.status_code == 200 and oi_hist_resp.json():
+                        hist_data = oi_hist_resp.json()
+                        if len(hist_data) >= 2:
+                            prev_oi = float(hist_data[-2].get('sumOpenInterest', current_oi))
+                            if prev_oi > 0:
+                                result['oi_change_pct'] = ((current_oi - prev_oi) / prev_oi) * 100
+            except Exception as e:
+                logging.debug(f"[SENTIMENT] OI fetch failed for {symbol}: {e}")
+            
+            # 2. Top Trader Long/Short Ratio
+            try:
+                top_resp = self.session.get(
+                    f"{base_url}/futures/data/topLongShortPositionRatio",
+                    params={"symbol": binance_symbol, "period": "5m", "limit": 1},
+                    timeout=3
+                )
+                if top_resp.status_code == 200 and top_resp.json():
+                    data = top_resp.json()[0]
+                    result['top_trader_long_ratio'] = float(data.get('longAccount', 50)) * 100
+            except Exception as e:
+                logging.debug(f"[SENTIMENT] Top Trader fetch failed for {symbol}: {e}")
+            
+            # 3. Taker Buy/Sell Ratio
+            try:
+                taker_resp = self.session.get(
+                    f"{base_url}/futures/data/takerlongshortRatio",
+                    params={"symbol": binance_symbol, "period": "5m", "limit": 1},
+                    timeout=3
+                )
+                if taker_resp.status_code == 200 and taker_resp.json():
+                    data = taker_resp.json()[0]
+                    buy_vol = float(data.get('buyVol', 1))
+                    sell_vol = float(data.get('sellVol', 1))
+                    total = buy_vol + sell_vol
+                    result['taker_buy_ratio'] = (buy_vol / total) * 100 if total > 0 else 50
+            except Exception as e:
+                logging.debug(f"[SENTIMENT] Taker fetch failed for {symbol}: {e}")
+            
+            # Calculate combined sentiment score (-100 to +100)
+            # OI increasing = conviction (neutral on direction)
+            # Top trader long > 55% = bullish bias
+            # Taker buy > 55% = immediate bullish pressure
+            
+            oi_factor = min(10, max(-10, result['oi_change_pct'] * 5))  # -10 to +10
+            top_factor = (result['top_trader_long_ratio'] - 50) * 1.5   # -75 to +75
+            taker_factor = (result['taker_buy_ratio'] - 50) * 1.0       # -50 to +50
+            
+            # Weight: Taker (immediate) > Top Trader (smart money) > OI (conviction)
+            sentiment = (taker_factor * 0.4) + (top_factor * 0.4) + (oi_factor * 0.2)
+            result['sentiment_score'] = max(-100, min(100, sentiment))
+            
+            # Determine signal
+            if result['sentiment_score'] > 20:
+                result['sentiment_signal'] = 'BULLISH'
+            elif result['sentiment_score'] < -20:
+                result['sentiment_signal'] = 'BEARISH'
+            else:
+                result['sentiment_signal'] = 'NEUTRAL'
+            
+            logging.debug(f"[SENTIMENT] {symbol}: OI={result['oi_change_pct']:.2f}%, "
+                        f"TopLong={result['top_trader_long_ratio']:.1f}%, "
+                        f"TakerBuy={result['taker_buy_ratio']:.1f}%, "
+                        f"Score={result['sentiment_score']:.0f} ({result['sentiment_signal']})")
+            
+        except Exception as e:
+            logging.warning(f"[SENTIMENT] Failed for {symbol}: {e}")
+        
+        return result
     
     def fetch_ohlcv_cached(self, symbol: str, timeframe: str, limit: int) -> Optional[List]:
         """
@@ -1246,6 +1358,28 @@ class MarketScreener:
                         result['order_imbalance'] = float(result.get('order_imbalance', 0))
                         if '5min_confirmed' in result:
                             result['5min_confirmed'] = bool(result['5min_confirmed'])
+
+                        # NEW: Market Sentiment (OI + Top Trader + Taker Volume)
+                        try:
+                            sentiment_data = self.fetch_market_sentiment(symbol)
+                            result['oi_change_pct'] = sentiment_data.get('oi_change_pct', 0)
+                            result['top_trader_long'] = sentiment_data.get('top_trader_long_ratio', 50)
+                            result['taker_buy_ratio'] = sentiment_data.get('taker_buy_ratio', 50)
+                            result['sentiment_score'] = sentiment_data.get('sentiment_score', 0)
+                            result['sentiment_signal'] = sentiment_data.get('sentiment_signal', 'NEUTRAL')
+                            
+                            # Boost score based on sentiment alignment
+                            sent_sig = result['sentiment_signal']
+                            sent_score = abs(result['sentiment_score'])
+                            
+                            if sent_sig != 'NEUTRAL' and sent_score > 30:
+                                sentiment_boost = min(20, int(sent_score / 5))
+                                result['score'] = float(result['score'] + sentiment_boost)
+                                logging.info(f"[SENTIMENT] {symbol}: {sent_sig} (score={result['sentiment_score']:.0f}) +{sentiment_boost}")
+                        except Exception as e:
+                            logging.debug(f"[SENTIMENT] Failed for {symbol}: {e}")
+                            result['sentiment_signal'] = 'NEUTRAL'
+                            result['sentiment_score'] = 0
 
                         # NEW v4.5: Compute suggested_direction (pre-hint for AI)
                         # Priority: Whale Signal > Momentum > RSI + Trend

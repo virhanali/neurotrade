@@ -742,7 +742,7 @@ class DeepLearner:
                 history = [dict(row._mapping) for row in result]
 
             if len(history) < 5:
-                return "AI MEMORY: Insufficient data for patterns (Exploration Phase). Trade conservatively."
+                return ""  # No message = AI not restricted
 
             # Calculate Stats
             total = len(history)

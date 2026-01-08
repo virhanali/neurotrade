@@ -1,38 +1,53 @@
 # 🧠 NeuroTrade AI - System Architecture "The Bible"
-**Last Updated:** 2026-01-08 (Session: AI Cost Optimization & Debug)
-**Version:** 5.4 (Cost Optimization + API Validation)
+**Last Updated:** 2026-01-09 (Session: Signal Sensitivity + Sentiment Analysis)
+**Version:** 5.5 (Signal Enhancement + Market Sentiment)
 
 ---
 
 ## 📌 CURRENT SESSION CONTEXT
 
-### 🔴 Active Issue (2026-01-08):
+### 🔴 Issue Solved (2026-01-09):
 **ISSUE:** Tidak ada signal selama 2 hari meskipun BTC drop ~4% (dari $93,825 ke $89,972)
 
-**ROOT CAUSE ANALYSIS:**
-1. `BTC_VOLATILITY_THRESHOLD` = 0.2% → Terlalu tinggi, slow gradual moves tidak terdeteksi
-2. `VISION_THRESHOLD` = 65% → Logic confidence harus tinggi sebelum Vision dipanggil
-3. Quality veto penalty >= 40 → Terlalu aggressive membunuh signals
-4. RSI extreme tidak di-consider untuk override
+**ROOT CAUSES FOUND:**
+1. `BTC_VOLATILITY_THRESHOLD` = 0.2% → Terlalu tinggi
+2. `VISION_THRESHOLD` = 65% → Logic harus tinggi dulu
+3. Quality veto >= 40 → Terlalu aggressive
+4. Learning context bilang "Trade conservatively" → AI takut
+5. ML boost butuh trained model → DB kosong = tidak aktif
+6. Low-score coins tetap hit DeepSeek API → Buang $5/jam
 
-**FIXES APPLIED:**
-1. ✅ BTC threshold: 0.2% → 0.1% + RSI extreme bypass (< 35 or > 65 = action time)
-2. ✅ Vision threshold: 65% → 55%
-3. ✅ Quality veto: 40 → 50 penalty required
-4. ✅ Agreement logic: 75% → 70% logic override + RSI extreme override (> 60% conf + extreme RSI)
+### ✅ ALL FIXES APPLIED:
 
-**Status:** Deployed. Monitor over next 24h for signal generation.
+**Signal Sensitivity:**
+- BTC threshold: 0.2% → 0.1% + RSI extreme bypass
+- Vision threshold: 65% → 55%
+- Quality veto: 40 → 50 penalty
+- Logic override: 75% → 70%
+- RSI extreme override: Logic > 60% + RSI < 30 or > 70
 
-### ✅ Completed Today:
-1. API Key validation before save (Settings)
-2. Block REAL mode without valid keys
-3. **Signal Sensitivity Fix:** Tuned thresholds to catch bigger market moves
-4. **RSI Extreme Override:** Allow signals when RSI is < 30 or > 70
+**Cost Optimization:**
+- Score < 40 → Skip DeepSeek call (save ~$5/jam)
+- Learning context "Trade conservatively" → Removed (empty string)
+
+**ML Improvements:**
+- ML boost tanpa trained requirement
+- Works with rule-based fallback
+
+**NEW: Market Sentiment Analysis (`fetch_market_sentiment`):**
+- Open Interest change tracking
+- Top Trader Long/Short ratio  
+- Taker Buy/Sell volume
+- Combined sentiment score (-100 to +100)
+- Sentiment boost for aligned signals
+
+### ⚠️ Pending Investigation:
+- Signal BTC LONG (Logic 85%, Vision 88%, ML 84%) tidak di-trade karena final confidence 69% < MIN_CONFIDENCE 75%
+- Consider: Turunkan MIN_CONFIDENCE ke 65% atau implement dynamic threshold
 
 ### 💬 Communication Rules:
 - Balas **singkat & jelas**
 - Update file ini jika ada **info penting**
-- Jangan repeat info yang sudah diketahui
 
 ---
 

@@ -727,13 +727,11 @@ Analyze for SCALPER entry (Mean Reversion / Ping-Pong / Predictive Alpha). Provi
                 agreement = True
                 logging.info(f"[AGREEMENT] RSI Extreme Override: RSI={rsi_value}")
 
-        # Scenario C: ML BOOST (New in v4.0)
-        # ONLY boost if ML is actually trained with real data
-        # If ML is very confident (>70% win prob), lower the logic threshold
-        elif logic_signal != "WAIT" and ml_is_trained and ml_win_prob > 0.7:
-            if logic_confidence > 65:
+        # Scenario C: ML BOOST - works with rule-based fallback too
+        elif logic_signal != "WAIT" and ml_win_prob > 0.65:
+            if logic_confidence > 60:
                 agreement = True
-                logging.info(f"[ML] Boosting trade - High ML confidence: {ml_win_prob:.0%}")
+                logging.info(f"[ML] Boosting trade - ML prob: {ml_win_prob:.0%}")
 
         # Scenario D: CONFLICT (Safety)
         # DeepSeek says LONG, Vision says BEARISH -> HARD REJECT.
