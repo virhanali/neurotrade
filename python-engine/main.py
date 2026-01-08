@@ -90,14 +90,17 @@ def is_primary_worker() -> bool:
         # Check if PID is still running
         try:
             os.kill(pid, 0)  # Signal 0 checks if process exists
+            logging.info(f"[LOCK] Lock held by PID {pid}, we're secondary (PID {os.getpid()})")
             return False  # Lock holder is alive, we're secondary
         except OSError:
             # Lock holder is dead, take over
+            logging.info(f"[LOCK] Stale lock from dead PID {pid}, taking over (PID {os.getpid()})")
             with open(STREAM_LOCK_FILE, 'w') as f:
                 f.write(str(os.getpid()))
             return True
-    except Exception:
-        return False  # On error, don't start streams
+    except Exception as e:
+        logging.error(f"[LOCK] Primary worker check failed: {e}, assuming primary")
+        return True  # On error, try to start streams anyway
 
 # WebSocket Callback Handler
 async def handle_order_update(order_data: Dict, api_key: str, api_secret: str):
@@ -140,10 +143,18 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     """Stop WebSocket price stream and whale detector on app shutdown"""
-    # Only primary worker stops streams
-    if not is_primary_worker():
-        return
+    # Check if we own the lock (are we the primary worker that started streams?)
+    try:
+        if os.path.exists(STREAM_LOCK_FILE):
+            with open(STREAM_LOCK_FILE, 'r') as f:
+                pid = int(f.read().strip())
+            if pid != os.getpid():
+                logging.info(f"[SHUTDOWN] We (PID {os.getpid()}) don't own lock (PID {pid}), skipping stream shutdown")
+                return
+    except Exception:
+        pass  # Continue with shutdown anyway
     
+    logging.info(f"[SHUTDOWN] Stopping streams (PID {os.getpid()})")
     await price_stream.stop()
     await ws_manager.stop()
     print("[WS] WebSocket streams stopped")
@@ -156,6 +167,7 @@ async def shutdown_event():
     # Remove lock file
     try:
         os.remove(STREAM_LOCK_FILE)
+        logging.info("[LOCK] Lock file removed")
     except Exception:
         pass
 
@@ -273,17 +285,34 @@ async def get_screener_summary():
 async def get_prices(symbols: Optional[str] = None):
     """
     Get real-time prices from WebSocket cache.
-    
-    Args:
-        symbols: Optional comma-separated list of symbols (e.g., "BTCUSDT,ETHUSDT")
-                 If not provided, returns all prices.
-    
-    Returns:
-        Dict with prices and metadata
+    Falls back to REST API if WebSocket is disconnected.
     """
+    prices = {}
+    source = "websocket"
+    
     if symbols:
         symbol_list = [s.strip().upper() for s in symbols.split(",")]
         prices = price_stream.get_prices(symbol_list)
+        
+        # FALLBACK: If WS is down or returns empty, use REST API
+        if not price_stream.is_connected or len(prices) == 0:
+            source = "rest_fallback"
+            try:
+                import ccxt
+                exchange = ccxt.binanceusdm({'enableRateLimit': True})
+                for sym in symbol_list:
+                    try:
+                        # Normalize symbol format: "0G/USDT" -> "0GUSDT" for fetching, then convert back
+                        ccxt_symbol = sym.replace("/", "")
+                        # Try to format as CCXT expects (e.g., "0G/USDT")
+                        formatted = f"{ccxt_symbol[:-4]}/{ccxt_symbol[-4:]}" if ccxt_symbol.endswith("USDT") else sym
+                        ticker = exchange.fetch_ticker(formatted)
+                        if ticker and ticker.get('last'):
+                            prices[sym] = ticker['last']
+                    except Exception as e:
+                        logging.warning(f"REST fallback failed for {sym}: {e}")
+            except Exception as e:
+                logging.error(f"REST fallback init failed: {e}")
     else:
         prices = price_stream.get_all_prices()
     
@@ -291,6 +320,7 @@ async def get_prices(symbols: Optional[str] = None):
         "prices": prices,
         "count": len(prices),
         "connected": price_stream.is_connected,
+        "source": source,
         "last_update": price_stream.last_update.isoformat() if price_stream.last_update else None,
     }
 

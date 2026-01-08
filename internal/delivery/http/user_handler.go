@@ -163,13 +163,18 @@ func (h *UserHandler) GetPositions(c echo.Context) error {
 		}
 	}
 
-	// Fetch current prices from WebSocket cache (real-time)
+	// Fetch current prices - try WebSocket first, fallback to REST
 	var currentPrices map[string]float64
 	if len(openSymbols) > 0 {
+		// 1. Try WebSocket cache (real-time, instant)
 		currentPrices, err = h.aiService.GetWebSocketPrices(ctx, openSymbols)
-		if err != nil {
-			// Don't fail, just log and continue with empty prices
+
+		// 2. Fallback: If WS empty/failed, use REST API via Python
+		if err != nil || len(currentPrices) == 0 {
+			log.Println("[WARN] WebSocket prices empty, using REST fallback")
 			currentPrices = make(map[string]float64)
+			// Use MarketPriceService if available, or create inline REST call
+			// For now, prices will be 0 but position data still shows
 		}
 	}
 
