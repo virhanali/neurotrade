@@ -717,7 +717,32 @@ Analyze for SCALPER entry (Mean Reversion / Ping-Pong / Predictive Alpha). Provi
         
         # Get RSI from metrics for extreme condition check
         rsi_value = metrics.get('rsi', 50) if metrics else 50
-        is_rsi_extreme = rsi_value < 30 or rsi_value > 70  # Extreme oversold/overbought
+        is_rsi_extreme = rsi_value < 30 or rsi_value > 70
+
+        # --- VISION SAFETY OVERRIDE ---
+        # Refine Vision Verdict based on strong keywords in the reasoning text
+        # This prevents cases where verdict is NEUTRAL but reasoning says "Avoid Shorting"
+        vision_reasoning = vision_result.get('analysis', '').upper()
+        has_strong_bull_keywords = any(k in vision_reasoning for k in ['ACCUMULATION', 'SPRING', 'SNIPER LONG', 'AVOID SHORT', 'PUMP IMMINENT'])
+        has_strong_bear_keywords = any(k in vision_reasoning for k in ['DISTRIBUTION', 'AVOID LONG', 'SNIPER SHORT', 'DUMP IMMINENT', 'UTAD'])
+
+        if has_strong_bull_keywords:
+            if vision_verdict == "NEUTRAL": 
+                logging.info("[VISION] Upgrading verdict to BULLISH based on strong keywords")
+                vision_verdict = "BULLISH"
+            if logic_signal == "SHORT":
+                logging.warning("[SAFETY] Vision detects ACCUMULATION/SPRING - Vetoing Logic SHORT signal!")
+                # Force disagreement
+                vision_verdict = "BULLISH"
+        
+        if has_strong_bear_keywords:
+            if vision_verdict == "NEUTRAL":
+                logging.info("[VISION] Upgrading verdict to BEARISH based on strong keywords")
+                vision_verdict = "BEARISH"
+            if logic_signal == "LONG":
+                logging.warning("[SAFETY] Vision detects DISTRIBUTION - Vetoing Logic LONG signal!")
+                vision_verdict = "BEARISH"
+
 
         # Scenario A: PERFECT AGREEMENT (Best Quality)
         if logic_signal == "LONG" and vision_verdict == "BULLISH":
