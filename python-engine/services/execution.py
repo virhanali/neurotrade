@@ -219,19 +219,20 @@ class BinanceExecutor:
                         logger.info(f"[EXEC] Placing SL (Algo): {symbol} {close_side} @ {sl_price_str}")
                         
                         params = {
-                            'symbol': symbol.replace('/', ''), # CCXT uses slashed, algoOrder needs raw
+                            'symbol': symbol.replace('/', ''),
                             'side': close_side.upper(),
                             'positionSide': 'BOTH',
                             'type': 'STOP_MARKET',
-                            'quantity': quantity, # Using original quantity to match format
+                            'quantity': quantity,
                             'reduceOnly': 'true',
                             'stopPrice': sl_price_str,
                             'workingType': 'MARK_PRICE',
-                            'algoType': 'CONDITIONAL' # Mandatory
+                            'algoType': 'CONDITIONAL'
                         }
                         
-                        # Use implicit method for fapiPrivatePostAlgoOrder
-                        algo_order_func = getattr(client, 'fapiPrivatePostAlgoOrder')
+                        # Use implicit method (snake_case for Python)
+                        # client.fapi_private_post_algo_order(params)
+                        algo_order_func = getattr(client, 'fapi_private_post_algo_order')
                         sl_order = await asyncio.to_thread(algo_order_func, params)
                         
                         sl_order_id = str(sl_order.get('algoId'))
@@ -257,7 +258,7 @@ class BinanceExecutor:
                             'algoType': 'CONDITIONAL'
                         }
                         
-                        algo_order_func = getattr(client, 'fapiPrivatePostAlgoOrder')
+                        algo_order_func = getattr(client, 'fapi_private_post_algo_order')
                         tp_order = await asyncio.to_thread(algo_order_func, params)
                         
                         tp_order_id = str(tp_order.get('algoId'))
@@ -265,7 +266,7 @@ class BinanceExecutor:
                     except Exception as e:
                         logger.error(f"[EXEC] Failed to place TP: {e}")
 
-                # Place TRAILING STOP (Alternative to fixed TP)
+                # Place TRAILING STOP
                 trailing_order_id = None
                 if trailing_callback and trailing_callback > 0:
                     try:
@@ -282,10 +283,10 @@ class BinanceExecutor:
                             'reduceOnly': 'true',
                             'callbackRate': callback_rate,
                             'algoType': 'CONDITIONAL',
-                            'activatePrice': str(avg_price) # Optional: avg_price as activation
+                            'activatePrice': str(avg_price)
                         }
                         
-                        algo_order_func = getattr(client, 'fapiPrivatePostAlgoOrder')
+                        algo_order_func = getattr(client, 'fapi_private_post_algo_order')
                         trailing_order = await asyncio.to_thread(algo_order_func, params)
                         
                         trailing_order_id = str(trailing_order.get('algoId'))
