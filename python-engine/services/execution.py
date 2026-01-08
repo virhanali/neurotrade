@@ -100,10 +100,10 @@ class BinanceExecutor:
         return math.floor(value * factor) / factor
 
     async def execute_entry(self, symbol: str, side: str, amount_usdt: float, leverage: int, 
-                          api_key: Optional[str] = None, api_secret: Optional[str] = None) -> Dict:
+                          api_key: Optional[str] = None, api_secret: Optional[str] = None,
+                          sl_price: Optional[float] = None, tp_price: Optional[float] = None) -> Dict:
         """
-        Execute a MARKET entry order.
-        Amount is in USDT (margin * leverage).
+        Execute a MARKET entry order, followed immediately by SL/TP orders (if provided).
         """
         client, is_temp = self._get_client(api_key, api_secret)
         
@@ -119,10 +119,8 @@ class BinanceExecutor:
 
             # Safety: Cap leverage to Binance maximum
             if leverage > 125:
-                # logger.warning(f"[EXEC] Leverage {leverage}x exceeds Binance max, capping at 125x")
                 leverage = 125
             elif leverage < 1:
-                # logger.warning(f"[EXEC] Leverage {leverage}x invalid, defaulting to 20x")
                 leverage = 20
 
             # Safety: Check minimum notional ($5)
@@ -137,10 +135,13 @@ class BinanceExecutor:
             order_side = side.upper()
             if order_side == 'LONG':
                 order_side = 'buy'
+                close_side = 'sell'
             elif order_side == 'SHORT':
                 order_side = 'sell'
+                close_side = 'buy'
             else:
                 order_side = side.lower() # Fallback
+                close_side = 'sell' if order_side == 'buy' else 'buy'
 
             # 4. Calculate quantity
             # Fetch ticker in thread
@@ -153,9 +154,10 @@ class BinanceExecutor:
 
             # 5. Apply Precision using CCXT built-in method
             # amount_to_precision returns a string, we need to pass float/string to create_order
-            # But for checking logic, we cast to float
             quantity_str = client.amount_to_precision(symbol, raw_quantity)
             quantity = float(quantity_str)
+            
+            price_precision = self.markets[symbol]['precision']['price']
 
             print(f"DEBUG_EXEC_CALC: {symbol} Price={current_price}, Notional=${notional_value}, RawQty={raw_quantity}, FinalQty={quantity}")
 
@@ -174,7 +176,7 @@ class BinanceExecutor:
                 # Ignore if leverage already set or not modified, but log it
                 print(f"DEBUG_EXEC_WARN: Set leverage failed/skipped: {e}")
 
-            # 7. Send Order (IN THREAD)
+            # 7. Send Entry Order (IN THREAD)
             order = await asyncio.to_thread(
                 client.create_order,
                 symbol,
@@ -182,18 +184,76 @@ class BinanceExecutor:
                 order_side,
                 quantity,
                 {
-                    'positionSide': 'BOTH'
+                    'positionSide': 'BOTH' # One-way mode compatible
                 }
             )
 
             logger.info(f"[EXEC] Order Filled! ID: {order['id']} @ {order['average']}")
+            
+            filled_qty = float(order['filled'])
+            avg_price = float(order['average'] or current_price)
+            
+            sl_order_id = None
+            tp_order_id = None
+            
+            # 8. Place SL/TP Orders (Strategy Orders)
+            if filled_qty > 0:
+                # Place STOP LOSS
+                if sl_price and sl_price > 0:
+                    try:
+                        sl_price_str = client.price_to_precision(symbol, sl_price)
+                        logger.info(f"[EXEC] Placing SL: {symbol} {close_side} @ {sl_price_str}")
+                        sl_order = await asyncio.to_thread(
+                            client.create_order,
+                            symbol,
+                            'STOP_MARKET',
+                            close_side,
+                            filled_qty, # Close exact filled amount
+                            None, # price is None for Market
+                            {
+                                'stopPrice': float(sl_price_str),
+                                'reduceOnly': True,
+                                'positionSide': 'BOTH',
+                                'workingType': 'MARK_PRICE' # Use Mark Price for safety
+                            }
+                        )
+                        sl_order_id = sl_order['id']
+                        logger.info(f"[EXEC] SL Placed: ID {sl_order_id}")
+                    except Exception as e:
+                        logger.error(f"[EXEC] Failed to place SL: {e}")
+
+                # Place TAKE PROFIT
+                if tp_price and tp_price > 0:
+                    try:
+                        tp_price_str = client.price_to_precision(symbol, tp_price)
+                        logger.info(f"[EXEC] Placing TP: {symbol} {close_side} @ {tp_price_str}")
+                        tp_order = await asyncio.to_thread(
+                            client.create_order,
+                            symbol,
+                            'TAKE_PROFIT_MARKET',
+                            close_side,
+                            filled_qty,
+                            None,
+                            {
+                                'stopPrice': float(tp_price_str),
+                                'reduceOnly': True,
+                                'positionSide': 'BOTH',
+                                'workingType': 'MARK_PRICE'
+                            }
+                        )
+                        tp_order_id = tp_order['id']
+                        logger.info(f"[EXEC] TP Placed: ID {tp_order_id}")
+                    except Exception as e:
+                        logger.error(f"[EXEC] Failed to place TP: {e}")
 
             return {
                 "status": "FILLED",
                 "orderId": order['id'],
-                "avgPrice": order['average'] or current_price,
-                "executedQty": order['filled'],
-                "commission": 0.0
+                "avgPrice": avg_price,
+                "executedQty": filled_qty,
+                "commission": 0.0,
+                "slOrderId": sl_order_id,
+                "tpOrderId": tp_order_id
             }
 
         except Exception as e:

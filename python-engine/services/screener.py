@@ -1411,10 +1411,10 @@ class MarketScreener:
                         # 2. Momentum direction (stronger than RSI alone)
                         elif momentum_direction == "PUMP" and momentum_confidence >= 60:
                             suggested_direction = "LONG"
-                            logging.info(f"[DIRECTION] {symbol}: LONG from MOMENTUM ({momentum_confidence}%)")
+                            logging.debug(f"[DIRECTION] {symbol}: LONG from MOMENTUM ({momentum_confidence}%)")
                         elif momentum_direction == "DUMP" and momentum_confidence >= 60:
                             suggested_direction = "SHORT"
-                            logging.info(f"[DIRECTION] {symbol}: SHORT from MOMENTUM ({momentum_confidence}%)")
+                            logging.debug(f"[DIRECTION] {symbol}: SHORT from MOMENTUM ({momentum_confidence}%)")
                         else:
                             # 3. Fallback to RSI + Trend confluence
                             rsi = result.get('rsi', 50)
@@ -1466,14 +1466,14 @@ class MarketScreener:
                                         score_penalty = 10  # Reduced from 25
                                         result['score'] = float(max(0, result['score'] - score_penalty))
                                         result['h1_override'] = 'EARLY_REVERSAL'
-                                        logging.info(f"[EARLY REVERSAL] {symbol}: {reversal_type} detected ({reversal_confidence}%) - "
+                                        logging.debug(f"[EARLY REVERSAL] {symbol}: {reversal_type} detected ({reversal_confidence}%) - "
                                                    f"Override 1H conflict with reduced penalty (-{score_penalty})")
                                     else:
                                         # Reversal detected but low confidence - standard penalty
                                         score_penalty = 18  # Slightly reduced from 25
                                         result['score'] = float(max(0, result['score'] - score_penalty))
                                         result['h1_conflict'] = True
-                                        logging.info(f"[1H] {symbol}: {suggested_direction} - early reversal phase, reduced penalty (-{score_penalty})")
+                                        logging.debug(f"[1H] {symbol}: {suggested_direction} - early reversal phase, reduced penalty (-{score_penalty})")
                                 else:
                                     # No override: Apply standard score penalty
                                     score_penalty = 25
@@ -1484,9 +1484,9 @@ class MarketScreener:
                                 # If score drops too low, downgrade direction
                                 if result['score'] < 30:
                                     suggested_direction = "NEUTRAL"
-                                    logging.info(f"[1H] {symbol}: Direction downgraded to NEUTRAL (score too low)")
+                                    logging.debug(f"[1H] {symbol}: Direction downgraded to NEUTRAL (score too low)")
                             else:
-                                logging.info(f"[1H] {symbol}: {suggested_direction} confirmed - {h1_reason}")
+                                logging.debug(f"[1H] {symbol}: {suggested_direction} confirmed - {h1_reason}")
                         else:
                             result['h1_confirmed'] = True
                             result['h1_reason'] = "No direction to confirm"
@@ -1495,7 +1495,7 @@ class MarketScreener:
                         result['suggested_direction'] = suggested_direction
                         
                         if suggested_direction != "NEUTRAL":
-                            logging.info(f"[DIRECTION] {symbol}: {suggested_direction} (whale={whale_sig_final}, rsi={result.get('rsi', 0):.1f}, trend={result.get('trend')}, h1={h1_confirmed})")
+                            logging.debug(f"[DIRECTION] {symbol}: {suggested_direction} (whale={whale_sig_final}, rsi={result.get('rsi', 0):.1f}, trend={result.get('trend')}, h1={h1_confirmed})")
 
                         return result
 

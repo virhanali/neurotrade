@@ -201,6 +201,8 @@ class ExecuteEntryRequest(BaseModel):
     leverage: int
     api_key: str
     api_secret: str
+    sl_price: Optional[float] = None
+    tp_price: Optional[float] = None
 
 class ExecuteCloseRequest(BaseModel):
     symbol: str
@@ -338,9 +340,9 @@ async def analyze_market(request: MarketAnalysisRequest):
         if btc_volatility_15m < BTC_VOLATILITY_THRESHOLD_15M and not btc_in_extreme:
             # Check if we have high-conviction candidates first
             if top_candidates and top_candidates[0].get('score', 0) > 60:
-                 logging.info(f"[BTC Sleepy] BTC Quiet ({btc_volatility_15m:.2f}%) but Top Alt Score {top_candidates[0]['score']} > 60. Proceeding.")
+                 logging.debug(f"[BTC Sleepy] BTC Quiet ({btc_volatility_15m:.2f}%) but Top Alt Score {top_candidates[0]['score']} > 60. Proceeding.")
             else:
-                logging.info(f"[BTC Sleepy] BTC Move {btc_volatility_15m:.2f}% < {BTC_VOLATILITY_THRESHOLD_15M}%, RSI={btc_rsi:.0f} - skipping")
+                logging.debug(f"[BTC Sleepy] BTC Move {btc_volatility_15m:.2f}% < {BTC_VOLATILITY_THRESHOLD_15M}%, RSI={btc_rsi:.0f} - skipping")
                 return MarketAnalysisResponse(
                     timestamp=datetime.utcnow(),
                     btc_context=btc_context,
@@ -350,7 +352,7 @@ async def analyze_market(request: MarketAnalysisRequest):
                 )
         
         if btc_volatility_15m < BTC_VOLATILITY_THRESHOLD_15M and btc_in_extreme:
-            logging.info(f"[BTC EXTREME] Low vol but RSI={btc_rsi:.0f} - proceeding")
+            logging.debug(f"[BTC EXTREME] Low vol but RSI={btc_rsi:.0f} - proceeding")
 
         # --- BTC SAFETY GUARD (NEW) ---
         # Prevent catching falling knives or shorting strong pumps
@@ -370,8 +372,7 @@ async def analyze_market(request: MarketAnalysisRequest):
         learning_ctx = ""
         if HAS_LEARNER and learner:
             learning_ctx = learner.get_learning_context()
-            if learning_ctx.strip():
-                print(f"[LEARNING] Context Injected: {learning_ctx.strip()}")
+            # Removed print statement for learning context to reduce noise
 
         # Semaphore to limit concurrent analyses (prevent API rate limits)
         semaphore = asyncio.Semaphore(2)
@@ -991,7 +992,9 @@ async def execute_entry(request: ExecuteEntryRequest):
         amount_usdt=request.amount_usdt,
         leverage=request.leverage,
         api_key=request.api_key,
-        api_secret=request.api_secret
+        api_secret=request.api_secret,
+        sl_price=request.sl_price,
+        tp_price=request.tp_price
     )
     
     if "error" in result:
