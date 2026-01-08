@@ -88,8 +88,8 @@ export function BrainHealthPanel() {
         );
     }
 
-    const samples = data?.data?.total_samples || 0;
-    const minSamples = 50;
+    const samples = data?.data?.samples || 0;
+    const minSamples = data?.data?.required_samples || 50;
     const progress = Math.min((samples / minSamples) * 100, 100);
     const isActive = samples >= minSamples;
 

@@ -61,11 +61,23 @@ func (h *UserHandler) GetMe(c echo.Context) error {
 			defer bgCancel()
 
 			realBal, err := h.aiService.GetRealBalance(bgCtx, u.BinanceAPIKey, u.BinanceAPISecret)
-			if err == nil {
-				// Update DB cache (async, fire-and-forget)
+			if err != nil {
+				log.Printf("[WARN] Background balance fetch failed for %s: %v", u.Username, err)
+				return
+			}
+
+			// SAFETY: Only update if we got a valid positive balance
+			// This prevents overwriting real data with 0 due to API errors
+			if realBal > 0 {
 				dbCtx, dbCancel := context.WithTimeout(context.Background(), 2*time.Second)
 				defer dbCancel()
-				_ = h.userRepo.UpdateRealBalance(dbCtx, u.ID, realBal)
+				if err := h.userRepo.UpdateRealBalance(dbCtx, u.ID, realBal); err != nil {
+					log.Printf("[WARN] Failed to update cached balance: %v", err)
+				} else {
+					log.Printf("[OK] Updated cached balance for %s: $%.2f", u.Username, realBal)
+				}
+			} else {
+				log.Printf("[WARN] Got zero balance from Binance for %s, skipping update", u.Username)
 			}
 		}(user)
 	}
@@ -197,13 +209,16 @@ func (h *UserHandler) GetPositions(c echo.Context) error {
 				} else { // SHORT
 					unrealizedPnl = (pos.EntryPrice - currentPrice) * pos.Size
 				}
-				// Calculate percentage
+				// Calculate percentage (with leverage, like Binance)
 				if pos.EntryPrice > 0 {
+					var rawPercent float64
 					if pos.Side == "LONG" {
-						unrealizedPnlPercent = ((currentPrice - pos.EntryPrice) / pos.EntryPrice) * 100
+						rawPercent = ((currentPrice - pos.EntryPrice) / pos.EntryPrice) * 100
 					} else {
-						unrealizedPnlPercent = ((pos.EntryPrice - currentPrice) / pos.EntryPrice) * 100
+						rawPercent = ((pos.EntryPrice - currentPrice) / pos.EntryPrice) * 100
 					}
+					// Apply leverage to match Binance's ROE display
+					unrealizedPnlPercent = rawPercent * pos.Leverage
 				}
 			}
 		}
