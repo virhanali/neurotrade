@@ -1029,14 +1029,13 @@ class MarketScreener:
                 raw_tickers = price_stream.get_all_tickers()
                 logging.info(f"[SCREENER] Using WebSocket data ({len(raw_tickers)} tickers)")
             else:
-                # FALLBACK: Use REST API when WebSocket is down
+                # FALLBACK: Use REST API when WebSocket is down (SYNC version)
                 logging.warning(f"[SCREENER] WebSocket down (tickers={ticker_count}, connected={price_stream.is_connected}), using REST fallback")
                 try:
                     source = "REST"
                     if not self.exchange.markets:
-                        await asyncio.to_thread(self.exchange.load_markets)
-                    rest_tickers = await asyncio.to_thread(self.exchange.fetch_tickers)
-                    raw_tickers = rest_tickers
+                        self.exchange.load_markets()
+                    raw_tickers = self.exchange.fetch_tickers()
                     logging.info(f"[SCREENER] Using REST data ({len(raw_tickers)} tickers)")
                 except Exception as e:
                     logging.error(f"[SCREENER-CRITICAL] REST fallback also failed: {e}")
