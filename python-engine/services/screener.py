@@ -1281,28 +1281,28 @@ class MarketScreener:
                         result['trend'] = major_trend
                         result['vol_ratio'] = float(vol_ratio)
                         result['vol_z_score'] = float(vol_z_score)
-                        result['is_squeeze'] = is_squeeze  # Already bool from above
+                        result['is_squeeze'] = bool(is_squeeze)  # Convert numpy.bool_ to Python bool
                         result['adx'] = float(adx_val)
                         result['atr_pct'] = float(atr_pct)
                         result['efficiency_ratio'] = float(efficiency_ratio)
                         
                         # Quality metrics
                         result['structure'] = structure_type
-                        result['structure_quality'] = structure_quality
-                        result['vol_sustained'] = vol_sustain.get('sustained', False)
-                        result['vol_strong_candles'] = vol_sustain.get('strong_candles', 0)
-                        result['sr_distance_pct'] = sr_check.get('distance_pct', 999)
-                        result['sr_near'] = sr_check.get('near_sr', False)
+                        result['structure_quality'] = int(structure_quality)
+                        result['vol_sustained'] = bool(vol_sustain.get('sustained', False))
+                        result['vol_strong_candles'] = int(vol_sustain.get('strong_candles', 0))
+                        result['sr_distance_pct'] = float(sr_check.get('distance_pct', 999))
+                        result['sr_near'] = bool(sr_check.get('near_sr', False))
                         result['sr_level_type'] = sr_check.get('level_type', None)
                         
                         # Momentum data
                         result['momentum_direction'] = momentum_direction
-                        result['momentum_confidence'] = momentum_confidence
+                        result['momentum_confidence'] = float(momentum_confidence)
                         result['momentum_factors'] = momentum_data.get('factors', [])[:5]  # Top 5 factors
-                        result['roc_3'] = momentum_data.get('roc_3', 0)
-                        result['roc_5'] = momentum_data.get('roc_5', 0)
-                        result['ema_bullish'] = momentum_data.get('ema_bullish', False)
-                        result['rsi_slope'] = momentum_data.get('rsi_slope', 0)
+                        result['roc_3'] = float(momentum_data.get('roc_3', 0))
+                        result['roc_5'] = float(momentum_data.get('roc_5', 0))
+                        result['ema_bullish'] = bool(momentum_data.get('ema_bullish', False))
+                        result['rsi_slope'] = float(momentum_data.get('rsi_slope', 0))
 
                         # Whale detection
                         # Get whale signal for this candidate
