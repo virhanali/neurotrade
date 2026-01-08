@@ -45,8 +45,8 @@ export const LandingPage = () => {
                     </h1>
 
                     <p className="text-lg lg:text-xl text-slate-400 max-w-2xl mx-auto mb-10 leading-relaxed">
-                        Stop gambling. Start scalping with an institutional-grade hybrid AI engine.
-                        Combining <span className="text-white font-medium">DeepSeek Logic</span>, <span className="text-white font-medium">Computer Vision</span>, and real-time <span className="text-white font-medium">Whale Liquidations</span>.
+                        Stop gambling. Start winning with <span className="text-white font-medium">Duo AI</span>.
+                        The first trading engine fusing <span className="text-white font-medium">DeepSeek's</span> ruthless logic with <span className="text-white font-medium">Google Gemini's</span> visual precision. It sees what others miss.
                     </p>
 
                     <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
@@ -56,7 +56,7 @@ export const LandingPage = () => {
                         </Link>
                         <a href="#how-it-works" className="w-full sm:w-auto px-8 py-4 rounded-xl bg-slate-800/50 border border-slate-700 text-white font-semibold hover:bg-slate-800 transition-all flex items-center justify-center gap-2 backdrop-blur-sm">
                             <i className="ri-play-circle-line text-xl"></i>
-                            See Logic in Action
+                            See Duo AI in Action
                         </a>
                     </div>
 
@@ -67,8 +67,8 @@ export const LandingPage = () => {
                             <p className="text-slate-500 text-sm mt-1">Scan Cycle Speed</p>
                         </div>
                         <div>
-                            <h3 className="text-3xl font-bold text-white">235B</h3>
-                            <p className="text-slate-500 text-sm mt-1">Model Parameters</p>
+                            <h3 className="text-3xl font-bold text-white">Duo AI</h3>
+                            <p className="text-slate-500 text-sm mt-1">DeepSeek + Gemini</p>
                         </div>
                         <div>
                             <h3 className="text-3xl font-bold text-white">6+</h3>
@@ -87,7 +87,7 @@ export const LandingPage = () => {
                 <div className="max-w-7xl mx-auto px-6">
                     <div className="text-center mb-16">
                         <h2 className="text-3xl lg:text-4xl font-bold text-white mb-4">Why Retail Traders Fail (And You Won't)</h2>
-                        <p className="text-slate-400 max-w-2xl mx-auto">Most bots just use RSI. We allow an actual AI intelligence to "see" the chart and "reason" about market structure.</p>
+                        <p className="text-slate-400 max-w-2xl mx-auto">Most bots just rely on simple indicators. NeuroTrade is different—it actually "thinks" and "sees" the market like a pro.</p>
                     </div>
 
                     <div className="grid md:grid-cols-3 gap-8">
@@ -96,9 +96,9 @@ export const LandingPage = () => {
                             <div className="w-14 h-14 rounded-lg bg-blue-500/10 flex items-center justify-center mb-6 group-hover:bg-blue-500/20 transition-colors">
                                 <i className="ri-brain-line text-blue-400 text-2xl"></i>
                             </div>
-                            <h3 className="text-xl font-bold text-white mb-3">Hybrid AI Intelligence</h3>
+                            <h3 className="text-xl font-bold text-white mb-3">Duo AI Intelligence</h3>
                             <p className="text-slate-400 leading-relaxed text-sm">
-                                Combining <strong>DeepSeek V3</strong> for logical reasoning and <strong>Qwen3 Vision</strong> to chart patterns like a pro trader. Identifies Falling Knives vs. True Reversals.
+                                We don't rely on just one brain. Experience the synergy of <strong>DeepSeek</strong> (Logic) and <strong>Google Gemini</strong> (Vision). It analyzes patterns, validates setups, and filters out noise 1000x faster than a human.
                             </p>
                         </div>
 

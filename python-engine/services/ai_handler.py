@@ -476,9 +476,9 @@ Analyze for SCALPER entry (Mean Reversion / Ping-Pong / Predictive Alpha). Provi
             prompt = get_vision_prompt()
 
             # Call OpenRouter Vision API
-            # Using Qwen 3 VL 235B - Most powerful open-source vision model
+            # Using Gemini 2.0 Flash Lite - Fast & Efficient Multimodal Model
             response = self.vision_client.chat.completions.create(
-                model="qwen/qwen3-vl-235b-a22b-instruct",  # 235B parameter vision model
+                model="google/gemini-2.0-flash-lite-preview-02-05",  # Gemini 2.0 Flash Lite
                 messages=[
                     {
                         "role": "user",
