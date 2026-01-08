@@ -7,18 +7,22 @@ type ToggleModeRequest struct {
 
 // PositionOutput represents a position in API responses
 type PositionOutput struct {
-	ID         string   `json:"id"`
-	Symbol     string   `json:"symbol"`
-	Side       string   `json:"side"`
-	EntryPrice float64  `json:"entry_price"`
-	SLPrice    float64  `json:"sl_price"`
-	TPPrice    float64  `json:"tp_price"`
-	Size       float64  `json:"size"`
-	ExitPrice  *float64 `json:"exit_price,omitempty"`
-	PnL        *float64 `json:"pnl,omitempty"`
-	Status     string   `json:"status"`
-	CreatedAt  string   `json:"created_at"`
-	ClosedAt   *string  `json:"closed_at,omitempty"`
+	ID                   string   `json:"id"`
+	Symbol               string   `json:"symbol"`
+	Side                 string   `json:"side"`
+	EntryPrice           float64  `json:"entryPrice"`
+	SLPrice              float64  `json:"slPrice"`
+	TPPrice              float64  `json:"tpPrice"`
+	Size                 float64  `json:"size"`
+	ExitPrice            *float64 `json:"exitPrice,omitempty"`
+	PnL                  *float64 `json:"pnl,omitempty"`
+	Status               string   `json:"status"`
+	CreatedAt            string   `json:"createdAt"`
+	ClosedAt             *string  `json:"closedAt,omitempty"`
+	Leverage             float64  `json:"leverage"`
+	CurrentPrice         float64  `json:"currentPrice,omitempty"`
+	UnrealizedPnl        float64  `json:"unrealizedPnl,omitempty"`
+	UnrealizedPnlPercent float64  `json:"unrealizedPnlPercent,omitempty"`
 }
 
 // UserOutput represents user details in API responses

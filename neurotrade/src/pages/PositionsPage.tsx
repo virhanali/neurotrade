@@ -109,7 +109,7 @@ function PositionRow({ position }: { position: any }) {
                     {formatCurrency(position.currentPrice, 4)}
                 </td>
                 <td className="px-6 py-4 text-slate-500">
-                    {formatCurrency(position.margin)} margin
+                    {position.size?.toFixed(4)} qty
                 </td>
                 <td className="px-6 py-4">
                     <div className={cn('font-bold', getPnlColor(position.unrealizedPnl))}>
@@ -120,8 +120,8 @@ function PositionRow({ position }: { position: any }) {
                     </div>
                 </td>
                 <td className="px-6 py-4 text-sm">
-                    <div className="text-emerald-500">TP: {position.takeProfit ? formatCurrency(position.takeProfit, 4) : '-'}</div>
-                    <div className="text-rose-500">SL: {position.stopLoss ? formatCurrency(position.stopLoss, 4) : '-'}</div>
+                    <div className="text-emerald-500">TP: {position.tpPrice ? formatCurrency(position.tpPrice, 4) : '-'}</div>
+                    <div className="text-rose-500">SL: {position.slPrice ? formatCurrency(position.slPrice, 4) : '-'}</div>
                 </td>
                 <td className="px-6 py-4 text-right">
                     <button

@@ -53,9 +53,22 @@ func (h *UserHandler) GetMe(c echo.Context) error {
 		return InternalServerErrorResponse(c, "Failed to get user details", err)
 	}
 
-	// Optimization: Do NOT fetch real balance here (Blocking).
-	// Trust the WebSocket / Background Worker to update user.RealBalanceCache.
-	// This makes /api/user/me instant (ms) instead of waiting for Binance API (sec).
+	// Optimization: Return cached balance immediately (instant).
+	// Trigger background refresh for REAL mode users to keep cache fresh.
+	if user.Mode == domain.ModeReal && user.BinanceAPIKey != "" {
+		go func(u *domain.User) {
+			bgCtx, bgCancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer bgCancel()
+
+			realBal, err := h.aiService.GetRealBalance(bgCtx, u.BinanceAPIKey, u.BinanceAPISecret)
+			if err == nil {
+				// Update DB cache (async, fire-and-forget)
+				dbCtx, dbCancel := context.WithTimeout(context.Background(), 2*time.Second)
+				defer dbCancel()
+				_ = h.userRepo.UpdateRealBalance(dbCtx, u.ID, realBal)
+			}
+		}(user)
+	}
 
 	maskedKey := ""
 	if len(user.BinanceAPIKey) > 4 {
@@ -142,7 +155,25 @@ func (h *UserHandler) GetPositions(c echo.Context) error {
 		return InternalServerErrorResponse(c, "Failed to get positions", err)
 	}
 
-	// Convert to output format
+	// Collect symbols for OPEN positions to fetch current prices
+	openSymbols := make([]string, 0)
+	for _, pos := range positions {
+		if pos.Status == domain.StatusOpen {
+			openSymbols = append(openSymbols, pos.Symbol)
+		}
+	}
+
+	// Fetch current prices from WebSocket cache (real-time)
+	var currentPrices map[string]float64
+	if len(openSymbols) > 0 {
+		currentPrices, err = h.aiService.GetWebSocketPrices(ctx, openSymbols)
+		if err != nil {
+			// Don't fail, just log and continue with empty prices
+			currentPrices = make(map[string]float64)
+		}
+	}
+
+	// Convert to output format with enriched real-time data
 	output := make([]dto.PositionOutput, 0, len(positions))
 	for _, pos := range positions {
 		closedAt := ""
@@ -150,19 +181,45 @@ func (h *UserHandler) GetPositions(c echo.Context) error {
 			closedAt = pos.ClosedAt.Format(time.RFC3339)
 		}
 
+		// Calculate unrealized PnL for OPEN positions
+		var currentPrice, unrealizedPnl, unrealizedPnlPercent float64
+		if pos.Status == domain.StatusOpen {
+			if price, ok := currentPrices[pos.Symbol]; ok && price > 0 {
+				currentPrice = price
+				// Calculate PnL based on side
+				if pos.Side == "LONG" {
+					unrealizedPnl = (currentPrice - pos.EntryPrice) * pos.Size
+				} else { // SHORT
+					unrealizedPnl = (pos.EntryPrice - currentPrice) * pos.Size
+				}
+				// Calculate percentage
+				if pos.EntryPrice > 0 {
+					if pos.Side == "LONG" {
+						unrealizedPnlPercent = ((currentPrice - pos.EntryPrice) / pos.EntryPrice) * 100
+					} else {
+						unrealizedPnlPercent = ((pos.EntryPrice - currentPrice) / pos.EntryPrice) * 100
+					}
+				}
+			}
+		}
+
 		output = append(output, dto.PositionOutput{
-			ID:         pos.ID.String(),
-			Symbol:     pos.Symbol,
-			Side:       pos.Side,
-			EntryPrice: pos.EntryPrice,
-			SLPrice:    pos.SLPrice,
-			TPPrice:    pos.TPPrice,
-			Size:       pos.Size,
-			ExitPrice:  pos.ExitPrice,
-			PnL:        pos.PnL,
-			Status:     pos.Status,
-			CreatedAt:  pos.CreatedAt.Format(time.RFC3339),
-			ClosedAt:   &closedAt,
+			ID:                   pos.ID.String(),
+			Symbol:               pos.Symbol,
+			Side:                 pos.Side,
+			EntryPrice:           pos.EntryPrice,
+			SLPrice:              pos.SLPrice,
+			TPPrice:              pos.TPPrice,
+			Size:                 pos.Size,
+			ExitPrice:            pos.ExitPrice,
+			PnL:                  pos.PnL,
+			Status:               pos.Status,
+			CreatedAt:            pos.CreatedAt.Format(time.RFC3339),
+			ClosedAt:             &closedAt,
+			Leverage:             pos.Leverage,
+			CurrentPrice:         currentPrice,
+			UnrealizedPnl:        unrealizedPnl,
+			UnrealizedPnlPercent: unrealizedPnlPercent,
 		})
 	}
 

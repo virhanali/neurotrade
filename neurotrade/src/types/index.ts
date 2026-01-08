@@ -21,17 +21,17 @@ export interface Position {
     side: 'LONG' | 'SHORT';
     entryPrice: number;
     currentPrice: number;
-    quantity: number;
-    margin: number;
+    size: number;
+    slPrice: number;
+    tpPrice: number;
     leverage: number;
     unrealizedPnl: number;
     unrealizedPnlPercent: number;
-    takeProfit: number | null;
-    stopLoss: number | null;
-    status: 'PENDING' | 'PENDING_APPROVAL' | 'OPEN' | 'CLOSED';
-    mode: 'PAPER' | 'REAL';
+    pnl?: number;
+    exitPrice?: number;
+    status: 'PENDING' | 'PENDING_APPROVAL' | 'OPEN' | 'CLOSED_WIN' | 'CLOSED_LOSS' | 'CLOSED_MANUAL';
     createdAt: string;
-    closedAt: string | null;
+    closedAt?: string;
 }
 
 // Trade History

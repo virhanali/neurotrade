@@ -457,6 +457,14 @@ func (ts *TradingService) createPositionForUser(ctx context.Context, user *domai
 		CreatedAt:  time.Now(),
 	}
 
+	// VALIDATION: Ensure critical fields are valid before saving
+	if position.EntryPrice <= 0 {
+		return fmt.Errorf("cannot save position: invalid EntryPrice (%.4f)", position.EntryPrice)
+	}
+	if position.Size <= 0 {
+		return fmt.Errorf("cannot save position: invalid Size (%.6f)", position.Size)
+	}
+
 	// Save position to database
 	if err := ts.positionRepo.Save(ctx, position); err != nil {
 		return fmt.Errorf("failed to save paper position: %w", err)
