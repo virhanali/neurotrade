@@ -347,6 +347,19 @@ async def analyze_market(request: MarketAnalysisRequest):
         if btc_volatility_15m < BTC_VOLATILITY_THRESHOLD_15M and btc_in_extreme:
             logging.info(f"[BTC EXTREME] Low vol but RSI={btc_rsi:.0f} - proceeding")
 
+        # --- BTC SAFETY GUARD (NEW) ---
+        # Prevent catching falling knives or shorting strong pumps
+        # If BTC dumps > 1.5% in 1H, block LONGs. If pumps > 1.5%, block SHORTs.
+        btc_change_1h = btc_context.get('pct_change_1h', 0)
+        force_direction = None
+        
+        if btc_change_1h < -1.5:
+             logging.warning(f"[BTC CRASH] BTC dumping {btc_change_1h:.2f}% (1h). BLOCKING all LONGs.")
+             force_direction = "SHORT_ONLY"
+        elif btc_change_1h > 1.5:
+             logging.warning(f"[BTC PUMP] BTC pumping +{btc_change_1h:.2f}% (1h). BLOCKING all SHORTs.")
+             force_direction = "LONG_ONLY"
+
         # Run all symbol analyses in parallel
         # NEW: Get Learning Context (Global Wisdom)
         learning_ctx = ""
@@ -403,6 +416,14 @@ async def analyze_market(request: MarketAnalysisRequest):
                     # Step 2: Check if Logic warrants Vision analysis
                     logic_signal = logic_result.get('signal', 'WAIT')
                     logic_confidence = logic_result.get('confidence', 0)
+
+                    # --- BTC GUARD CHECK ---
+                    if force_direction == "SHORT_ONLY" and logic_signal == "LONG":
+                         logging.info(f"[SAFETY] Blocked LONG on {symbol} due to BTC Crash (-1.5% 1h)")
+                         return None
+                    if force_direction == "LONG_ONLY" and logic_signal == "SHORT":
+                         logging.info(f"[SAFETY] Blocked SHORT on {symbol} due to BTC Pump (+1.5% 1h)")
+                         return None
                     
                     # Skip Vision if Logic already says WAIT or low confidence
                     # UPDATED: Lowered from 65 to 55 to allow more signals through

@@ -478,7 +478,7 @@ Analyze for SCALPER entry (Mean Reversion / Ping-Pong / Predictive Alpha). Provi
             # Call OpenRouter Vision API
             # Using Gemini 2.0 Flash Lite - Fast & Efficient Multimodal Model
             response = self.vision_client.chat.completions.create(
-                model="google/gemini-2.0-flash-lite-preview-02-05",  # Gemini 2.0 Flash Lite
+                model="google/gemini-2.5-flash-lite",  # Gemini 2.0 Flash Lite
                 messages=[
                     {
                         "role": "user",
@@ -751,13 +751,14 @@ Analyze for SCALPER entry (Mean Reversion / Ping-Pong / Predictive Alpha). Provi
             agreement = True
 
         # Scenario X: RSI SUPER EXTREME (Override Vision Veto)
-        # If RSI is extremely overextended (>85 or <15), Mean Reversion probability is very high
+        # If RSI is extremely overextended (>80 or <20), Mean Reversion probability is very high
         # We allow Logic to override Vision's safe/long-term bias in these rare scalping cases.
-        elif logic_signal == "SHORT" and rsi_value > 85:
-            logging.warning(f"[OVERRIDE] RSI SUPER EXTREME ({rsi_value:.1f}) > 85 - Taking SHORT despite Vision")
+        # UPDATED: Lowered to 80/20 based on TAO winning trade (RSI 83)
+        elif logic_signal == "SHORT" and rsi_value > 80:
+            logging.warning(f"[OVERRIDE] RSI SUPER EXTREME ({rsi_value:.1f}) > 80 - Taking SHORT despite Vision")
             agreement = True
-        elif logic_signal == "LONG" and rsi_value < 15:
-            logging.warning(f"[OVERRIDE] RSI SUPER EXTREME ({rsi_value:.1f}) < 15 - Taking LONG despite Vision")
+        elif logic_signal == "LONG" and rsi_value < 20:
+            logging.warning(f"[OVERRIDE] RSI SUPER EXTREME ({rsi_value:.1f}) < 20 - Taking LONG despite Vision")
             agreement = True
 
         # Scenario B: LOGIC OVERRIDE
