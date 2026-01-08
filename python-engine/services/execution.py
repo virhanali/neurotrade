@@ -108,23 +108,26 @@ class BinanceExecutor:
         client, is_temp = self._get_client(api_key, api_secret)
         
         if not client:
+            print("DEBUG_EXEC_ERROR: Binance client not initialized (No Keys provided)")
             return {"error": "Binance client not initialized (No Keys)"}
 
         try:
             # 1. Safety: Validate parameters
             if amount_usdt <= 0:
+                print(f"DEBUG_EXEC_ERROR: Invalid amount USDT: {amount_usdt}")
                 return {"error": "Invalid amount USDT"}
 
             # Safety: Cap leverage to Binance maximum
             if leverage > 125:
-                logger.warning(f"[EXEC] Leverage {leverage}x exceeds Binance max, capping at 125x")
+                # logger.warning(f"[EXEC] Leverage {leverage}x exceeds Binance max, capping at 125x")
                 leverage = 125
             elif leverage < 1:
-                logger.warning(f"[EXEC] Leverage {leverage}x invalid, defaulting to 20x")
+                # logger.warning(f"[EXEC] Leverage {leverage}x invalid, defaulting to 20x")
                 leverage = 20
 
             # Safety: Check minimum notional ($5)
             if amount_usdt < 5.0:
+                print(f"DEBUG_EXEC_ERROR: Order value ${amount_usdt} below minimum")
                 return {"error": f"Order value ${amount_usdt:.2f} below Binance minimum ($5). Please increase margin."}
 
             # 2. Ensure market rules loaded
@@ -148,23 +151,28 @@ class BinanceExecutor:
             notional_value = amount_usdt
             raw_quantity = notional_value / current_price
 
-            # 5. Apply Precision
-            qty_precision, price_precision = self._get_precision(symbol)
-            quantity = self._round_down(raw_quantity, qty_precision)
+            # 5. Apply Precision using CCXT built-in method
+            # amount_to_precision returns a string, we need to pass float/string to create_order
+            # But for checking logic, we cast to float
+            quantity_str = client.amount_to_precision(symbol, raw_quantity)
+            quantity = float(quantity_str)
+
+            print(f"DEBUG_EXEC_CALC: {symbol} Price={current_price}, Notional=${notional_value}, RawQty={raw_quantity}, FinalQty={quantity}")
 
             # Double-check Min Notional after precision rounding
             actual_notional = quantity * current_price
             if actual_notional < 5.0:
-                logger.warning(f"[EXEC] Order value ${actual_notional:.2f} below $5 after rounding, rejecting")
-                return {"error": f"Order value ${actual_notional:.2f} below Binance minimum ($5) after precision rounding"}
+                print(f"DEBUG_EXEC_ERROR: Actual notional ${actual_notional} too low after rounding")
+                return {"error": f"Order value ${actual_notional:.2f} below Binance minimum ($5) after precision rounding (Qty: {quantity})"}
 
-            logger.info(f"[EXEC] Placing Order: {side} ({order_side}) {symbol} | Notional: ${notional_value:.2f} | Leverage: {leverage}x | Margin: ${amount_usdt/leverage:.2f} | Qty: {quantity}")
+            logger.info(f"[EXEC] Placing Order: {side} ({order_side}) {symbol} | Notional: ${notional_value:.2f} | Leverage: {leverage}x | Qty: {quantity}")
 
             # 6. Set Leverage First
             try:
                 await asyncio.to_thread(client.set_leverage, leverage, symbol)
             except Exception as e:
-                logger.warning(f"[EXEC] Leverage set failed (might be already set): {e}")
+                # Ignore if leverage already set or not modified, but log it
+                print(f"DEBUG_EXEC_WARN: Set leverage failed/skipped: {e}")
 
             # 7. Send Order (IN THREAD)
             order = await asyncio.to_thread(
@@ -190,6 +198,7 @@ class BinanceExecutor:
 
         except Exception as e:
             logger.error(f"[EXEC] Order Failed: {e}")
+            print(f"DEBUG_EXEC_ERROR: {e}")  # FORCE LOG
             return {"error": str(e)}
         finally:
             if is_temp and client:
