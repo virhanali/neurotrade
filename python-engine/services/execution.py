@@ -209,33 +209,29 @@ class BinanceExecutor:
             sl_order_id = None
             tp_order_id = None
             
-            # 8. Place SL/TP Orders (Strategy Orders) using Algo Endpoint
-            # Fixes -4120 error by using correct /fapi/v1/algoOrder endpoint
+            # 8. Place SL/TP Orders (Strategy Orders) using Standard Endpoint
+            # Uses /fapi/v1/order via client.create_order
             if filled_qty > 0:
                 # Place STOP LOSS
                 if sl_price and sl_price > 0:
                     try:
                         sl_price_str = client.price_to_precision(symbol, sl_price)
-                        logger.info(f"[EXEC] Placing SL (Algo): {symbol} {close_side} @ {sl_price_str}")
+                        logger.info(f"[EXEC] Placing SL: {symbol} {close_side} @ {sl_price_str}")
                         
-                        params = {
-                            'symbol': symbol.replace('/', ''),
-                            'side': close_side.upper(),
-                            'positionSide': 'BOTH',
-                            'type': 'STOP_MARKET',
-                            'quantity': quantity,
-                            'reduceOnly': 'true',
-                            'stopPrice': sl_price_str,
-                            'workingType': 'MARK_PRICE',
-                            'algoType': 'CONDITIONAL'
-                        }
-                        
-                        # Use implicit method (snake_case for Python)
-                        # client.fapi_private_post_algo_order(params)
-                        algo_order_func = getattr(client, 'fapi_private_post_algo_order')
-                        sl_order = await asyncio.to_thread(algo_order_func, params)
-                        
-                        sl_order_id = str(sl_order.get('algoId'))
+                        sl_order = await asyncio.to_thread(
+                            client.create_order,
+                            symbol,
+                            'STOP_MARKET',
+                            close_side,
+                            quantity,
+                            None,
+                            {
+                                'stopPrice': float(sl_price_str),
+                                'reduceOnly': True,
+                                'workingType': 'MARK_PRICE'
+                            }
+                        )
+                        sl_order_id = str(sl_order.get('id'))
                         logger.info(f"[EXEC] SL Placed: ID {sl_order_id}")
                     except Exception as e:
                         logger.error(f"[EXEC] Failed to place SL: {e}")
@@ -244,55 +240,27 @@ class BinanceExecutor:
                 if tp_price and tp_price > 0:
                     try:
                         tp_price_str = client.price_to_precision(symbol, tp_price)
-                        logger.info(f"[EXEC] Placing TP (Algo): {symbol} {close_side} @ {tp_price_str}")
+                        logger.info(f"[EXEC] Placing TP: {symbol} {close_side} @ {tp_price_str}")
                         
-                        params = {
-                            'symbol': symbol.replace('/', ''),
-                            'side': close_side.upper(),
-                            'positionSide': 'BOTH',
-                            'type': 'TAKE_PROFIT_MARKET',
-                            'quantity': quantity,
-                            'reduceOnly': 'true',
-                            'stopPrice': tp_price_str,
-                            'workingType': 'MARK_PRICE',
-                            'algoType': 'CONDITIONAL'
-                        }
-                        
-                        algo_order_func = getattr(client, 'fapi_private_post_algo_order')
-                        tp_order = await asyncio.to_thread(algo_order_func, params)
-                        
-                        tp_order_id = str(tp_order.get('algoId'))
+                        tp_order = await asyncio.to_thread(
+                            client.create_order,
+                            symbol,
+                            'TAKE_PROFIT_MARKET',
+                            close_side,
+                            quantity,
+                            None,
+                            {
+                                'stopPrice': float(tp_price_str),
+                                'reduceOnly': True,
+                                'workingType': 'MARK_PRICE'
+                            }
+                        )
+                        tp_order_id = str(tp_order.get('id'))
                         logger.info(f"[EXEC] TP Placed: ID {tp_order_id}")
                     except Exception as e:
                         logger.error(f"[EXEC] Failed to place TP: {e}")
-
-                # Place TRAILING STOP
-                trailing_order_id = None
-                if trailing_callback and trailing_callback > 0:
-                    try:
-                        # Clamp callback rate to Binance limits (0.1% - 5%)
-                        callback_rate = max(0.1, min(5.0, trailing_callback))
-                        logger.info(f"[EXEC] Placing Trailing Stop (Algo): {symbol} {close_side} | Callback: {callback_rate}%")
-                        
-                        params = {
-                            'symbol': symbol.replace('/', ''),
-                            'side': close_side.upper(),
-                            'positionSide': 'BOTH',
-                            'type': 'TRAILING_STOP_MARKET',
-                            'quantity': quantity,
-                            'reduceOnly': 'true',
-                            'callbackRate': callback_rate,
-                            'algoType': 'CONDITIONAL',
-                            'activatePrice': str(avg_price)
-                        }
-                        
-                        algo_order_func = getattr(client, 'fapi_private_post_algo_order')
-                        trailing_order = await asyncio.to_thread(algo_order_func, params)
-                        
-                        trailing_order_id = str(trailing_order.get('algoId'))
-                        logger.info(f"[EXEC] Trailing Stop Placed: ID {trailing_order_id}")
-                    except Exception as e:
-                        logger.error(f"[EXEC] Failed to place Trailing Stop: {e}")
+                
+                # TRAILING STOP REMOVED as requested (caused endpoint issues)
 
             # 9. Return Success
             return {
