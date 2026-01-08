@@ -38,12 +38,26 @@
 - Open Interest change tracking
 - Top Trader Long/Short ratio  
 - Taker Buy/Sell volume
+- **Funding Rate tracking** (contrarian signal)
 - Combined sentiment score (-100 to +100)
 - Sentiment boost for aligned signals
 
-### ⚠️ Pending Investigation:
-- Signal BTC LONG (Logic 85%, Vision 88%, ML 84%) tidak di-trade karena final confidence 69% < MIN_CONFIDENCE 75%
-- Consider: Turunkan MIN_CONFIDENCE ke 65% atau implement dynamic threshold
+**NEW: Funding Rate Filter:**
+- HIGH funding (>0.05%) + LONG = penalty +15 (expect dump)
+- NEGATIVE funding (<-0.05%) + SHORT = penalty +15 (expect pump)
+
+**NEW: Dynamic Threshold:**
+| Tier | Condition | Threshold |
+|------|-----------|-----------|
+| 1 | Whale + Vision agree | 60% |
+| 2 | Vision agree only | 65% |
+| 2b | Whale only | 68% |
+| 3 | Logic only | 75% (default) |
+
+### ✅ Session Complete!
+Signal BTC LONG yang tadi (confidence 69%) sekarang akan di-trade karena:
+- Whale PUMP + Vision BULLISH = Tier 1 = threshold 60%
+- 69% >= 60% = **EXECUTE**
 
 ### 💬 Communication Rules:
 - Balas **singkat & jelas**

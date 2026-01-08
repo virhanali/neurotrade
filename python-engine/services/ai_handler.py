@@ -25,10 +25,7 @@ except ImportError:
 
 
 def get_system_prompt() -> str:
-    """
-    Returns the system prompt for SCALPER mode (M15 Smart Money/Predictive Alpha)
-    Enhanced with Whale Detection (v4.5) - Optimized for clarity
-    """
+    """Returns the system prompt for SCALPER mode with Whale Detection."""
     return """ROLE: M15 Algo-Trading Unit with Whale Radar.
 
 CONTEXT: Candidate PASSED screener filters (volatility, volume, 4H trend, RSI action zone). Validate final entry.
@@ -42,10 +39,10 @@ CONTEXT: Candidate PASSED screener filters (volatility, volume, 4H trend, RSI ac
    - SQUEEZE_SHORTS → AVOID SHORT (squeeze risk)
    - NEUTRAL → Use technicals only
 
-2. LIQUIDATION CHECK (Veto Power):
+2. LIQUIDATION CHECK (Support/Resistance):
    - LONG_HEAVY liquidations → SHORT bias (dump in progress)
    - SHORT_HEAVY liquidations → LONG bias (pump in progress)
-   - If your direction MATCHES liquidation pressure → SKIP TRADE
+   - If your direction MATCHES liquidation pressure → Reduce confidence -10
 
 3. ORDER BOOK IMBALANCE:
    - >+20% buy orders → Support strong, LONG bias
@@ -57,37 +54,35 @@ CONTEXT: Candidate PASSED screener filters (volatility, volume, 4H trend, RSI ac
    - RSI<35 + BULL trend → LONG
    - RSI>65 + BEAR trend → SHORT
 
-=== CONFLICT RESOLUTION ===
-- Whale + Technical AGREE → High confidence (85+)
-- Whale + Technical CONFLICT → WHALE WINS (smart money priority)
-- No clear signal → WAIT (preserve capital)
+=== CONFIDENCE GUIDELINES (IMPORTANT!) ===
+- Base confidence should be 60% if screener passed
+- Whale signal agreeing with technicals → 80%+
+- Strong momentum (ROC > 1%) → +10%
+- Clean structure (no choppy candles) → +5%
+- Only use <50% if there are MAJOR red flags
 
-=== STRICT TREND RULES ===
-1. If 4H Trend is DOWN:
-   - DO NOT LONG (even if M15 is oversold/sideways)
-   - EXCEPTION: Whale Signal is PUMP_IMMINENT/SQUEEZE_SHORTS or RSI < 25 (Extreme Reversal)
+=== TREND FLEXIBILITY ===
+1. If 4H Trend is DOWN but:
+   - RSI < 35 (oversold) → LONG allowed (mean reversion)
+   - Whale says PUMP_IMMINENT → LONG with high confidence
+   - Strong support + volume → LONG allowed
 
-2. If 4H Trend is UP:
-   - DO NOT SHORT (even if M15 is overbought)
-   - EXCEPTION: Whale Signal is DUMP_IMMINENT/SQUEEZE_LONGS or RSI > 75 (Extreme Reversal)
+2. If 4H Trend is UP but:
+   - RSI > 65 (overbought) → SHORT allowed (mean reversion)
+   - Whale says DUMP_IMMINENT → SHORT with high confidence
+   - Strong resistance + volume → SHORT allowed
 
 === EXECUTION PARAMS ===
-- SL RULES (CRITICAL - Avoid premature SL hits):
-  * MINIMUM SL: 0.5% from entry (never less - protects from noise)
-  * RECOMMENDED: 1x ATR from entry (adapts to volatility)
-  * MAXIMUM SL: 2.0% from entry (capital protection)
-  * PLACEMENT: Below/Above recent swing low/high + ATR buffer
-- TP RULES:
-  * Minimum 1.5:1 RR (Risk:Reward)
-  * Whale signals aim 2-4% TP
-- Leverage: 15x (pump/dump), 10x (trend), 15x (sideways-scalp)
+- SL: 0.5% - 2.0% (use ATR for guidance)
+- TP: Minimum 1.5:1 RR, Whale signals aim 2-4%
+- Leverage: 10-15x
 
 === OUTPUT (JSON ONLY) ===
 {
   "symbol": "string",
   "signal": "LONG" | "SHORT" | "WAIT",
   "confidence": 0-100,
-  "reasoning": "Brief: [Whale] + [Trend Check] + [Technical] = [Decision]",
+  "reasoning": "Brief: [Key Factor 1] + [Key Factor 2] = [Decision]",
   "trade_params": {
     "entry_price": float,
     "stop_loss": float,
@@ -684,6 +679,18 @@ Analyze for SCALPER entry (Mean Reversion / Ping-Pong / Predictive Alpha). Provi
             if not vol_sustained and vol_strong == 0:
                 quality_penalty += 10
                 quality_veto_reasons.append("No sustained volume")
+            
+            # 5. Funding Rate Filter (NEW)
+            funding_bias = metrics.get('funding_bias', 'NEUTRAL')
+            logic_signal = logic_result.get('signal', 'WAIT')
+            
+            # Penalize trades against funding pressure
+            if funding_bias == 'SHORT_BIAS' and logic_signal == 'LONG':
+                quality_penalty += 15
+                quality_veto_reasons.append("LONG against high funding (expect dump)")
+            elif funding_bias == 'LONG_BIAS' and logic_signal == 'SHORT':
+                quality_penalty += 15
+                quality_veto_reasons.append("SHORT against negative funding (expect pump)")
         
         # Log quality issues
         if quality_veto_reasons:
@@ -771,17 +778,43 @@ Analyze for SCALPER entry (Mean Reversion / Ping-Pong / Predictive Alpha). Provi
             combined_confidence = min(100, combined_confidence + momentum_boost)
             logging.info(f"[MOMENTUM] Confidence boosted +{momentum_boost} (strong direction)")
 
-        # Final Decision (use adaptive threshold from ML, with momentum adjustment)
+        # === DYNAMIC THRESHOLD (Quality-based) ===
         final_signal = logic_signal if agreement else "WAIT"
-        base_threshold = ml_threshold if HAS_LEARNER else settings.MIN_CONFIDENCE
-        effective_threshold = max(55, base_threshold - pump_threshold_reduction)  # Floor at 55%
         
-        if pump_threshold_reduction > 0:
-            logging.info(f"[MOMENTUM] Threshold reduced: {base_threshold}% -> {effective_threshold}%")
+        # Base threshold from ML or settings
+        base_threshold = ml_threshold if HAS_LEARNER else settings.MIN_CONFIDENCE
+        
+        # Dynamic adjustment based on signal quality
+        # Tier 1: Whale + Vision agree = lowest threshold (high conviction)
+        # Tier 2: Logic + Vision agree = medium threshold
+        # Tier 3: Logic only = highest threshold
+        
+        has_whale_signal = whale_signal in ['PUMP_IMMINENT', 'DUMP_IMMINENT']
+        has_vision_agree = (logic_signal == "LONG" and vision_verdict == "BULLISH") or \
+                          (logic_signal == "SHORT" and vision_verdict == "BEARISH")
+        
+        if has_whale_signal and has_vision_agree:
+            # Tier 1: Strong confluence - aggressive threshold
+            effective_threshold = 60
+            logging.info(f"[THRESHOLD] Tier 1 (Whale+Vision): {effective_threshold}%")
+        elif has_vision_agree:
+            # Tier 2: Good agreement - medium threshold
+            effective_threshold = 65
+            logging.info(f"[THRESHOLD] Tier 2 (Vision agree): {effective_threshold}%")
+        elif has_whale_signal:
+            # Tier 2b: Whale signal but no vision agree
+            effective_threshold = 68
+            logging.info(f"[THRESHOLD] Tier 2b (Whale only): {effective_threshold}%")
+        else:
+            # Tier 3: Logic only - conservative
+            effective_threshold = max(55, base_threshold - pump_threshold_reduction)
+            if pump_threshold_reduction > 0:
+                logging.info(f"[THRESHOLD] Tier 3 (Momentum): {base_threshold}% -> {effective_threshold}%")
 
         recommendation = "SKIP"
         if agreement and combined_confidence >= effective_threshold:
             recommendation = "EXECUTE"
+            logging.info(f"[EXECUTE] Confidence {combined_confidence}% >= Threshold {effective_threshold}%")
 
         # === CACHE ANALYSIS FOR LEARNING ===
         # Save ALL analysis results (not just trades) to ai_analysis_cache

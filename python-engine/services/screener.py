@@ -202,15 +202,8 @@ class MarketScreener:
     def fetch_market_sentiment(self, symbol: str) -> Dict:
         """
         Fetch market sentiment data from Binance Futures API.
-        Combines: Open Interest, Top Trader Positions, Taker Buy/Sell Volume.
-        
-        Returns dict with:
-        - oi_change_pct: OI change in last 5 min (positive = new positions opening)
-        - top_trader_long_ratio: % of top traders going long
-        - taker_buy_ratio: % of taker volume that is buy
-        - sentiment_score: Combined score (-100 to +100, positive = bullish)
+        Combines: Open Interest, Top Trader Positions, Taker Buy/Sell Volume, Funding Rate.
         """
-        # Convert symbol format: "BTC/USDT" -> "BTCUSDT"
         binance_symbol = symbol.replace("/", "")
         base_url = "https://fapi.binance.com"
         
@@ -218,12 +211,14 @@ class MarketScreener:
             'oi_change_pct': 0,
             'top_trader_long_ratio': 50,
             'taker_buy_ratio': 50,
+            'funding_rate': 0,
             'sentiment_score': 0,
-            'sentiment_signal': 'NEUTRAL'
+            'sentiment_signal': 'NEUTRAL',
+            'funding_bias': 'NEUTRAL'
         }
         
         try:
-            # 1. Open Interest (current vs 5min ago)
+            # 1. Open Interest
             try:
                 oi_resp = self.session.get(
                     f"{base_url}/fapi/v1/openInterest",
@@ -232,8 +227,6 @@ class MarketScreener:
                 )
                 if oi_resp.status_code == 200:
                     current_oi = float(oi_resp.json().get('openInterest', 0))
-                    
-                    # Get OI history (5min period)
                     oi_hist_resp = self.session.get(
                         f"{base_url}/futures/data/openInterestHist",
                         params={"symbol": binance_symbol, "period": "5m", "limit": 2},
@@ -277,20 +270,38 @@ class MarketScreener:
             except Exception as e:
                 logging.debug(f"[SENTIMENT] Taker fetch failed for {symbol}: {e}")
             
-            # Calculate combined sentiment score (-100 to +100)
-            # OI increasing = conviction (neutral on direction)
-            # Top trader long > 55% = bullish bias
-            # Taker buy > 55% = immediate bullish pressure
+            # 4. Funding Rate (NEW)
+            try:
+                funding_resp = self.session.get(
+                    f"{base_url}/fapi/v1/fundingRate",
+                    params={"symbol": binance_symbol, "limit": 1},
+                    timeout=3
+                )
+                if funding_resp.status_code == 200 and funding_resp.json():
+                    data = funding_resp.json()[0]
+                    result['funding_rate'] = float(data.get('fundingRate', 0)) * 100  # Convert to %
+                    
+                    # Funding bias: Extreme funding = contrarian signal
+                    if result['funding_rate'] > 0.05:
+                        result['funding_bias'] = 'SHORT_BIAS'  # Too many longs, expect dump
+                    elif result['funding_rate'] < -0.05:
+                        result['funding_bias'] = 'LONG_BIAS'   # Too many shorts, expect pump
+                    else:
+                        result['funding_bias'] = 'NEUTRAL'
+            except Exception as e:
+                logging.debug(f"[SENTIMENT] Funding fetch failed for {symbol}: {e}")
             
-            oi_factor = min(10, max(-10, result['oi_change_pct'] * 5))  # -10 to +10
-            top_factor = (result['top_trader_long_ratio'] - 50) * 1.5   # -75 to +75
-            taker_factor = (result['taker_buy_ratio'] - 50) * 1.0       # -50 to +50
+            # Calculate combined sentiment score
+            oi_factor = min(10, max(-10, result['oi_change_pct'] * 5))
+            top_factor = (result['top_trader_long_ratio'] - 50) * 1.5
+            taker_factor = (result['taker_buy_ratio'] - 50) * 1.0
             
-            # Weight: Taker (immediate) > Top Trader (smart money) > OI (conviction)
-            sentiment = (taker_factor * 0.4) + (top_factor * 0.4) + (oi_factor * 0.2)
+            # Funding contrarian: positive funding = bearish pressure, negative = bullish
+            funding_factor = -result['funding_rate'] * 50  # -0.1% funding = +5 bullish
+            
+            sentiment = (taker_factor * 0.35) + (top_factor * 0.35) + (oi_factor * 0.15) + (funding_factor * 0.15)
             result['sentiment_score'] = max(-100, min(100, sentiment))
             
-            # Determine signal
             if result['sentiment_score'] > 20:
                 result['sentiment_signal'] = 'BULLISH'
             elif result['sentiment_score'] < -20:
@@ -299,8 +310,7 @@ class MarketScreener:
                 result['sentiment_signal'] = 'NEUTRAL'
             
             logging.debug(f"[SENTIMENT] {symbol}: OI={result['oi_change_pct']:.2f}%, "
-                        f"TopLong={result['top_trader_long_ratio']:.1f}%, "
-                        f"TakerBuy={result['taker_buy_ratio']:.1f}%, "
+                        f"Funding={result['funding_rate']:.4f}%, "
                         f"Score={result['sentiment_score']:.0f} ({result['sentiment_signal']})")
             
         except Exception as e:
@@ -1365,6 +1375,8 @@ class MarketScreener:
                             result['oi_change_pct'] = sentiment_data.get('oi_change_pct', 0)
                             result['top_trader_long'] = sentiment_data.get('top_trader_long_ratio', 50)
                             result['taker_buy_ratio'] = sentiment_data.get('taker_buy_ratio', 50)
+                            result['funding_rate'] = sentiment_data.get('funding_rate', 0)
+                            result['funding_bias'] = sentiment_data.get('funding_bias', 'NEUTRAL')
                             result['sentiment_score'] = sentiment_data.get('sentiment_score', 0)
                             result['sentiment_signal'] = sentiment_data.get('sentiment_signal', 'NEUTRAL')
                             
@@ -1380,6 +1392,7 @@ class MarketScreener:
                             logging.debug(f"[SENTIMENT] Failed for {symbol}: {e}")
                             result['sentiment_signal'] = 'NEUTRAL'
                             result['sentiment_score'] = 0
+                            result['funding_bias'] = 'NEUTRAL'
 
                         # NEW v4.5: Compute suggested_direction (pre-hint for AI)
                         # Priority: Whale Signal > Momentum > RSI + Trend
