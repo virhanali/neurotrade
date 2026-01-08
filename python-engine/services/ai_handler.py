@@ -25,57 +25,47 @@ except ImportError:
 
 
 def get_system_prompt() -> str:
-    """Returns the system prompt for SCALPER mode with Whale Detection."""
-    return """ROLE: M15 Algo-Trading Unit with Whale Radar.
+    """Returns the system prompt for PURE MEAN REVERSION SCALPER mode."""
+    return """ROLE: Ruthless Mean Reversion Scalper (M15 Specialist).
+    
+CONTEXT: You are analyzing coins that are already at EXTREME RSI LEVELS (>70 or <30) or OUTSIDE BOLLINGER BANDS.
+YOUR JOB: Find the REVERSAL Entry. Do NOT chase the trend. FADE the move.
 
-CONTEXT: Candidate PASSED screener filters (volatility, volume, 4H trend, RSI action zone). Validate final entry.
+=== CORE PHILOSOPHY ===
+1. PRICE ALWAYS RETURNS TO THE MEAN (EMA 20).
+2. RSI > 70 is a SELL signal, NOT a "strong trend".
+3. RSI < 30 is a BUY signal, NOT a "crash".
+4. Parabolic moves (vertical candles) always collapse.
 
-=== DECISION PRIORITY (TOP TO BOTTOM) ===
+[WHALE DETECTOR LOGIC (CONTRARIAN)]
+- IF Whale says "PUMP IMMINENT" BUT RSI > 75: This is retail FOMO/Buying Climax. -> SHORT IT.
+- IF Whale says "DUMP IMMINENT" BUT RSI < 25: This is retail Panic/Capitulation. -> LONG IT.
+- IF Whale says "SQUEEZE": Trust the squeeze direction (usually rapid reversal).
 
-1. WHALE SIGNAL (Highest Priority):
-   - PUMP_IMMINENT → LONG (whales accumulating)
-   - DUMP_IMMINENT → SHORT (whales distributing)  
-   - SQUEEZE_LONGS → AVOID LONG (cascade dump risk)
-   - SQUEEZE_SHORTS → AVOID SHORT (squeeze risk)
-   - NEUTRAL → Use technicals only
+=== DECISION LOGIC ===
 
-2. LIQUIDATION CHECK (Support/Resistance):
-   - LONG_HEAVY liquidations → SHORT bias (dump in progress)
-   - SHORT_HEAVY liquidations → LONG bias (pump in progress)
-   - If your direction MATCHES liquidation pressure → Reduce confidence -10
+[FOR SHORT SIGNAL (RSI > 70)]
+- CONFIRMATION:
+  - Price touching/above Upper Bollinger Band? (BEST)
+  - Volume spiking? (Climax) -> YES = SHORT.
+  - Previous candle has long upper wick? -> YES = SHORT.
+- INVALIDATION (AVOID SHORT):
+  - Slow grind up (ladder steps) with low volume. (Trend might continue).
+  - Bitcoin is PUMPING hard (+2% in 1h).
 
-3. ORDER BOOK IMBALANCE:
-   - >+20% buy orders → Support strong, LONG bias
-   - <-20% sell orders → Resistance strong, SHORT bias
+[FOR LONG SIGNAL (RSI < 30)]
+- CONFIRMATION:
+  - Price touching/below Lower Bollinger Band? (BEST)
+  - Volume spiking on dump? (Capitulation) -> YES = LONG.
+  - Previous candle has long lower wick? -> YES = LONG.
+- INVALIDATION (AVOID LONG):
+  - Slow bleed down with no volume.
+  - Bitcoin is CRASHING hard (-2% in 1h).
 
-4. TECHNICAL CONFLUENCE:
-   - ADX<25 (Sideways): Mean reversion at BB bands
-   - ADX>25 (Trending): Pullback entries on EMA20
-   - RSI<35 + BULL trend → LONG
-   - RSI>65 + BEAR trend → SHORT
-
-=== CONFIDENCE GUIDELINES (IMPORTANT!) ===
-- Base confidence should be 60% if screener passed
-- Whale signal agreeing with technicals → 80%+
-- Strong momentum (ROC > 1%) → +10%
-- Clean structure (no choppy candles) → +5%
-- Only use <50% if there are MAJOR red flags
-
-=== TREND FLEXIBILITY ===
-1. If 4H Trend is DOWN but:
-   - RSI < 35 (oversold) → LONG allowed (mean reversion)
-   - Whale says PUMP_IMMINENT → LONG with high confidence
-   - Strong support + volume → LONG allowed
-
-2. If 4H Trend is UP but:
-   - RSI > 65 (overbought) → SHORT allowed (mean reversion)
-   - Whale says DUMP_IMMINENT → SHORT with high confidence
-   - Strong resistance + volume → SHORT allowed
-
-=== EXECUTION PARAMS ===
-- SL: 0.5% - 2.0% (use ATR for guidance)
-- TP: Minimum 1.5:1 RR, Whale signals aim 2-4%
-- Leverage: 10-15x
+=== FINAL VERDICT RULES ===
+- IF RSI > 80: SIGNAL = SHORT (Aggressive).
+- IF RSI < 20: SIGNAL = LONG (Aggressive).
+- IF RSI 70-80 + BB Extension: SIGNAL = SHORT.
 
 === OUTPUT (JSON ONLY) ===
 {
@@ -94,55 +84,40 @@ CONTEXT: Candidate PASSED screener filters (volatility, volume, 4H trend, RSI ac
 
 def get_vision_prompt() -> str:
     """
-    Returns the vision analysis prompt for SCALPER mode (v4.2)
-    Enhanced with Whale-Aware Pattern Recognition
+    Returns the vision analysis prompt for PURE SCALPER mode (Mean Reversion Specialist)
+    Focus: Reversals, Exhaustion, and Wicks.
     """
-    return """ACT AS: Elite Technical Chart Pattern Scanner with SMART MONEY AWARENESS.
-CONTEXT: Technical Screener + WHALE DETECTOR indicates price is in a KEY ACTION ZONE.
-TASK: IDENTIFY PREDICTIVE STRUCTURES that confirm or deny WHALE ACTIVITY.
+    return """ACT AS: Mean Reversion Scalper AI.
+CONTEXT: Analyzing M15 Chart for OVEREXTENDED price action relative to Bollinger Bands.
+TASK: CONFIRM if price is hitting a WALL (Reversal) or just pausing.
 
-🐋 WHALE-AWARE VISUAL ANALYSIS:
-Focus on patterns that WHALES create during accumulation/distribution:
+🔍 PATTERNS TO FIND (REVERSAL ONLY):
 
-1. **ACCUMULATION PATTERNS (PRE-PUMP)**:
-   - **SPRING**: Sharp drop below support followed by quick recovery (Wyckoff).
-   - **HIGHER LOWS on VOLUME**: Each dip has LESS selling, HIGHER close.
-   - **TIGHT CONSOLIDATION**: Very small candles = Calm before storm.
-   - **BULLISH DIVERGENCE**: Price makes lower lows, but RSI makes higher lows.
-   -> If WHALE DATA says PUMP_IMMINENT: VOTE BULLISH with HIGH confidence.
+1. **EXHAUSTION (High Probability)**:
+   - **PARABOLIC SPIKE**: 3+ Green candles vertical -> Expect DUMP.
+   - **BB EXTENSION**: Candle body fully OUTSIDE Bollinger Band -> SNAP BACK likely.
+   - **WICK REJECTION**: Long wick touching resistance/support -> REJECTION.
+   - **RAILROAD TRACKS**: Big Green followed immediately by Big Red.
 
-2. **DISTRIBUTION PATTERNS (PRE-DUMP)**:
-   - **UPTHRUST**: Sharp spike above resistance then REJECTED hard.
-   - **LOWER HIGHS**: Each rally has LESS buying power.
-   - **BEARISH ENGULFING at RESISTANCE**: Big red candle swallows green.
-   - **BEARISH DIVERGENCE**: Price makes higher highs, but RSI makes lower highs.
-   -> If WHALE DATA says DUMP_IMMINENT: VOTE BEARISH with HIGH confidence.
+2. **DIVERGENCE (Smart Money)**:
+   - **BEARISH DIV**: Price Higher High, RSI Lower High. (SHORT Signal)
+   - **BULLISH DIV**: Price Lower Low, RSI Higher Low. (LONG Signal)
 
-3. **TRADITIONAL PATTERNS**:
-   - **SQUEEZE / TRIANGLE**: Price coiling = PRE-BREAKOUT.
-   - **BULL FLAG**: Channel down after pump = CONTINUATION.
-   - **BEAR FLAG**: Channel up after dump = CONTINUATION.
-   - **DOUBLE BOTTOM/TOP**: Classic reversal.
+3. **WYCKOFF REVERSAL**:
+   - **SPRING/SHAKE**: False breakdown below support -> LONG.
+   - **UPTHRUST/UTAD**: False breakout above resistance -> SHORT.
 
-4. **BOLLINGER BANDS**:
-   - **SQUEEZE (Bands Tight)**: EXPLOSION INCOMING.
-   - **ALLIGATOR MOUTH (Bands Opening)**: Move in progress.
-   - **RIDING THE BAND**: Strong trend, don't counter-trade.
-
-5. **DANGER SIGNALS (REJECT TRADE)**:
-   - **GOD CANDLE**: Huge candle with no context = FOMO trap.
-   - **FALLING KNIFE**: Multiple big red candles = Don't catch.
-   - **EXTENDED FROM BB**: Price too far from middle = Wait for pullback.
-   - **CHOPPY NOISE**: No clear structure = INVALID_CHOPPY.
+❌ PATTERNS TO IGNORE (NOISE):
+   - Bull/Bear Flags (Too slow for scalping)
+   - Breakout Retests (Often fake in M15)
+   - "Trend Continuation" (We want to fade the extremes, not chase)
 
 DECISION LOGIC:
-- Accumulation Pattern + Squeeze = BULLISH (Sniper Long).
-- Distribution Pattern + Resistance = BEARISH (Sniper Short).
-- Big candle WITHOUT pattern = NEUTRAL (Chase Prevention).
-- No clear structure = INVALID_CHOPPY.
-- Extreme extension = DANGEROUS_BREAKOUT.
+- If Price > Upper BB + Wick Rejection -> STRONG SHORT.
+- If Price < Lower BB + Spring/Wick -> STRONG LONG.
+- If Choppy/Sideways inside BB -> WAIT.
 
-OUTPUT FORMAT (JSON):
+OUTPUT JSON VERDICT MUST BE: "BULLISH", "BEARISH", or "NEUTRAL".
 {
     "verdict": "BULLISH/BEARISH/NEUTRAL",
     "confidence": <0-100>,
@@ -227,13 +202,13 @@ class AIHandler:
                 # Whale Signal Interpretation
                 whale_str = f"{whale_signal}"
                 if whale_signal == "PUMP_IMMINENT":
-                    whale_str += " 🐋🚀 (WHALES LOADING - HIGH PROBABILITY LONG)"
+                    whale_str += " 🐋🚀 (AGGRESSIVE BUYING DETECTED)"
                 elif whale_signal == "DUMP_IMMINENT":
-                    whale_str += " 🐋📉 (WHALES EXITING - HIGH PROBABILITY SHORT)"
+                    whale_str += " 🐋📉 (AGGRESSIVE SELLING DETECTED)"
                 elif whale_signal == "SQUEEZE_LONGS":
-                    whale_str += " ⚠️ (LONG LIQUIDATIONS BUILDING - AVOID LONGS)"
+                    whale_str += " ⚠️ (LONG LIQUIDATIONS BUILDING)"
                 elif whale_signal == "SQUEEZE_SHORTS":
-                    whale_str += " ⚠️ (SHORT LIQUIDATIONS BUILDING - AVOID SHORTS)"
+                    whale_str += " ⚠️ (SHORT LIQUIDATIONS BUILDING)"
 
                 # Liquidation Pressure
                 liq_str = f"{liq_pressure}"
@@ -761,14 +736,15 @@ Analyze for SCALPER entry (Mean Reversion / Ping-Pong / Predictive Alpha). Provi
             logging.warning(f"[OVERRIDE] RSI SUPER EXTREME ({rsi_value:.1f}) < 20 - Taking LONG despite Vision")
             agreement = True
 
-        # Scenario B: LOGIC OVERRIDE
+        # Scenario B: LOGIC OVERRIDE (SAFE MODE)
         elif logic_signal != "WAIT" and vision_verdict == "NEUTRAL":
-            if logic_confidence > 70:
+            # Only override neutral vision if RSI is visibly overextended (avoid shorting RSI 70)
+            if logic_confidence > 75 and (rsi_value > 75 or rsi_value < 25): 
                 agreement = True
-                logging.info(f"[AGREEMENT] Logic Override: {logic_confidence}%")
-            elif logic_confidence > 60 and is_rsi_extreme:
+                logging.info(f"[AGREEMENT] Logic Override (Strong): Conf={logic_confidence}%, RSI={rsi_value:.1f}")
+            elif logic_confidence > 85: # If logic is super confident (whale signal etc)
                 agreement = True
-                logging.info(f"[AGREEMENT] RSI Extreme Override: RSI={rsi_value}")
+                logging.info(f"[AGREEMENT] Logic Override (High Conf): Conf={logic_confidence}%")
 
         # Scenario C: ML BOOST - works with rule-based fallback too
         elif logic_signal != "WAIT" and ml_win_prob > 0.65:

@@ -1701,104 +1701,31 @@ class MarketScreener:
 
                     # 2. Price Momentum (Important)
                     if abs(pct_change_3c) >= 10:
-                        pump_score += 40
-                        pump_signals.append(f"MOMENTUM_{pct_change_3c:+.1f}%")
-                    elif abs(pct_change_3c) >= 5:
-                        pump_score += 25
-                        pump_signals.append(f"MOVE_{pct_change_3c:+.1f}%")
-                    elif abs(pct_change_3c) >= 3:
-                        pump_score += 10
-                        pump_signals.append(f"SHIFT_{pct_change_3c:+.1f}%")
-
-                    # 3. Breakout Confirmation
-                    if is_breakout_up and pct_change_3c > 0:
-                        pump_score += 20
-                        pump_signals.append("BREAKOUT_UP")
-                    elif is_breakout_down and pct_change_3c < 0:
-                        pump_score += 20
-                        pump_signals.append("BREAKOUT_DOWN")
-
-                    # Minimum score threshold
-                    if pump_score < 50:
-                        return None
-
-                    # Determine pump type
-                    if pct_change_3c > 0:
-                        pump_type = "PUMP"
+                        pump_signals.append(f"VOL_SPIKE_{vol_ratio:.1f}x")
+                    
+                    # 4. Determine Direction
+                    if rsi > 70:
+                        pump_type = "DUMP" # We expect DUMP (Short)
+                        trade_action = "SHORT"
+                        if rsi > 80: trade_action = "STRONG_SHORT" # Strong Short
+                    elif rsi < 30:
+                        pump_type = "PUMP" # We expect PUMP (Long)
+                        trade_action = "LONG"
+                        if rsi < 20: trade_action = "STRONG_LONG" # Strong Long
                     else:
-                        pump_type = "DUMP"
+                        pump_type = "NEUTRAL"
+                        trade_action = "WAIT"
 
-                    # === DUMP RISK SCORE (0-100) ===
-                    # Higher = More likely to dump (risky for LONG, good for SHORT)
-                    dump_risk = 0
-                    risk_signals = []
+                    # 5. Filter out boring coins
+                    if pump_score < 40:  # If not extreme enough
+                         return None
 
-                    # 1. Parabolic Rate Detection (>5% per candle = unsustainable)
-                    avg_change_per_candle = abs(pct_change_3c) / 3
-                    if avg_change_per_candle > 5:
-                        dump_risk += 30
-                        risk_signals.append("PARABOLIC")
-                    elif avg_change_per_candle > 3:
-                        dump_risk += 15
-                        risk_signals.append("STEEP")
-
-                    # 2. Single Candle Volume Concentration (manipulation signal)
-                    max_vol = df['volume'].iloc[-5:].max()
-                    avg_vol_5 = df['volume'].iloc[-5:].mean()
-                    vol_concentration = max_vol / avg_vol_5 if avg_vol_5 > 0 else 1
-                    if vol_concentration > 3:  # One candle has 3x the average of last 5
-                        dump_risk += 25
-                        risk_signals.append("VOL_SPIKE_SINGLE")
-                    elif vol_concentration > 2:
-                        dump_risk += 10
-                        risk_signals.append("VOL_CONCENTRATED")
-
-                    # 3. Position in Range (at high = dump risk, at low = bounce risk)
-                    range_high = df['high'].iloc[-30:].max()
-                    range_low = df['low'].iloc[-30:].min()
-                    range_size = range_high - range_low
-                    if range_size > 0:
-                        position_in_range = (current_price - range_low) / range_size
-                        if position_in_range > 0.9:  # At top of range
-                            dump_risk += 25
-                            risk_signals.append("AT_RANGE_TOP")
-                        elif position_in_range > 0.75:
-                            dump_risk += 10
-                            risk_signals.append("NEAR_TOP")
-                        elif position_in_range < 0.1:  # At bottom = might bounce
-                            dump_risk -= 15
-                            risk_signals.append("AT_RANGE_BOTTOM")
-
-                    # 4. 24h Trend Context (negative 24h = weak coin)
-                    if cand['pct_change_24h'] < -5:
-                        dump_risk += 15
-                        risk_signals.append("WEAK_24H")
-                    elif cand['pct_change_24h'] > 10:
-                        dump_risk += 10  # Extended = pullback likely
-                        risk_signals.append("EXTENDED_24H")
-
-                    # Clamp to 0-100
-                    dump_risk = max(0, min(100, dump_risk))
-
-                    # Trade recommendation based on type and risk
-                    if pump_type == "PUMP":
-                        if dump_risk >= 60:
-                            trade_action = "AVOID_LONG"  # Too risky, likely to dump
-                        elif dump_risk >= 40:
-                            trade_action = "CAUTIOUS_LONG"  # Entry with tight SL
-                        else:
-                            trade_action = "LONG"  # Good entry
-                    else:  # DUMP
-                        if dump_risk >= 50:
-                            trade_action = "SHORT"  # Good short opportunity
-                        elif dump_risk >= 30:
-                            trade_action = "CAUTIOUS_SHORT"
-                        else:
-                            trade_action = "AVOID_SHORT"  # Might bounce
+                    # Reset dump_risk (not used in same way for Mean Rev)
+                    dump_risk = 0 # Placeholder
 
                     # === FAKE PUMP/DUMP WARNING LOGGING ===
                     # Log detailed fake detection for debugging
-                    if trade_action in ["AVOID_LONG", "AVOID_SHORT"]:
+                    if trade_action in ["AVOID_LONG", "AVOID_SHORT", "WAIT"]: # Added WAIT to avoid logging neutral
                         risk_summary = ", ".join(risk_signals[:3])  # Top 3 reasons
                         logging.warning(f"[FAKE DETECTED] {symbol} {pump_type} - Score={int(pump_score)} DumpRisk={int(dump_risk)}% Action={trade_action} Reasons: {risk_summary}")
                     elif trade_action in ["CAUTIOUS_LONG", "CAUTIOUS_SHORT"]:

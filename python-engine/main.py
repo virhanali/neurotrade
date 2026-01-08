@@ -328,21 +328,26 @@ async def analyze_market(request: MarketAnalysisRequest):
         # Step 2: Fetch BTC context (SCALPER MODE)
         btc_context = data_fetcher.fetch_btc_context(mode="SCALPER")
 
-        # --- BTC SLEEP CHECK ---
-        BTC_VOLATILITY_THRESHOLD_15M = 0.1
+        # --- BTC SLEEP CHECK (RELAXED) ---
+        # Allow scalping even if BTC is quiet (0.05% threshold), as alts move independently
+        BTC_VOLATILITY_THRESHOLD_15M = 0.05 
         btc_volatility_15m = abs(btc_context.get('pct_change_1h', 0))
         btc_rsi = btc_context.get('rsi_1h', 50)
         btc_in_extreme = btc_rsi < 35 or btc_rsi > 65
         
         if btc_volatility_15m < BTC_VOLATILITY_THRESHOLD_15M and not btc_in_extreme:
-            logging.info(f"[BTC Sleepy] BTC Move {btc_volatility_15m:.2f}% < {BTC_VOLATILITY_THRESHOLD_15M}%, RSI={btc_rsi:.0f} - skipping")
-            return MarketAnalysisResponse(
-                timestamp=datetime.utcnow(),
-                btc_context=btc_context,
-                opportunities_screened=0,
-                valid_signals=[],
-                execution_time_seconds=0
-            )
+            # Check if we have high-conviction candidates first
+            if top_candidates and top_candidates[0].get('score', 0) > 60:
+                 logging.info(f"[BTC Sleepy] BTC Quiet ({btc_volatility_15m:.2f}%) but Top Alt Score {top_candidates[0]['score']} > 60. Proceeding.")
+            else:
+                logging.info(f"[BTC Sleepy] BTC Move {btc_volatility_15m:.2f}% < {BTC_VOLATILITY_THRESHOLD_15M}%, RSI={btc_rsi:.0f} - skipping")
+                return MarketAnalysisResponse(
+                    timestamp=datetime.utcnow(),
+                    btc_context=btc_context,
+                    opportunities_screened=0,
+                    valid_signals=[],
+                    execution_time_seconds=0
+                )
         
         if btc_volatility_15m < BTC_VOLATILITY_THRESHOLD_15M and btc_in_extreme:
             logging.info(f"[BTC EXTREME] Low vol but RSI={btc_rsi:.0f} - proceeding")

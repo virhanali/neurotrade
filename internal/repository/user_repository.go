@@ -152,7 +152,8 @@ func (r *UserRepositoryImpl) UpdateBalance(ctx context.Context, userID uuid.UUID
 func (r *UserRepositoryImpl) GetAll(ctx context.Context) ([]*domain.User, error) {
 	query := `
 		SELECT id, username, password_hash, role,
-		       paper_balance, real_balance_cache, mode, is_auto_trade_enabled, fixed_order_size, leverage, created_at, updated_at
+		       paper_balance, real_balance_cache, mode, is_auto_trade_enabled, fixed_order_size, leverage, 
+		       COALESCE(binance_api_key, ''), COALESCE(binance_api_secret, ''), created_at, updated_at
 		FROM users
 		ORDER BY created_at ASC
 	`
@@ -177,6 +178,8 @@ func (r *UserRepositoryImpl) GetAll(ctx context.Context) ([]*domain.User, error)
 			&user.IsAutoTradeEnabled,
 			&user.FixedOrderSize,
 			&user.Leverage,
+			&user.BinanceAPIKey,
+			&user.BinanceAPISecret,
 			&user.CreatedAt,
 			&user.UpdatedAt,
 		)
