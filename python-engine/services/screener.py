@@ -281,20 +281,19 @@ class MarketScreener:
 
             df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
 
-            # Calculate 1H EMA 9 and 21
+            # Calculate 1H indicators
             ema_9 = ta.trend.ema_indicator(df['close'], window=9).iloc[-1]
             ema_21 = ta.trend.ema_indicator(df['close'], window=21).iloc[-1]
             current_price = df['close'].iloc[-1]
-
-            # Calculate 1H RSI
             rsi_1h = ta.momentum.rsi(df['close'], window=14).iloc[-1]
 
-            # NEW: Check MACD for momentum confirmation
+            # Calculate MACD for momentum confirmation
             try:
-                macd_1h = df['macd'].iloc[-1] if 'macd' in df else None
-                macd_signal_1h = df['macd_signal'].iloc[-1] if 'macd_signal' in df else None
-                macd_bearish_1h = macd_1h < macd_signal_1h if macd_1h is not None else False
-                macd_bullish_1h = macd_1h > macd_signal_1h if macd_1h is not None else False
+                macd_ind = ta.trend.MACD(close=df['close'], window_slow=26, window_fast=12, window_sign=9)
+                macd_1h = macd_ind.macd().iloc[-1]
+                macd_signal_1h = macd_ind.macd_signal().iloc[-1]
+                macd_bearish_1h = macd_1h < macd_signal_1h
+                macd_bullish_1h = macd_1h > macd_signal_1h
             except:
                 macd_bearish_1h = False
                 macd_bullish_1h = False
@@ -961,13 +960,44 @@ class MarketScreener:
                 try:
                     # 1. Fetch 15m Data (Tactical) - WITH CACHE
                     ohlcv_15m = self.fetch_ohlcv_cached(symbol, '15m', 50)
-                    if not ohlcv_15m or len(ohlcv_15m) < 50: 
+                    if not ohlcv_15m or len(ohlcv_15m) < 50:
                         return None
                     df_15m = pd.DataFrame(ohlcv_15m, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-                    
-                    # 2. Fetch 4h Data (Strategic Trend) - WITH CACHE
+
+                    # Calculate indicators for 15M (needed for MACD scoring and MA breakout)
+                    try:
+                        # MACD
+                        macd_15m_ind = ta.trend.MACD(close=df_15m['close'], window_slow=26, window_fast=12, window_sign=9)
+                        df_15m['macd'] = macd_15m_ind.macd()
+                        df_15m['macd_signal'] = macd_15m_ind.macd_signal()
+                        df_15m['macd_diff'] = macd_15m_ind.macd_diff()
+
+                        # Moving Averages
+                        df_15m['ma_7'] = ta.trend.sma_indicator(df_15m['close'], window=7)
+                        df_15m['ma_25'] = ta.trend.sma_indicator(df_15m['close'], window=25)
+                        df_15m['ma_99'] = ta.trend.sma_indicator(df_15m['close'], window=99)
+                    except Exception as e:
+                        logging.warning(f"[15M INDICATORS] Failed to calculate for {symbol}: {e}")
+
+                    # 2. Fetch 1h Data (For early reversal detection) - WITH CACHE
+                    ohlcv_1h = self.fetch_ohlcv_cached(symbol, '1h', 30)
+                    if not ohlcv_1h or len(ohlcv_1h) < 20:
+                        # If 1H data fails, create empty dataframe to avoid errors
+                        df_1h = pd.DataFrame(columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+                    else:
+                        df_1h = pd.DataFrame(ohlcv_1h, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+                        # Calculate indicators for 1H (needed for early reversal detection)
+                        try:
+                            macd_1h_ind = ta.trend.MACD(close=df_1h['close'], window_slow=26, window_fast=12, window_sign=9)
+                            df_1h['macd'] = macd_1h_ind.macd()
+                            df_1h['macd_signal'] = macd_1h_ind.macd_signal()
+                            df_1h['macd_diff'] = macd_1h_ind.macd_diff()
+                        except Exception as e:
+                            logging.warning(f"[1H INDICATORS] Failed to calculate for {symbol}: {e}")
+
+                    # 3. Fetch 4h Data (Strategic Trend) - WITH CACHE
                     ohlcv_4h = self.fetch_ohlcv_cached(symbol, '4h', 200)
-                    if not ohlcv_4h or len(ohlcv_4h) < 200: 
+                    if not ohlcv_4h or len(ohlcv_4h) < 200:
                         return None
                     df_4h = pd.DataFrame(ohlcv_4h, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
 
