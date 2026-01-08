@@ -147,6 +147,15 @@ class WebSocketManager:
                         msg = await ws.recv()
                         data = json.loads(msg)
                         
+                        # FIX: Handle potential list messages or non-dict payloads
+                        if isinstance(data, list):
+                            # Some keep-alive or batched messages might be lists
+                            # logger.debug(f"[WS] Received list payload (ignoring): {data}")
+                            continue
+                            
+                        if not isinstance(data, dict):
+                             continue
+
                         event_type = data.get('e')
                         
                         # HANDLE ORDER UPDATES
