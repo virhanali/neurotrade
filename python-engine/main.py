@@ -18,6 +18,7 @@ from services.charter import ChartGenerator
 from services.ai_handler import AIHandler
 from services.price_stream import price_stream
 from services.execution import executor
+from services.ws_manager import ws_manager
 
 # ML Learner (for learning context)
 try:
@@ -98,6 +99,18 @@ def is_primary_worker() -> bool:
     except Exception:
         return False  # On error, don't start streams
 
+# WebSocket Callback Handler
+async def handle_order_update(order_data: Dict, api_key: str, api_secret: str):
+    """
+    Callback when an order is filled via WebSocket.
+    """
+    status = order_data.get('X')
+    symbol = order_data.get('s')
+    side = order_data.get('S') # BUY/SELL
+    avg_price = float(order_data.get('L', 0)) # Last filled price
+    
+    logging.info(f"[WS-CALLBACK] Order {symbol} {side} {status} @ {avg_price}")
+
 # Startup/Shutdown events for WebSocket
 @app.on_event("startup")
 async def startup_event():
@@ -113,6 +126,11 @@ async def startup_event():
     await price_stream.start()
     print("[WS] WebSocket price stream started")
 
+    # Start User Data Streams
+    ws_manager.on_order_update = handle_order_update
+    await ws_manager.start()
+    print("[WS] User Data Stream Manager started")
+
     # Start whale liquidation monitoring (background task)
     if HAS_WHALE:
         asyncio.create_task(start_whale_monitoring())
@@ -127,7 +145,8 @@ async def shutdown_event():
         return
     
     await price_stream.stop()
-    print("[WS] WebSocket price stream stopped")
+    await ws_manager.stop()
+    print("[WS] WebSocket streams stopped")
 
     # Close whale detector
     if HAS_WHALE:
@@ -1023,12 +1042,25 @@ async def execute_close(request: ExecuteCloseRequest):
 @app.post("/execute/balance")
 async def get_real_balance(request: BalanceRequest):
     """
-    Get real USDT balance from Binance
+    Get real USDT balance from Binance (WS Preferred)
     """
+    # 1. Try Cache
+    cached_bal = ws_manager.get_cached_balance(request.api_key)
+    if cached_bal is not None:
+        return {
+            "total": cached_bal, 
+            "free": ws_manager.active_users[request.api_key].get("available_balance", 0)
+        }
+
+    # 2. Fallback to REST
     result = await executor.get_balance(
         api_key=request.api_key,
         api_secret=request.api_secret
     )
+    
+    # 3. Start Stream for Next Time (Lazy Loading)
+    if "error" not in result:
+        asyncio.create_task(ws_manager.start_user_stream(request.api_key, request.api_secret))
     
     if "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])
