@@ -88,8 +88,8 @@ export function BrainHealthPanel() {
         );
     }
 
-    const samples = data?.data?.samples || 0;
-    const minSamples = data?.data?.required_samples || 50;
+    const samples = data?.samples || 0;
+    const minSamples = data?.required_samples || 50;
     const progress = Math.min((samples / minSamples) * 100, 100);
     const isActive = samples >= minSamples;
 
@@ -122,11 +122,11 @@ export function BrainHealthPanel() {
                 ML model requires {minSamples} closed trades to activate self-learning capabilities.
             </p>
 
-            {isActive && data?.data?.win_rate && (
+            {isActive && data?.market_regime?.win_rate && (
                 <div className="mt-4 grid grid-cols-2 gap-4">
                     <div className="text-center p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg">
                         <p className="text-2xl font-bold text-emerald-500">
-                            {(data.data.win_rate * 100).toFixed(1)}%
+                            {data.market_regime.win_rate.toFixed(1)}%
                         </p>
                         <p className="text-xs text-slate-500">Win Rate</p>
                     </div>

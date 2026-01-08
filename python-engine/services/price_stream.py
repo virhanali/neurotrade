@@ -32,6 +32,7 @@ class PriceStreamService:
         # tickers: symbol -> full ticker data dict (for Screener)
         self.tickers: Dict[str, Dict] = {}
         self.last_update: Optional[datetime] = None
+        self.last_error: Optional[str] = None
         self._running = False
         self._ws = None
         self._task = None
@@ -43,6 +44,7 @@ class PriceStreamService:
             return
         
         self._running = True
+        self.last_error = None
         self._task = asyncio.create_task(self._run_forever())
         logger.info("[WS] Price stream started")
     
@@ -69,14 +71,17 @@ class PriceStreamService:
                 await self._connect_and_stream()
                 # Reset delay on successful connection
                 reconnect_delay = 5
+                self.last_error = None
             except ConnectionClosed as e:
-                logger.warning(f"WebSocket connection closed: code={e.code}, reason={e.reason}")
+                self.last_error = f"ConnectionClosed: {e.code} - {e.reason}"
+                logger.warning(f"WebSocket connection closed: {self.last_error}")
                 if self._running:
                     logger.info(f"Reconnecting in {reconnect_delay} seconds...")
                     await asyncio.sleep(reconnect_delay)
                     # Exponential backoff with max limit
                     reconnect_delay = min(reconnect_delay * 1.5, max_reconnect_delay)
             except Exception as e:
+                self.last_error = str(e)
                 logger.error(f"WebSocket error: {e}")
                 if self._running:
                     logger.info(f"Reconnecting in {reconnect_delay} seconds...")

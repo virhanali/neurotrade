@@ -1030,7 +1030,8 @@ class MarketScreener:
                 logging.info(f"[SCREENER] Using WebSocket data ({len(raw_tickers)} tickers)")
             else:
                 # FALLBACK: Use REST API when WebSocket is down (SYNC version)
-                logging.warning(f"[SCREENER] WebSocket down (tickers={ticker_count}, connected={price_stream.is_connected}), using REST fallback")
+                ws_error = getattr(price_stream, 'last_error', 'Unknown')
+                logging.warning(f"[SCREENER] WebSocket down (tickers={ticker_count}, connected={price_stream.is_connected}, error='{ws_error}'), using REST fallback")
                 try:
                     source = "REST"
                     if not self.exchange.markets:
