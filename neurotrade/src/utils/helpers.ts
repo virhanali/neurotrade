@@ -10,16 +10,17 @@ export function formatCurrency(value: number, decimals: number = 2): string {
         currency: 'USD',
         minimumFractionDigits: decimals,
         maximumFractionDigits: decimals,
-    }).format(value);
+    }).format(value ?? 0);
 }
 
 export function formatPercent(value: number, decimals: number = 2): string {
-    const sign = value >= 0 ? '+' : '';
-    return `${sign}${value.toFixed(decimals)}%`;
+    const safeValue = value ?? 0;
+    const sign = safeValue >= 0 ? '+' : '';
+    return `${sign}${safeValue.toFixed(decimals)}%`;
 }
 
 export function formatNumber(value: number, decimals: number = 2): string {
-    return value.toFixed(decimals);
+    return (value ?? 0).toFixed(decimals);
 }
 
 export function formatDate(date: string | Date): string {

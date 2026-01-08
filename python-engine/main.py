@@ -222,6 +222,7 @@ class ExecuteEntryRequest(BaseModel):
     api_secret: str
     sl_price: Optional[float] = None
     tp_price: Optional[float] = None
+    trailing_callback: Optional[float] = None  # Trailing stop callback rate in %
 
 class ExecuteCloseRequest(BaseModel):
     symbol: str
@@ -1002,9 +1003,9 @@ if __name__ == "__main__":
 @app.post("/execute/entry")
 async def execute_entry(request: ExecuteEntryRequest):
     """
-    Execute entry order on Binance Futures
+    Execute entry order on Binance Futures with SL/TP/Trailing
     """
-    logging.info(f"[EXEC] Request Entry: {request.symbol} {request.side} ${request.amount_usdt}")
+    logging.info(f"[EXEC] Request Entry: {request.symbol} {request.side} ${request.amount_usdt} | SL: {request.sl_price} | TP: {request.tp_price} | Trail: {request.trailing_callback}%")
     result = await executor.execute_entry(
         symbol=request.symbol,
         side=request.side,
@@ -1013,7 +1014,8 @@ async def execute_entry(request: ExecuteEntryRequest):
         api_key=request.api_key,
         api_secret=request.api_secret,
         sl_price=request.sl_price,
-        tp_price=request.tp_price
+        tp_price=request.tp_price,
+        trailing_callback=request.trailing_callback
     )
     
     if "error" in result:

@@ -94,6 +94,13 @@ func (s *BodyguardService) CheckPositionsFast(ctx context.Context) error {
 	// Check each position against fetched prices
 	closedCount := 0
 	for _, pos := range positions {
+		// SKIP REAL MODE: Let Binance SL/TP orders handle real trades
+		// Bodyguard only monitors PAPER positions
+		user, err := s.userRepo.GetByID(ctx, pos.UserID)
+		if err == nil && user.Mode == domain.ModeReal {
+			continue // Skip - Binance will close via SL/TP orders
+		}
+
 		currentPrice, ok := prices[pos.Symbol]
 		if !ok {
 			// Try normalized symbol

@@ -26,9 +26,8 @@ type AIService interface {
 	// SendFeedback sends trade outcome to Python ML engine for learning
 	SendFeedback(ctx context.Context, feedback *FeedbackData) error
 
-	// ExecuteEntry executes a real entry order via Python Engine
-	// ExecuteEntry executes a real entry order via Python Engine
-	ExecuteEntry(ctx context.Context, symbol, side string, amountUSDT float64, leverage int, apiKey, apiSecret string) (*ExecutionResult, error)
+	// ExecuteEntry executes a real entry order via Python Engine with SL/TP/Trailing
+	ExecuteEntry(ctx context.Context, params *EntryParams) (*ExecutionResult, error)
 
 	// ExecuteClose executes a real close order via Python Engine
 	ExecuteClose(ctx context.Context, symbol, side string, quantity float64, apiKey, apiSecret string) (*ExecutionResult, error)
@@ -40,12 +39,28 @@ type AIService interface {
 	GetAIAnalytics(ctx context.Context) (map[string]interface{}, error)
 }
 
+// EntryParams contains all parameters for executing an entry order
+type EntryParams struct {
+	Symbol           string
+	Side             string
+	AmountUSDT       float64
+	Leverage         int
+	APIKey           string
+	APISecret        string
+	SLPrice          float64 // Stop Loss price (0 = disabled)
+	TPPrice          float64 // Take Profit price (0 = disabled)
+	TrailingCallback float64 // Trailing stop callback rate in % (0 = disabled, e.g., 1.0 = 1%)
+}
+
 // ExecutionResult represents the result of a real trade execution
 type ExecutionResult struct {
-	Status      string  `json:"status"`
-	OrderID     string  `json:"orderId"`
-	AvgPrice    float64 `json:"avgPrice"`
-	ExecutedQty float64 `json:"executedQty"`
+	Status          string  `json:"status"`
+	OrderID         string  `json:"orderId"`
+	AvgPrice        float64 `json:"avgPrice"`
+	ExecutedQty     float64 `json:"executedQty"`
+	SLOrderID       string  `json:"slOrderId,omitempty"`
+	TPOrderID       string  `json:"tpOrderId,omitempty"`
+	TrailingOrderID string  `json:"trailingOrderId,omitempty"`
 }
 
 // TradingService defines the interface for core trading logic

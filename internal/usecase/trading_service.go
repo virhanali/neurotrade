@@ -403,8 +403,21 @@ func (ts *TradingService) createPositionForUser(ctx context.Context, user *domai
 			return fmt.Errorf("position notional value ($%.2f) below Binance minimum ($5)", totalNotionalValue)
 		}
 
-		// Pass TOTAL NOTIONAL VALUE to Python Executor
-		execResult, err := ts.aiService.ExecuteEntry(ctx, signal.Symbol, side, totalNotionalValue, int(leverage), user.BinanceAPIKey, user.BinanceAPISecret)
+		// Build execution params with SL/TP/Trailing
+		execParams := &domain.EntryParams{
+			Symbol:           signal.Symbol,
+			Side:             side,
+			AmountUSDT:       totalNotionalValue,
+			Leverage:         int(leverage),
+			APIKey:           user.BinanceAPIKey,
+			APISecret:        user.BinanceAPISecret,
+			SLPrice:          signal.SLPrice,
+			TPPrice:          signal.TPPrice,
+			TrailingCallback: 1.0, // 1% trailing stop callback (can be made configurable)
+		}
+
+		// Execute with SL/TP/Trailing all placed on Binance
+		execResult, err := ts.aiService.ExecuteEntry(ctx, execParams)
 		if err != nil {
 			return fmt.Errorf("REAL ORDER FAILED for %s: %w", signal.Symbol, err)
 		}
@@ -417,7 +430,9 @@ func (ts *TradingService) createPositionForUser(ctx context.Context, user *domai
 		// Update position details with REAL execution data
 		signal.EntryPrice = execResult.AvgPrice
 		positionSize = execResult.ExecutedQty
-		log.Printf("[REAL] Order Filled: %s | Price: %.4f | Qty: %.4f", execResult.OrderID, execResult.AvgPrice, execResult.ExecutedQty)
+		log.Printf("[REAL] Order Filled: %s | Price: %.4f | Qty: %.4f | SL: %s | TP: %s | Trailing: %s",
+			execResult.OrderID, execResult.AvgPrice, execResult.ExecutedQty,
+			execResult.SLOrderID, execResult.TPOrderID, execResult.TrailingOrderID)
 	}
 
 	// Determine initial status based on Auto-Trade setting

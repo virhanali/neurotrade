@@ -105,6 +105,12 @@ func (s *VirtualBrokerService) CheckPositions(ctx context.Context) error {
 			continue
 		}
 
+		// SKIP REAL MODE: Let Binance SL/TP orders handle real trades
+		// VirtualBroker only simulates PAPER positions
+		if user.Mode == domain.ModeReal {
+			continue // Skip - Binance will close via SL/TP orders
+		}
+
 		// === REAL TRADING CLOSE LOGIC ===
 		exitPrice := currentPrice // Default to trigger price
 		if user.Mode == domain.ModeReal {

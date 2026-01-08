@@ -1015,17 +1015,21 @@ class MarketScreener:
             raw_tickers = {}
             source = "WEBSOCKET"
             
-            # Wait for WS to warm up if empty (up to 5s)
+            # Wait for WS to warm up if empty (up to 15s - increased for slow connections)
             retries = 0
-            while len(price_stream.get_all_tickers()) < 10 and retries < 10:
+            ticker_count = len(price_stream.get_all_tickers())
+            logging.info(f"[SCREENER] Waiting for WebSocket... (current: {ticker_count} tickers, connected: {price_stream.is_connected})")
+            
+            while ticker_count < 10 and retries < 30:
                 time.sleep(0.5)
                 retries += 1
+                ticker_count = len(price_stream.get_all_tickers())
             
-            if len(price_stream.get_all_tickers()) > 10:
+            if ticker_count > 10:
                 raw_tickers = price_stream.get_all_tickers()
                 logging.info(f"[SCREENER] Using WebSocket data ({len(raw_tickers)} tickers)")
             else:
-                logging.error("[SCREENER-CRITICAL] WebSocket Stream empty/down! Skipping scan. REST API disabled.")
+                logging.error(f"[SCREENER-CRITICAL] WebSocket Stream empty/down! (tickers={ticker_count}, connected={price_stream.is_connected}) Skipping scan.")
                 return [] 
                 
             # REST Fallback REMOVED as per user request

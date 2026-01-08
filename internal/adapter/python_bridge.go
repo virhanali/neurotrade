@@ -244,15 +244,18 @@ func (pb *PythonBridge) SendFeedback(ctx context.Context, feedback *domain.Feedb
 // REAL TRADING EXECUTION (v6.0)
 // ==========================================
 
-// ExecuteEntry executes a real entry order via Python Engine
-func (pb *PythonBridge) ExecuteEntry(ctx context.Context, symbol, side string, amountUSDT float64, leverage int, apiKey, apiSecret string) (*domain.ExecutionResult, error) {
+// ExecuteEntry executes a real entry order via Python Engine with SL/TP/Trailing
+func (pb *PythonBridge) ExecuteEntry(ctx context.Context, params *domain.EntryParams) (*domain.ExecutionResult, error) {
 	reqBody := map[string]interface{}{
-		"symbol":      symbol,
-		"side":        side,
-		"amount_usdt": amountUSDT,
-		"leverage":    leverage,
-		"api_key":     apiKey,
-		"api_secret":  apiSecret,
+		"symbol":            params.Symbol,
+		"side":              params.Side,
+		"amount_usdt":       params.AmountUSDT,
+		"leverage":          params.Leverage,
+		"api_key":           params.APIKey,
+		"api_secret":        params.APISecret,
+		"sl_price":          params.SLPrice,
+		"tp_price":          params.TPPrice,
+		"trailing_callback": params.TrailingCallback,
 	}
 
 	jsonData, err := json.Marshal(reqBody)

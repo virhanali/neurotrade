@@ -28,9 +28,9 @@ export function SettingsPage() {
     useEffect(() => {
         if (user) {
             setMode(user.mode);
-            setFixedOrderSize(user.fixedOrderSize.toFixed(2));
-            setLeverage(user.leverage.toString());
-            setAutoTradeEnabled(user.autoTradeEnabled);
+            setFixedOrderSize((user.fixedOrderSize ?? 10).toFixed(2));
+            setLeverage((user.leverage ?? 20).toString());
+            setAutoTradeEnabled(user.autoTradeEnabled ?? false);
             setApiKey(user.binanceApiKey || '');
             // We don't sync secret back from backend for security, it is write-only typically or masked
             // If we want to show it's set, we handle that in the UI rendering logic

@@ -101,9 +101,13 @@ class BinanceExecutor:
 
     async def execute_entry(self, symbol: str, side: str, amount_usdt: float, leverage: int, 
                           api_key: Optional[str] = None, api_secret: Optional[str] = None,
-                          sl_price: Optional[float] = None, tp_price: Optional[float] = None) -> Dict:
+                          sl_price: Optional[float] = None, tp_price: Optional[float] = None,
+                          trailing_callback: Optional[float] = None) -> Dict:
         """
-        Execute a MARKET entry order, followed immediately by SL/TP orders (if provided).
+        Execute a MARKET entry order, followed immediately by SL/TP/Trailing orders (if provided).
+        
+        Args:
+            trailing_callback: Callback rate for trailing stop (e.g., 1.0 = 1%, 0.5 = 0.5%)
         """
         client, is_temp = self._get_client(api_key, api_secret)
         
@@ -255,6 +259,33 @@ class BinanceExecutor:
                     except Exception as e:
                         logger.error(f"[EXEC] Failed to place TP: {e}")
 
+                # Place TRAILING STOP (Alternative to fixed TP)
+                trailing_order_id = None
+                if trailing_callback and trailing_callback > 0:
+                    try:
+                        # Clamp callback rate to Binance limits (0.1% - 5%)
+                        callback_rate = max(0.1, min(5.0, trailing_callback))
+                        logger.info(f"[EXEC] Placing Trailing Stop: {symbol} {close_side} | Callback: {callback_rate}%")
+                        
+                        trailing_order = await asyncio.to_thread(
+                            client.create_order,
+                            symbol,
+                            'TRAILING_STOP_MARKET',
+                            close_side,
+                            filled_qty,
+                            None,
+                            {
+                                'callbackRate': callback_rate,
+                                'reduceOnly': True,
+                                'positionSide': 'BOTH',
+                                'workingType': 'CONTRACT_PRICE'  # Use last price for trailing
+                            }
+                        )
+                        trailing_order_id = trailing_order['id']
+                        logger.info(f"[EXEC] Trailing Stop Placed: ID {trailing_order_id}")
+                    except Exception as e:
+                        logger.error(f"[EXEC] Failed to place Trailing Stop: {e}")
+
             return {
                 "status": "FILLED",
                 "orderId": order['id'],
@@ -262,7 +293,8 @@ class BinanceExecutor:
                 "executedQty": filled_qty,
                 "commission": 0.0,
                 "slOrderId": sl_order_id,
-                "tpOrderId": tp_order_id
+                "tpOrderId": tp_order_id,
+                "trailingOrderId": trailing_order_id
             }
 
         except Exception as e:
