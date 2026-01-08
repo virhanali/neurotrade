@@ -191,6 +191,30 @@ class MarketAnalysisResponse(BaseModel):
 
 
 # ============================================
+# Execution Models
+# ============================================
+
+class ExecuteEntryRequest(BaseModel):
+    symbol: str
+    side: str
+    amount_usdt: float
+    leverage: int
+    api_key: str
+    api_secret: str
+
+class ExecuteCloseRequest(BaseModel):
+    symbol: str
+    side: str
+    quantity: float
+    api_key: str
+    api_secret: str
+
+class BalanceRequest(BaseModel):
+    api_key: str
+    api_secret: str
+
+
+# ============================================
 # API Endpoints
 # ============================================
 
@@ -929,14 +953,6 @@ if __name__ == "__main__":
 # Execution Endpoints (v6.0 - Real Trading)
 # ============================================
 
-class ExecuteEntryRequest(BaseModel):
-    symbol: str
-    side: str  # LONG/SHORT
-    amount_usdt: float
-    leverage: int = 20
-    api_key: Optional[str] = None
-    api_secret: Optional[str] = None
-
 @app.post("/execute/entry")
 async def execute_entry(request: ExecuteEntryRequest):
     """
@@ -957,13 +973,6 @@ async def execute_entry(request: ExecuteEntryRequest):
         
     return result
 
-class ExecuteCloseRequest(BaseModel):
-    symbol: str
-    side: str  # SELL (if Long), BUY (if Short)
-    quantity: float
-    api_key: Optional[str] = None
-    api_secret: Optional[str] = None
-
 @app.post("/execute/close")
 async def execute_close(request: ExecuteCloseRequest):
     """
@@ -981,10 +990,6 @@ async def execute_close(request: ExecuteCloseRequest):
         raise HTTPException(status_code=400, detail=result["error"])
         
     return result
-
-class BalanceRequest(BaseModel):
-    api_key: Optional[str] = None
-    api_secret: Optional[str] = None
 
 @app.post("/execute/balance")
 async def get_real_balance(request: BalanceRequest):

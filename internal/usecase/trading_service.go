@@ -169,9 +169,12 @@ func (ts *TradingService) ProcessMarketScan(ctx context.Context, balance float64
 			// For now, allow all modes to proceed to createPositionForUser.
 
 			// Auto-create paper position for this user
-			// We pass the specific user object now
 			if err := ts.createPositionForUser(ctx, user, signal, aiSignal.TradeParams); err != nil {
-				log.Printf("WARNING: Failed to create paper position for user %s (%s): %v", user.Username, signal.Symbol, err)
+				log.Printf("[ERROR] FAILED to create position for user %s (%s): %v", user.Username, signal.Symbol, err)
+				// Update signal status to FAILED so we know it tried and failed
+				_ = ts.signalRepo.UpdateStatus(ctx, signal.ID, domain.StatusFailed)
+			} else {
+				log.Printf("[SUCCESS] Position created for user %s (%s)", user.Username, signal.Symbol)
 			}
 		}
 
@@ -296,20 +299,27 @@ func (ts *TradingService) createPositionForUser(ctx context.Context, user *domai
 
 	switch user.Mode {
 	case "PAPER":
+		// Auto-topup paper balance if too low (Dev convenience)
+		if user.PaperBalance < 100.0 {
+			log.Printf("[AUTO-TOPUP] User %s paper balance low (%.2f), adding 1000 USDT", user.Username, user.PaperBalance)
+			user.PaperBalance += 1000.0
+			_ = ts.userRepo.UpdateBalance(ctx, user.ID, user.PaperBalance, domain.ModePaper)
+		}
+
 		// Paper trading: Check paper balance
 		if user.PaperBalance < requiredMargin {
-			log.Printf("[WARN] Insufficient PAPER balance for %s: Balance=%.2f, Required=%.2f. Skipping order.",
+			log.Printf("[ERROR] Insufficient PAPER balance for %s: Balance=%.2f, Required=%.2f. Skipping order.",
 				user.Username, user.PaperBalance, requiredMargin)
 			return fmt.Errorf("insufficient paper balance: have %.2f, need %.2f", user.PaperBalance, requiredMargin)
 		}
 	case "REAL":
 		// Real trading: Check real balance (cached from Binance)
 		if user.RealBalanceCache == nil {
-			log.Printf("[WARN] REAL mode enabled but no balance cache for %s. Blocking order.", user.Username)
+			log.Printf("[ERROR] REAL mode enabled but no balance cache for %s. Blocking order.", user.Username)
 			return fmt.Errorf("real balance not available, please sync from Binance first")
 		}
 		if *user.RealBalanceCache < requiredMargin {
-			log.Printf("[WARN] Insufficient REAL balance for %s: Balance=%.2f, Required=%.2f. Blocking order.",
+			log.Printf("[ERROR] Insufficient REAL balance for %s: Balance=%.2f, Required=%.2f. Blocking order.",
 				user.Username, *user.RealBalanceCache, requiredMargin)
 			return fmt.Errorf("insufficient real balance: have %.2f, need %.2f", *user.RealBalanceCache, requiredMargin)
 		}
