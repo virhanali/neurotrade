@@ -304,6 +304,9 @@ func (h *AdminHandler) GetLatestScanResults(c echo.Context) error {
 			"mlWinProbability": float64(signal.Confidence) / 100.0,
 			"createdAt":        signal.CreatedAt.Format(time.RFC3339),
 			"pnl":              pnlVal,
+			"entryPrice":       signal.EntryPrice,
+			"stopLoss":         signal.SLPrice,
+			"takeProfit":       signal.TPPrice,
 		})
 	}
 

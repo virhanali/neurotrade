@@ -87,6 +87,13 @@ func (h *UserHandler) GetMe(c echo.Context) error {
 		}
 	}
 
+	maskedKey := ""
+	if len(user.BinanceAPIKey) > 4 {
+		maskedKey = "..." + user.BinanceAPIKey[len(user.BinanceAPIKey)-4:]
+	} else if len(user.BinanceAPIKey) > 0 {
+		maskedKey = "***"
+	}
+
 	return SuccessResponse(c, dto.UserOutput{
 		ID:               user.ID.String(),
 		Username:         user.Username,
@@ -97,7 +104,7 @@ func (h *UserHandler) GetMe(c echo.Context) error {
 		FixedOrderSize:   user.FixedOrderSize,
 		Leverage:         user.Leverage,
 		AutoTradeEnabled: user.IsAutoTradeEnabled,
-		BinanceAPIKey:    user.BinanceAPIKey,
+		BinanceAPIKey:    maskedKey,
 	})
 }
 

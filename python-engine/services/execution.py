@@ -157,6 +157,15 @@ class BinanceExecutor:
             quantity_str = client.amount_to_precision(symbol, raw_quantity)
             quantity = float(quantity_str)
             
+            # Use safe get for precision, reload if necessary already handled above but double check
+            if symbol not in self.markets:
+                 # Last ditch effort
+                 self.markets = await asyncio.to_thread(client.load_markets, True)
+            
+            if symbol not in self.markets:
+                 print(f"DEBUG_EXEC_ERROR: Symbol {symbol} not found after reload")
+                 return {"error": f"Symbol {symbol} not found on Binance Futures"}
+
             price_precision = self.markets[symbol]['precision']['price']
 
             print(f"DEBUG_EXEC_CALC: {symbol} Price={current_price}, Notional=${notional_value}, RawQty={raw_quantity}, FinalQty={quantity}")

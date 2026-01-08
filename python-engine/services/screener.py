@@ -1009,21 +1009,27 @@ class MarketScreener:
     def get_top_opportunities(self) -> List[Dict]:
         """Screen market for top trading opportunities. Returns list of candidates with metrics."""
         try:
-            # Try to get data from WebSocket first (Fastest)
+            # Try to get data from WebSocket (MANDATORY)
             from services.price_stream import price_stream
             
             raw_tickers = {}
-            source = "REST"
+            source = "WEBSOCKET"
             
-            if price_stream.is_connected and len(price_stream.get_all_tickers()) > 100:
+            # Wait for WS to warm up if empty (up to 5s)
+            retries = 0
+            while len(price_stream.get_all_tickers()) < 10 and retries < 10:
+                time.sleep(0.5)
+                retries += 1
+            
+            if len(price_stream.get_all_tickers()) > 10:
                 raw_tickers = price_stream.get_all_tickers()
-                source = "WEBSOCKET"
-                logging.info(f"[INFO] Using WebSocket data for screening ({len(raw_tickers)} tickers)")
+                logging.info(f"[SCREENER] Using WebSocket data ({len(raw_tickers)} tickers)")
             else:
-                if not self.exchange.markets:
-                    self.exchange.load_markets()
-                raw_tickers = self.exchange.fetch_tickers()
-                logging.warning("[WARN] Using REST API for screening (WebSocket not ready)")
+                logging.error("[SCREENER-CRITICAL] WebSocket Stream empty/down! Skipping scan. REST API disabled.")
+                return [] 
+                
+            # REST Fallback REMOVED as per user request
+            # if not self.exchange.markets: ...
 
             # Filter USDT futures pairs
             opportunities = []
