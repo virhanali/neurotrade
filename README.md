@@ -1,4 +1,4 @@
-# 🧠 NeuroTrade AI
+# NeuroTrade AI
 
 > **Next-Gen Hybrid AI Trading System**
 > *Where Logic Meets Vision, and Experience Drives Execution.*
@@ -9,24 +9,24 @@ Unlike traditional bots, NeuroTrade doesn't just trade—it **learns**. With its
 
 ---
 
-## ✨ Key Capabilities
+##  Key Capabilities
 
-### 🧠 Hybrid AI Intelligence
+###  Hybrid AI Intelligence
 *   **Logic Core (DeepSeek V3):** Analyzes market structure, price action, and risk ratios with human-like reasoning.
 *   **Vision Core (Qwen3 VL 235B):** "Sees" the chart like a pro trader, identifying patterns (Head & Shoulders, Flags) and validating support/resistance levels.
 *   **Consensus Engine:** Trades are only executed when both Logic and Vision AI agree (High Agreement Rate).
 
-### 🛡️ Anti-Fake & Whale Detection
+###  Anti-Fake & Whale Detection
 *   **Directional Momentum:** Uses advanced ROC, RSI slope, and EMA crossovers to detect genuine momentum vs. fake pumps.
 *   **Fake Pump Penalty:** Penalizes movements with wick rejections or price-volume divergence, filtering out "bull traps."
 *   **Whale Radar:** Tracks 6 key signals including Liquidation Cascades, Order Book Imbalances, and Institutional Flow to follow the Smart Money.
 
-### 📚 Self-Learning ML System
+###  Self-Learning ML System
 *   **Continuous Backfill:** Automatically simulates trade outcomes for missed or passed signals to enrich the training dataset.
 *   **Adaptive Learning:** Uses LightGBM to learn from historical wins and losses, adjusting confidence thresholds dynamically.
 *   **Predictive Analytics:** Calculates "Win Probability" for every new signal based on thousands of past scenarios.
 
-### ⚡ Professional Execution
+###  Professional Execution
 *   **Go Backend:** Ultra-low latency execution and risk management.
 *   **Dynamic Trailing Stop:** Auto-locks profits at configurable percentages.
 *   **Risk Guard:** Multi-layer protection (Position Limits, Max Risk per Trade, Daily Drawdown Limits).
@@ -34,7 +34,7 @@ Unlike traditional bots, NeuroTrade doesn't just trade—it **learns**. With its
 
 ---
 
-## 🏗️ System Architecture
+## System Architecture
 
 The system follows a clean, microservices-based architecture:
 
@@ -65,7 +65,7 @@ graph TD
 
 ---
 
-## 📊 AI Brain Center (Analytics)
+## AI Brain Center (Analytics)
 
 NeuroTrade includes a dedicated **AI Analytics Dashboard** providing deep insights into the bot's cognition:
 
@@ -76,7 +76,7 @@ NeuroTrade includes a dedicated **AI Analytics Dashboard** providing deep insigh
 
 ---
 
-## 🚀 Quick Start
+##  Quick Start
 
 ### Prerequisites
 *   Docker & Docker Compose
@@ -107,7 +107,7 @@ NeuroTrade includes a dedicated **AI Analytics Dashboard** providing deep insigh
 
 ---
 
-## 🔧 Configuration Guide
+##  Configuration Guide
 
 ### Critical Environment Variables
 
@@ -121,7 +121,7 @@ NeuroTrade includes a dedicated **AI Analytics Dashboard** providing deep insigh
 
 ---
 
-## 🛡️ Safety Mechanisms
+## Safety Mechanisms
 
 1.  **Double Veto System:** Even if Logic loves a trade, Vision can veto it if the chart looks ugly. Even if both agree, ML can veto it if historical data suggests low probability.
 2.  **Anti-Drain:** "Panic Button" feature to immediately close all positions if the market crashes.
@@ -129,11 +129,9 @@ NeuroTrade includes a dedicated **AI Analytics Dashboard** providing deep insigh
 
 ---
 
-## 📄 License
+## License
 
 Private / Proprietary Software.
 All rights reserved.
 
 ---
-
-*"Success in trading is not about predicting the future. It's about recognizing the probabilities of the present."*
