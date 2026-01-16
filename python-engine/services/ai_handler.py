@@ -892,6 +892,50 @@ Analyze for SCALPER entry (Mean Reversion / Ping-Pong / Predictive Alpha). Provi
             except Exception as e:
                 logging.error(f"[LEARNER] Failed to cache analysis: {e}")
 
+        # === SMART ENTRY STRATEGY ===
+        # Calculate optimal entry type and price
+        entry_type = "MARKET"
+        limit_price = None
+        entry_reasoning = "Standard Market Execution"
+        
+        try:
+            current_price = metrics.get('current_price', 0)
+            atr_val = metrics.get('atr_val', 0)
+            
+            # 1. MOMENTUM / BREAKOUT -> MARKET (Don't miss the move)
+            if is_strong_momentum or is_extreme_movement or pump_threshold_reduction > 0:
+                entry_type = "MARKET"
+                entry_reasoning = "High Momentum/Breakout - Immediate Execution"
+            
+            # 2. REVERSAL / EXTREME RSI -> LIMIT (Sniper Entry)
+            elif (logic_signal == "LONG" and rsi_value < 35) or (logic_signal == "SHORT" and rsi_value > 65):
+                entry_type = "LIMIT"
+                if atr_val > 0:
+                    offset = atr_val * 0.2 # 20% of ATR wick buffer
+                else:
+                    offset = current_price * 0.002 # 0.2% Fallback
+                
+                if logic_signal == "LONG":
+                     limit_price = current_price - offset
+                     entry_reasoning = f"Sniper Long (RSI {rsi_value:.1f}) - Catch Wick"
+                else:
+                     limit_price = current_price + offset
+                     entry_reasoning = f"Sniper Short (RSI {rsi_value:.1f}) - Catch Wick"
+            
+            # 3. NORMAL TREND -> LIMIT (Fee Saving)
+            # Currently disabled to ensure fills, default to MARKET for now unless explicitly Reversal
+            else:
+                 entry_type = "MARKET"
+                 entry_reasoning = "Standard Trend Execution"
+
+            if entry_type == "LIMIT" and limit_price:
+                 logging.info(f"[SMART ENTRY] {metrics.get('symbol')} {logic_signal}: LIMIT @ {limit_price:.4f} ({entry_reasoning})")
+        
+        except Exception as e:
+            logging.warning(f"[SMART ENTRY] Failed calculation, defaulting to MARKET: {e}")
+            entry_type = "MARKET"
+            limit_price = None
+
         return {
             "final_signal": final_signal,
             "combined_confidence": combined_confidence,
@@ -913,5 +957,11 @@ Analyze for SCALPER entry (Mean Reversion / Ping-Pong / Predictive Alpha). Provi
             "threshold_reduction": pump_threshold_reduction,
             # Quality filter metadata
             "quality_penalty": quality_penalty,
-            "quality_issues": quality_veto_reasons if quality_veto_reasons else []
+            "quality_issues": quality_veto_reasons if quality_veto_reasons else [],
+            # Execution Params
+            "entry_params": {
+                "type": entry_type,
+                "limit_price": limit_price,
+                "reasoning": entry_reasoning
+            }
         }

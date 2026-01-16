@@ -102,12 +102,10 @@ class BinanceExecutor:
     async def execute_entry(self, symbol: str, side: str, amount_usdt: float, leverage: int, 
                           api_key: Optional[str] = None, api_secret: Optional[str] = None,
                           sl_price: Optional[float] = None, tp_price: Optional[float] = None,
-                          trailing_callback: Optional[float] = None) -> Dict:
+                          trailing_callback: Optional[float] = None,
+                          order_type: str = "MARKET", limit_price: Optional[float] = None) -> Dict:
         """
-        Execute a MARKET entry order, followed immediately by SL/TP/Trailing orders (if provided).
-        
-        Args:
-            trailing_callback: Callback rate for trailing stop (e.g., 1.0 = 1%, 0.5 = 0.5%)
+        Execute an entry order (MARKET or LIMIT).
         """
         client, is_temp = self._get_client(api_key, api_secret)
         
@@ -194,19 +192,42 @@ class BinanceExecutor:
             try:
                 await asyncio.to_thread(client.set_leverage, leverage, symbol)
             except Exception as e:
-                # Ignore if leverage already set or not modified, but log it
                 print(f"DEBUG_EXEC_WARN: Set leverage failed/skipped: {e}")
 
+            # Recalculate Qty for LIMIT based on execution price
+            exec_price = current_price
+            if order_type.upper() == 'LIMIT' and limit_price:
+                exec_price = limit_price
+                
+            notional_value = amount_usdt
+            raw_quantity = notional_value / exec_price
+            
+            # Apply Precision
+            # Reload logic already done above
+            quantity_str = client.amount_to_precision(symbol, raw_quantity)
+            quantity = float(quantity_str)
+            
+            # Prepare Order Params
+            extra_params = {'positionSide': 'BOTH'}
+            formatted_price = None
+            
+            if order_type.upper() == 'LIMIT':
+                if not limit_price:
+                    return {"error": "Limit price required for LIMIT order"}
+                
+                formatted_price = float(client.price_to_precision(symbol, limit_price))
+                extra_params['timeInForce'] = 'GTC'
+                logger.info(f"[EXEC] Placing LIMIT Order: {symbol} @ {formatted_price}")
+            
             # 7. Send Entry Order (IN THREAD)
             order = await asyncio.to_thread(
                 client.create_order,
                 symbol,
-                'market',
+                order_type.lower(),
                 order_side,
                 quantity,
-                {
-                    'positionSide': 'BOTH' # One-way mode compatible
-                }
+                formatted_price, # Price (None for Market)
+                extra_params
             )
 
             logger.info(f"[EXEC] Order Filled! ID: {order['id']} @ {order['average']}")
