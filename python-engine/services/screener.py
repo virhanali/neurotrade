@@ -1071,21 +1071,28 @@ class MarketScreener:
                 raw_tickers = price_stream.get_all_tickers()
                 logging.info(f"[SCREENER] Using WebSocket data ({len(raw_tickers)} tickers)")
             else:
-                # FALLBACK: Use REST API when WebSocket is down (SYNC version)
+                # FALLBACK: Use Direct REST API (fapi) when WebSocket is down
+                # We bypass CCXT here to ensure we hit fapi.binance.com and avoid api.binance.com (Spot) 503 errors
                 ws_error = getattr(price_stream, 'last_error', 'Unknown')
                 logging.warning(f"[SCREENER] WebSocket down (tickers={ticker_count}, connected={price_stream.is_connected}, error='{ws_error}'), using REST fallback")
+                
                 try:
-                    source = "REST"
-                    if not self.exchange.markets:
-                        self.exchange.load_markets()
-                    raw_tickers = self.exchange.fetch_tickers()
-                    logging.info(f"[SCREENER] Using REST data ({len(raw_tickers)} tickers)")
+                    import requests
+                    source = "DIRECT_REST"
+                    # Using Futures API directly
+                    resp = requests.get("https://fapi.binance.com/fapi/v1/ticker/24hr", timeout=10)
+                    if resp.status_code != 200:
+                        raise Exception(f"HTTP {resp.status_code}")
+                    
+                    data = resp.json()
+                    # Convert to dict keyed by symbol
+                    raw_tickers = {item['symbol']: item for item in data}
+                    logging.info(f"[SCREENER] Using DIRECT REST data ({len(raw_tickers)} tickers)")
+                    
                 except Exception as e:
                     logging.error(f"[SCREENER-CRITICAL] REST fallback also failed: {e}")
+                    # Try one more valid endpoint (Premium Index) just in case, or fail
                     return []
-                
-            # REST Fallback REMOVED as per user request
-            # if not self.exchange.markets: ...
 
             # Filter USDT futures pairs
             opportunities = []
@@ -1094,11 +1101,14 @@ class MarketScreener:
                 is_usdt = False
                 clean_symbol = ""
                 
-                if source == "WEBSOCKET":
+                # Handle raw symbols from WS or Direct REST (e.g. "BTCUSDT")
+                if source in ["WEBSOCKET", "DIRECT_REST"]:
                      if symbol.endswith("USDT"):
                          is_usdt = True
                          base = symbol[:-4]
                          clean_symbol = f"{base}/USDT"
+                
+                # Handle CCXT format (e.g. "BTC/USDT:USDT")
                 else:
                     if symbol.endswith("/USDT:USDT"):
                         is_usdt = True
@@ -1107,13 +1117,24 @@ class MarketScreener:
                 if not is_usdt:
                     continue
 
-                quote_volume = ticker.get('quoteVolume', 0)
-                percentage_change = ticker.get('percentage', 0)
+                # Map fields based on source
+                if source == "WEBSOCKET":
+                    # WS format (from price_stream): quoteVolume, percentage
+                    quote_volume = ticker.get('quoteVolume', 0)
+                    percentage_change = ticker.get('percentage', 0)
+                elif source == "DIRECT_REST":
+                    # Binance API format: quoteVolume, priceChangePercent
+                    quote_volume = float(ticker.get('quoteVolume', 0))
+                    percentage_change = float(ticker.get('priceChangePercent', 0))
+                else:
+                    # CCXT format
+                    quote_volume = ticker.get('quoteVolume', 0)
+                    percentage_change = ticker.get('percentage', 0)
 
                 if quote_volume is None or percentage_change is None:
                     continue
                 
-                # Check STATUS (active trading only)
+                # Check STATUS (active trading only) - Skip for Direct Rest/WS as we assume active if ticking
                 if source == "REST" and symbol in self.exchange.markets:
                     status = self.exchange.markets[symbol].get('info', {}).get('status', 'UNKNOWN')
                     if status != 'TRADING':
