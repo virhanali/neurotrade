@@ -253,11 +253,17 @@ class MarketScreener:
                 tau.append(np.sqrt(np.std(pp)))
             
             # Slope of log(tau) vs log(lag) approximates H
+            # Slope of log(tau) vs log(lag) approximates H
             # H = log(sigma) / log(time_lag)
-            if len(lagvec) < 2 or len(tau) < 2:
+            
+            # Filter out zero variance (avoid log(0) error)
+            clean_data = [(l, t) for l, t in zip(lagvec, tau) if t > 0]
+            if len(clean_data) < 2:
                 return 0.5
                 
-            m = np.polyfit(np.log(lagvec), np.log(tau), 1)
+            lag_clean, tau_clean = zip(*clean_data)
+            
+            m = np.polyfit(np.log(lag_clean), np.log(tau_clean), 1)
             hurst = m[0] * 2.0 # Adjusted for standard price series (non-integrated)
             
             # Clamp result

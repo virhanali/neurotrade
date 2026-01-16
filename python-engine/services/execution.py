@@ -259,7 +259,6 @@ class BinanceExecutor:
                             None,
                             {
                                 'stopPrice': float(sl_price_str),
-                                'reduceOnly': True,
                                 'workingType': 'MARK_PRICE',
                                 'closePosition': True,
                                 'timeInForce': 'GTC'
@@ -274,7 +273,6 @@ class BinanceExecutor:
                         try:
                             sl_order = await asyncio.to_thread(client.create_order, symbol, 'STOP_MARKET', close_side, quantity, None, {
                                 'stopPrice': float(sl_price_str), 
-                                'reduceOnly': True, 
                                 'workingType': 'MARK_PRICE',
                                 'closePosition': True,
                                 'timeInForce': 'GTC'
@@ -299,7 +297,6 @@ class BinanceExecutor:
                             None,
                             {
                                 'stopPrice': float(tp_price_str),
-                                'reduceOnly': True,
                                 'workingType': 'MARK_PRICE',
                                 'closePosition': True,
                                 'timeInForce': 'GTC'

@@ -1,7 +1,13 @@
-# Environment files
+# Environment variables
 .env
 .env.local
-.env.*.local
+
+# AI/LLM Context
+.claude/
+.cursorrules
+
+# Docker
+.docker_data/l
 
 # Go
 bin/
