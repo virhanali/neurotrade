@@ -77,26 +77,32 @@ class DataFetcher:
     def _fetch_ohlcv(self, symbol: str, timeframe: str, limit: int = 100) -> pd.DataFrame:
         """
         Fetch OHLCV data and convert to DataFrame
-
-        Args:
-            symbol: Trading pair (e.g., 'BTC/USDT')
-            timeframe: Candle timeframe (e.g., '1h', '4h')
-            limit: Number of candles to fetch
-
-        Returns:
-            DataFrame with OHLCV data
         """
-        try:
-            ohlcv = self.exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
-            df = pd.DataFrame(
-                ohlcv,
-                columns=['timestamp', 'open', 'high', 'low', 'close', 'volume']
-            )
-            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-            df.set_index('timestamp', inplace=True)
-            return df
-        except Exception as e:
-            raise Exception(f"Failed to fetch OHLCV for {symbol} {timeframe}: {str(e)}")
+        import time
+        max_retries = 3
+        
+        for attempt in range(max_retries):
+            try:
+                ohlcv = self.exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
+                df = pd.DataFrame(
+                    ohlcv,
+                    columns=['timestamp', 'open', 'high', 'low', 'close', 'volume']
+                )
+                df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+                df.set_index('timestamp', inplace=True)
+                return df
+                
+            except (ccxt.ExchangeNotAvailable, ccxt.RequestTimeout, ccxt.NetworkError) as e:
+                if attempt == max_retries - 1:
+                    raise Exception(f"Failed to fetch OHLCV for {symbol} after {max_retries} attempts: {str(e)}")
+                
+                wait_time = (attempt + 1) * 2  # 2s, 4s, 6s...
+                print(f"[WARN] Binance 503/Timeout for {symbol}, retrying in {wait_time}s...")
+                time.sleep(wait_time)
+                
+            except Exception as e:
+                # For other errors (like invalid symbol), fail immediately
+                raise Exception(f"Failed to fetch OHLCV for {symbol} {timeframe}: {str(e)}")
 
     def _calculate_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
         """

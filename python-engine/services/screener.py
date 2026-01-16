@@ -751,11 +751,11 @@ class MarketScreener:
             # ===========================================
             
             # 1. Single Candle Dominance (manipulation signal)
-            # If one candle has >50% of the total move, it's likely fake
+            # If one candle has >75% of the total move, it's likely fake (Relaxed from 60%)
             total_move = abs(closes[-1] - closes[-5])
             max_single_move = max(abs(closes[i] - closes[i-1]) for i in range(-4, 0))
-            if total_move > 0 and max_single_move / total_move > 0.6:
-                fake_penalty += 20
+            if total_move > 0 and max_single_move / total_move > 0.75:
+                fake_penalty += 10 # Reduced from 20
                 fake_signals.append("SINGLE_CANDLE_DOMINANCE")
             
             # 2. Wick Rejection (price rejected at highs/lows)
@@ -764,8 +764,8 @@ class MarketScreener:
             if last_candle_range > 0:
                 body_ratio = last_candle_body / last_candle_range
                 # Long wick = rejection
-                if body_ratio < 0.3:  # Body is less than 30% of range
-                    fake_penalty += 15
+                if body_ratio < 0.25:  # Body is less than 25% of range (Relaxed from 30%)
+                    fake_penalty += 5 # Reduced from 15
                     fake_signals.append("WICK_REJECTION")
             
             # 3. Volume Divergence (price up but volume decreasing)
@@ -773,20 +773,21 @@ class MarketScreener:
             price_trend = closes[-1] - closes[-4]
             # Bullish price but bearish volume = weak/fake
             if price_trend > 0 and vol_trend < 0:
-                fake_penalty += 15
+                fake_penalty += 5 # Reduced from 15
                 fake_signals.append("VOL_DIVERGENCE_BULL")
             elif price_trend < 0 and vol_trend < 0:
-                fake_penalty += 10
+                fake_penalty += 5 # Reduced from 10
                 fake_signals.append("VOL_DIVERGENCE_BEAR")
             
             # 4. Immediate Reversal Check (last candle reversing)
             prev_direction = closes[-2] - closes[-3]
             curr_direction = closes[-1] - closes[-2]
-            if prev_direction > 0 and curr_direction < 0 and abs(curr_direction) > abs(prev_direction) * 0.5:
-                fake_penalty += 20
+            # Only checking strong reversals (>80% retracement) - Relaxed from 50%
+            if prev_direction > 0 and curr_direction < 0 and abs(curr_direction) > abs(prev_direction) * 0.8:
+                fake_penalty += 10 # Reduced from 20
                 fake_signals.append("REVERSAL_CANDLE")
-            elif prev_direction < 0 and curr_direction > 0 and abs(curr_direction) > abs(prev_direction) * 0.5:
-                fake_penalty += 20
+            elif prev_direction < 0 and curr_direction > 0 and abs(curr_direction) > abs(prev_direction) * 0.8:
+                fake_penalty += 10 # Reduced from 20
                 fake_signals.append("REVERSAL_CANDLE")
             
             # 1. Price Rate of Change (ROC)
