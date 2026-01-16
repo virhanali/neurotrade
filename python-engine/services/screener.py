@@ -1466,6 +1466,10 @@ class MarketScreener:
                         result['hurst'] = float(hurst)
                         result['market_regime'] = regime
                         
+                        # CRITICAL: Ensure Price Data is passed for Execution
+                        result['current_price'] = float(current_price)
+                        result['atr_val'] = float(atr_val) if atr_val and not np.isnan(atr_val) else (current_price * 0.01)
+                        
                         # Whale Logic (Sync)
                         if HAS_WHALE_DETECTOR:
                             try:
