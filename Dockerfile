@@ -1,13 +1,20 @@
+# syntax=docker/dockerfile:1
+
 # Stage 1: Build Frontend
 FROM node:20-alpine AS frontend-builder
 WORKDIR /app
+
+# Install dependencies with cache
 COPY neurotrade/package*.json ./
-RUN npm install --legacy-peer-deps
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --legacy-peer-deps || npm install --legacy-peer-deps
+
+# Build source
 COPY neurotrade ./
 RUN npm run build
 
 # Stage 2: Build Backend
-FROM golang:alpine AS builder
+FROM golang:1.23-alpine AS builder
 
 WORKDIR /app
 
@@ -16,13 +23,18 @@ RUN apk add --no-cache git ca-certificates tzdata
 
 # Copy go mod files first (layer caching)
 COPY go.mod go.sum* ./
-RUN go mod download && go mod verify
+
+# Download modules with cache
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download && go mod verify
 
 # Copy source code
 COPY . .
 
-# Build the application with optimizations
-RUN CGO_ENABLED=0 GOOS=linux go build \
+# Build the application with optimizations and cache
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=linux go build \
     -a -installsuffix cgo \
     -ldflags="-w -s -X main.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     -o main ./cmd/app

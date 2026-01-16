@@ -534,7 +534,7 @@ class DeepLearner:
         elif datetime.utcnow() - self.last_train_time > self.retrain_interval:
             self._train_model()
 
-    def predict_win_probability(self, metrics: Dict) -> float:
+    def predict_win_probability(self, metrics: Dict, ai_context: Optional[Dict] = None) -> float:
         """
         Predict win probability using ML model.
         Falls back to rule-based estimation if ML unavailable.
@@ -543,23 +543,60 @@ class DeepLearner:
         if self.model is None:
             self._check_retrain()
 
-        # If still no model, use rule-based fallback
+        # If still no model, use dynamic rule-based fallback
         if self.model is None or self.scaler is None:
             return self._rule_based_probability(metrics)
 
         try:
-            # Prepare features
+            # Prepare features (Must match _prepare_features logic exactly)
             now = datetime.utcnow()
+            
+            # Extract AI Context (if available)
+            ctx = ai_context or {}
+            logic_conf = float(ctx.get('logic_confidence', 0))
+            vision_conf = float(ctx.get('vision_confidence', 0))
+            # Proxy final_conf if not provided (avg of components)
+            final_conf = float(ctx.get('final_confidence', (logic_conf + vision_conf) / 2))
+            ai_agreement = float(1.0 if ctx.get('agreement', False) else 0.0)
+            
+            # Whale features
+            whale_conf = float(metrics.get('whale_confidence', 0) or 0)
+            whale_sig = metrics.get('whale_signal', 'NEUTRAL')
+            whale_active = 1.0 if whale_sig in ['PUMP_IMMINENT', 'DUMP_IMMINENT'] else 0.0
+            
+            # Core metrics
+            adx = float(metrics.get('adx', 0) or 0)
+            vol_z = float(metrics.get('vol_z_score', 0) or 0)
+            ker = float(metrics.get('efficiency_ratio', metrics.get('ker', 0)) or 0)
+            
             features = np.array([[
-                float(metrics.get('adx', 0) or 0),
-                float(metrics.get('vol_z_score', 0) or 0),
-                float(metrics.get('efficiency_ratio', metrics.get('ker', 0)) or 0),
+                # Core screener metrics (5)
+                adx,
+                vol_z,
+                ker,
                 1.0 if metrics.get('is_squeeze') else 0.0,
                 float(metrics.get('score', 0) or 0),
+                
+                # AI confidence metrics (4)
+                logic_conf,
+                vision_conf,
+                final_conf,
+                ai_agreement,
+                
+                # Whale metrics (2)
+                whale_conf,
+                whale_active,
+                
+                # Time features (2)
                 float(now.hour),
                 float(now.weekday()),
-                float(metrics.get('adx', 0) or 0) * float(metrics.get('efficiency_ratio', metrics.get('ker', 0)) or 0),
-                1.0 if float(metrics.get('vol_z_score', 0) or 0) > 2.0 else 0.0,
+                
+                # Derived features (5)
+                adx * ker,
+                1.0 if vol_z > 2.0 else 0.0,
+                logic_conf * vision_conf / 10000.0,
+                1.0 if final_conf >= 80 else 0.0,
+                whale_active * whale_conf / 100.0,
             ]])
 
             features_scaled = self.scaler.transform(features)
@@ -568,48 +605,48 @@ class DeepLearner:
             return float(np.clip(probability, 0.0, 1.0))
 
         except Exception as e:
-            logging.error(f"[LEARNER] Prediction failed: {e}")
+            logging.error(f"[LEARNER] Prediction failed ({len(e.args) if e.args else 0} args): {e}")
             return self._rule_based_probability(metrics)
 
     def _rule_based_probability(self, metrics: Dict) -> float:
-        """Fallback rule-based win probability estimation."""
+        """Fallback rule-based win probability estimation (Upgraded v5.0)."""
         score = 0.5  # Base probability
-
-        # ADX contribution
-        adx = float(metrics.get('adx', 0) or 0)
-        if adx > 25:
-            score += 0.1  # Trending market
-        elif adx < 15:
-            score -= 0.05  # Very weak trend
-
-        # Volume Z-Score contribution
-        vol_z = float(metrics.get('vol_z_score', 0) or 0)
-        if vol_z > 3.0:
-            score += 0.15  # Significant volume anomaly
-        elif vol_z > 2.0:
-            score += 0.08
-
-        # Efficiency Ratio contribution
+        
+        # 1. Trend Quality (Efficiency Ratio) - Most important for clean moves
         ker = float(metrics.get('efficiency_ratio', metrics.get('ker', 0)) or 0)
-        if ker > 0.7:
-            score += 0.12  # Very clean trend
-        elif ker > 0.5:
-            score += 0.06
-        elif ker < 0.25:
-            score -= 0.1  # Choppy market
+        if ker > 0.8: score += 0.15   # Perfect trend
+        elif ker > 0.6: score += 0.08 # Clean trend
+        elif ker < 0.25: score -= 0.1 # Choppy/Messy
+        
+        # 2. Volume Anomalies (Whale Activity)
+        vol_z = float(metrics.get('vol_z_score', 0) or 0)
+        whale_sig = metrics.get('whale_signal', 'NEUTRAL')
+        if vol_z > 4.0: score += 0.15 # Black swan volume
+        elif vol_z > 2.0: score += 0.08
+        
+        # 3. Momentum (Explosive Speed)
+        roc_3 = abs(float(metrics.get('roc_3', 0)))
+        if roc_3 > 1.5 and ker > 0.5:
+            score += 0.12 # Strong momentum + clean trend
+        
+        # 4. Whale Confidence
+        whale_conf = float(metrics.get('whale_confidence', 0))
+        if whale_sig in ['PUMP_IMMINENT', 'DUMP_IMMINENT']:
+             if whale_conf > 80: score += 0.15
+             elif whale_conf > 60: score += 0.08
+        
+        # 5. Penalties
+        # Market Structure penalty
+        if metrics.get('structure') == 'CHOPPY' and not metrics.get('is_squeeze'):
+            score -= 0.1
+            
+        # Funding rate trap?
+        funding_bias = metrics.get('funding_bias', 'NEUTRAL')
+        if funding_bias != 'NEUTRAL':
+             # Slight penalty for fighting funding, though logic handles direction
+             pass 
 
-        # Squeeze contribution
-        if metrics.get('is_squeeze'):
-            score += 0.08  # Potential breakout
-
-        # Screener score contribution
-        screener_score = float(metrics.get('score', 0) or 0)
-        if screener_score > 80:
-            score += 0.1
-        elif screener_score > 60:
-            score += 0.05
-
-        return max(0.1, min(0.9, score))
+        return max(0.1, min(0.95, score))
 
     def get_market_regime(self) -> MarketRegime:
         """Detect current market regime based on recent trades."""
@@ -689,11 +726,11 @@ class DeepLearner:
 
         return base_confidence
 
-    def get_prediction(self, metrics: Dict) -> MLPrediction:
+    def get_prediction(self, metrics: Dict, ai_context: Optional[Dict] = None) -> MLPrediction:
         """
         Get full ML prediction with win probability, regime, and insights.
         """
-        win_prob = self.predict_win_probability(metrics)
+        win_prob = self.predict_win_probability(metrics, ai_context)
         regime = self.get_market_regime()
         threshold = self.get_recommended_threshold()
 

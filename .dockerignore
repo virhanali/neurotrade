@@ -1,0 +1,28 @@
+# Git
+.git
+.gitignore
+
+# Environment (Security)
+.env
+.env.*
+
+# Dependencies
+node_modules
+neurotrade/node_modules
+web/node_modules
+
+# Logs and Temp
+logs
+tmp
+*.log
+.DS_Store
+
+# Build artifacts
+dist
+neurotrade/dist
+web/dist
+bin
+
+# IDES
+.idea
+.vscode

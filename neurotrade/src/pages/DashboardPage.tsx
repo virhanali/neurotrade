@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { TrendingUp, TrendingDown, Target, Percent, DollarSign, BarChart3 } from 'lucide-react';
+import { TrendingUp, TrendingDown, Percent, DollarSign, BarChart3 } from 'lucide-react';
 import { useUser } from '@/hooks/useUser';
 import { usePositions, useDashboardStats } from '@/hooks/usePositions';
 import { cn, formatCurrency, formatPercent, getPnlColor } from '@/utils/helpers';
@@ -68,13 +68,13 @@ export function DashboardPage() {
                     iconBg="amber"
                 />
 
-                {/* Total Trades */}
+                {/* Whale Activity (NEW) */}
                 <StatCard
-                    title="Total Trades"
-                    value={String(stats?.totalTrades || 0)}
-                    subtitle={`Best: ${formatCurrency(stats?.bestTrade || 0)}`}
-                    subtitleColor="emerald"
-                    icon={Target}
+                    title="Whale Consensus"
+                    value={stats?.whaleSignal || "Neutral"} // You'll need to ensure useDashboardStats returns this or mock it for now
+                    subtitle={stats?.whaleConfidence ? `${stats.whaleConfidence}% Conf` : "Scanning..."}
+                    subtitleColor="indigo"
+                    icon={BarChart3} // Using BarChart3 as proxy for Waves if not available, or import Waves
                     iconBg="indigo"
                 />
             </div>

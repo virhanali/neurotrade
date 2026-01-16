@@ -46,7 +46,13 @@ class PriceStreamService:
         self._running = True
         self.last_error = None
         self._task = asyncio.create_task(self._run_forever())
-        logger.info("[WS] Price stream started")
+        logger.info("[WS] Price stream background task started, waiting for connection...")
+        # Give it a moment to connect
+        await asyncio.sleep(5)
+        if self.is_connected:
+             logger.info("[WS] Price stream connected and ready")
+        else:
+             logger.warning("[WS] Price stream initializing (still connecting...)")
     
     async def stop(self):
         """Stop the WebSocket connection"""
@@ -121,22 +127,28 @@ class PriceStreamService:
             # !ticker@arr returns array of tickers
             if isinstance(data, list):
                 for ticker in data:
-                    symbol = ticker.get('s')  # Symbol
+                    symbol = ticker.get('s')  # Symbol already in "BTCUSDT" format
                     price = ticker.get('c')   # Close price (current)
                     
                     if symbol and price:
-                        price_float = float(price)
-                        self.prices[symbol] = price_float
-                        
-                        # Store full ticker data for screener
-                        # Map WS fields to what Screener expects
-                        self.tickers[symbol] = {
-                            'symbol': symbol,
-                            'price': price_float,
-                            'quoteVolume': float(ticker.get('q', 0)),    # 24h Quote Vol
-                            'percentage': float(ticker.get('P', 0)),     # 24h Change %
-                            'status': 'TRADING'                          # Assume trading if active on WS
-                        }
+                        try:
+                            # Normalize symbol to be safe (though usually correct in WS)
+                            norm_symbol = symbol.upper()
+                            price_float = float(price)
+                            
+                            self.prices[norm_symbol] = price_float
+                            
+                            # Store full ticker data for screener
+                            # Map WS fields to what Screener expects
+                            self.tickers[norm_symbol] = {
+                                'symbol': norm_symbol,  # Use normalized key
+                                'price': price_float,
+                                'quoteVolume': float(ticker.get('q', 0)),    # 24h Quote Vol
+                                'percentage': float(ticker.get('P', 0)),     # 24h Change %
+                                'status': 'TRADING'                          # Assume trading if active on WS
+                            }
+                        except (ValueError, TypeError):
+                            continue # Skip malformed tickers
                 
                 self.last_update = datetime.utcnow()
         

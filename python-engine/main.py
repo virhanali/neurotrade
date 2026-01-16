@@ -38,11 +38,20 @@ except ImportError:
     logging.warning("[MAIN] Whale detector not available")
 
 # Configure logging with timestamp
+# Configure logging
+logging_level = getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO)
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging_level,
     format='%(asctime)s | %(levelname)s | %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
+
+# Silence noisy libraries
+logging.getLogger('matplotlib').setLevel(logging.WARNING)
+logging.getLogger('urllib3').setLevel(logging.WARNING)
+logging.getLogger('asyncio').setLevel(logging.WARNING)
+logging.getLogger('uvicorn.access').setLevel(logging.WARNING) # Hide access logs if too noisy
+logging.getLogger('multipart').setLevel(logging.WARNING)
 
 
 
@@ -392,14 +401,9 @@ async def analyze_market(request: MarketAnalysisRequest):
             if top_candidates and top_candidates[0].get('score', 0) > 60:
                  logging.debug(f"[BTC Sleepy] BTC Quiet ({btc_volatility_15m:.2f}%) but Top Alt Score {top_candidates[0]['score']} > 60. Proceeding.")
             else:
-                logging.debug(f"[BTC Sleepy] BTC Move {btc_volatility_15m:.2f}% < {BTC_VOLATILITY_THRESHOLD_15M}%, RSI={btc_rsi:.0f} - skipping")
-                return MarketAnalysisResponse(
-                    timestamp=datetime.utcnow(),
-                    btc_context=btc_context,
-                    opportunities_screened=0,
-                    valid_signals=[],
-                    execution_time_seconds=0
-                )
+                logging.info(f"[BTC Stable] BTC Quiet ({btc_volatility_15m:.2f}%) & Not Extreme (RSI={btc_rsi:.0f}). Favorable for Scalping.")
+                # Proceed with analysis, don't return early
+
         
         if btc_volatility_15m < BTC_VOLATILITY_THRESHOLD_15M and btc_in_extreme:
             logging.debug(f"[BTC EXTREME] Low vol but RSI={btc_rsi:.0f} - proceeding")
@@ -432,10 +436,37 @@ async def analyze_market(request: MarketAnalysisRequest):
             symbol = candidate['symbol']
             score = candidate.get('score', 0)
             
-            MIN_SCORE_FOR_AI = 40
-            if score < MIN_SCORE_FOR_AI:
-                logging.debug(f"[SKIP-AI] {symbol}: Score {score} < {MIN_SCORE_FOR_AI} - Skipping AI")
+            # === STEP 1: STRICT MATH CONFIDENCE GATE ===
+            # User Rule: "Hitung matematika dulu, valid baru kirim AI"
+            # We ONLY call AI if the mathematical model is already confident.
+            
+            math_score = score
+            whale_conf = candidate.get('whale_confidence', 0)
+            whale_signal = candidate.get('whale_signal', 'NEUTRAL')
+            
+            # Calculate Total Math Confidence
+            # Base is the Screener Score (Technical Analysis)
+            total_math_confidence = math_score
+            
+            # Whale Boost: If whale detector is confident, it boosts the signal
+            if whale_conf > 60:
+                # If Technical and Whale agree, confidence is very high
+                if (whale_signal == 'PUMP_IMMINENT' and math_score > 50) or \
+                   (whale_signal == 'DUMP_IMMINENT' and math_score > 50):
+                   total_math_confidence += 20
+                else:
+                   # Whale signal alone is strong, but needs some technical backing
+                   total_math_confidence = max(math_score, whale_conf)
+
+            # THRESHOLD: 75% (High Confidence Required)
+            # This ensures we don't waste AI tokens on weak signals
+            MIN_MATH_THRESHOLD = 75
+            
+            if total_math_confidence < MIN_MATH_THRESHOLD:
+                logging.debug(f"[SKIP-AI] {symbol}: Math Conf {total_math_confidence}% < {MIN_MATH_THRESHOLD}% (Tech: {math_score}, Whale: {whale_conf}) - Saving Cost")
                 return None
+
+            logging.info(f"[MATH-PASS] {symbol}: Math Conf {total_math_confidence}% >= {MIN_MATH_THRESHOLD}% - Proceeding to AI")
             
             async with semaphore:
                 try:

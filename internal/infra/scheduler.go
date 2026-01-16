@@ -63,22 +63,21 @@ func (s *Scheduler) Start() error {
 		isGoldenHour := (hour >= 0 && hour < 4) || (hour >= 7 && hour < 11) || (hour >= 13 && hour < 18)
 
 		// DYNAMIC FREQUENCY (RELAXED TO AVOID BANS):
+		// Use tolerance window because cron execution might be slightly delayed (e.g. second=1)
+		isTopMinute := second < 10
+
 		if isOverlapHour {
-			// Overlap hours: run EVERY 30 seconds (:00, :30)
-			if second != 0 && second != 30 {
-				return
-			}
+			// Overlap hours: run EVERY 30 seconds (Both :00 and :30 ticks allowed)
+			// Pass through
 		} else if isGoldenHour {
-			// Golden hours: run EVERY 1 minute (:00)
-			if second != 0 {
+			// Golden hours: run EVERY 1 minute (Only :00 tick)
+			if !isTopMinute {
 				return
 			}
 		} else {
 			// Dead hours: run EVERY 5 minutes
-			// Note: This requires the cron to trigger at least once/minute.
-			// Current cron triggers every 10s, so this works.
 			minute := now.Minute()
-			if second != 0 || minute%5 != 0 {
+			if !isTopMinute || minute%5 != 0 {
 				return
 			}
 		}

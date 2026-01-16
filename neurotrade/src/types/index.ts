@@ -74,6 +74,8 @@ export interface DashboardStats {
     todayPnlPercent: number;
     bestTrade: number;
     worstTrade: number;
+    whaleSignal?: string;
+    whaleConfidence?: number;
 }
 
 // Settings Update Request

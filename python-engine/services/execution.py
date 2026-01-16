@@ -210,6 +210,9 @@ class BinanceExecutor:
             tp_order_id = None
             
             # 8. Place SL/TP Orders (Strategy Orders) using Standard Endpoint
+            # WAIT 1s to ensure Binance backend registers the position (Critical for SL/TP success)
+            await asyncio.sleep(1.0)
+
             # Uses /fapi/v1/order via client.create_order
             if filled_qty > 0:
                 # Place STOP LOSS
@@ -228,13 +231,29 @@ class BinanceExecutor:
                             {
                                 'stopPrice': float(sl_price_str),
                                 'reduceOnly': True,
-                                'workingType': 'MARK_PRICE'
+                                'workingType': 'MARK_PRICE',
+                                'closePosition': True,
+                                'timeInForce': 'GTC'
                             }
                         )
                         sl_order_id = str(sl_order.get('id'))
                         logger.info(f"[EXEC] SL Placed: ID {sl_order_id}")
                     except Exception as e:
                         logger.error(f"[EXEC] Failed to place SL: {e}")
+                        # Retry once after shorter delay
+                        await asyncio.sleep(1.0)
+                        try:
+                            sl_order = await asyncio.to_thread(client.create_order, symbol, 'STOP_MARKET', close_side, quantity, None, {
+                                'stopPrice': float(sl_price_str), 
+                                'reduceOnly': True, 
+                                'workingType': 'MARK_PRICE',
+                                'closePosition': True,
+                                'timeInForce': 'GTC'
+                            })
+                            sl_order_id = str(sl_order.get('id'))
+                            logger.info(f"[EXEC] SL Placed (Retry): ID {sl_order_id}")
+                        except Exception as retry_e:
+                            logger.error(f"[EXEC] SL Retry Failed: {retry_e}")
 
                 # Place TAKE PROFIT
                 if tp_price and tp_price > 0:
@@ -252,15 +271,15 @@ class BinanceExecutor:
                             {
                                 'stopPrice': float(tp_price_str),
                                 'reduceOnly': True,
-                                'workingType': 'MARK_PRICE'
+                                'workingType': 'MARK_PRICE',
+                                'closePosition': True,
+                                'timeInForce': 'GTC'
                             }
                         )
                         tp_order_id = str(tp_order.get('id'))
                         logger.info(f"[EXEC] TP Placed: ID {tp_order_id}")
                     except Exception as e:
                         logger.error(f"[EXEC] Failed to place TP: {e}")
-                
-                # TRAILING STOP REMOVED as requested (caused endpoint issues)
 
             # 9. Return Success
             return {
@@ -270,7 +289,6 @@ class BinanceExecutor:
                 "filled_qty": filled_qty,
                 "sl_order_id": sl_order_id,
                 "tp_order_id": tp_order_id,
-                "trailing_order_id": trailing_order_id,
                 "message": f"Order filled @ {avg_price:.4f}"
             }
 

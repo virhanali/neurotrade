@@ -55,31 +55,27 @@ func (h *UserHandler) GetMe(c echo.Context) error {
 
 	// Optimization: Return cached balance immediately (instant).
 	// Trigger background refresh for REAL mode users to keep cache fresh.
+	// Optimization: Fetch real balance synchronously if in REAL mode.
+	// This ensures the dashboard always shows fresh balance on load/reload.
 	if user.Mode == domain.ModeReal && user.BinanceAPIKey != "" {
-		go func(u *domain.User) {
-			bgCtx, bgCancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer bgCancel()
+		// Quick timeout for balance check to not stall the UI too long
+		bgCtx, bgCancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer bgCancel()
 
-			realBal, err := h.aiService.GetRealBalance(bgCtx, u.BinanceAPIKey, u.BinanceAPISecret)
-			if err != nil {
-				log.Printf("[WARN] Background balance fetch failed for %s: %v", u.Username, err)
-				return
-			}
+		realBal, err := h.aiService.GetRealBalance(bgCtx, user.BinanceAPIKey, user.BinanceAPISecret)
+		if err != nil {
+			log.Printf("[WARN] Balance fetch failed for %s: %v", user.Username, err)
+			// On error, we just fall through and use the cached value (if any)
+		} else if realBal >= 0 {
+			// Update cache in DB asynchronously so we don't block response further
+			go func(uid uuid.UUID, bal float64) {
+				_ = h.userRepo.UpdateRealBalance(context.Background(), uid, bal)
+			}(user.ID, realBal)
 
-			// SAFETY: Only update if we got a valid positive balance
-			// This prevents overwriting real data with 0 due to API errors
-			if realBal > 0 {
-				dbCtx, dbCancel := context.WithTimeout(context.Background(), 2*time.Second)
-				defer dbCancel()
-				if err := h.userRepo.UpdateRealBalance(dbCtx, u.ID, realBal); err != nil {
-					log.Printf("[WARN] Failed to update cached balance: %v", err)
-				} else {
-					log.Printf("[OK] Updated cached balance for %s: $%.2f", u.Username, realBal)
-				}
-			} else {
-				log.Printf("[WARN] Got zero balance from Binance for %s, skipping update", u.Username)
-			}
-		}(user)
+			// Use the fresh value for THIS response
+			val := realBal
+			user.RealBalanceCache = &val
+		}
 	}
 
 	maskedKey := ""

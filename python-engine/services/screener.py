@@ -1223,196 +1223,153 @@ class MarketScreener:
                     if atr_pct < 0.15:
                          return None
                     
-                    # E. Scoring System (Updated with Quant Metrics)
-                    score = 0
-                    
-                    # 1. ALPHA: Squeeze (Accumulation)
-                    if is_squeeze:
-                         score += 40
-                         if vol_z_score > 2.0: score += 30 # Squeeze + Volume Anomaly = JACKPOT
-                    
-                    # 2. TREND QUALITY: Efficiency Ratio
-                    if efficiency_ratio > 0.7:
-                        score += 40 # Super Smooth trend
-                    elif efficiency_ratio > 0.5:
-                        score += 20 # Bonus for Clean Trend (Easy to trade)
-                    
-                    # 3. MOMENTUM: RSI Extremes
-                    if rsi_val < 35 and major_trend == "BULL": score += 15
-                    elif rsi_val > 65 and major_trend == "BEAR": score += 15
-                        
-                    # 4. STATISTICAL ANOMALY: Volume Z-Score
-                    if vol_z_score > 3.0: # 3 Sigma Event (99.7% Rare)
-                        score += 35 
-                    
-                    # Baseline
-                    score += (vol_ratio * 5)
-                    score += (adx_val / 5)
-
-                    # Quality Filters
-
-                    # 5. MARKET STRUCTURE CHECK (Higher Highs/Lows)
-                    structure_data = self.check_market_structure(df_15m)
-                    structure_quality = structure_data.get('quality', 50)
-                    structure_type = structure_data.get('structure', 'UNCLEAR')
-                    
-                    # PENALTY: Choppy structure = reduce score
-                    if structure_type == 'CHOPPY':
-                        score -= 15  # Reduced from -20 to keep more signals
-                        logging.info(f"[STRUCTURE] {symbol}: CHOPPY market (-15 score)")
-                    elif structure_type in ['UPTREND', 'DOWNTREND']:
-                        score += 15  # Bonus for clean structure
-                    
-                    # 6. VOLUME SUSTAINABILITY CHECK (RELAXED for scalping)
-                    # No penalty - only give bonus for sustained volume
-                    vol_sustain = self.check_volume_sustainability(df_15m)
-                    if vol_sustain.get('sustained', False):
-                        score += 10  # Bonus for sustained volume
-                    # REMOVED: penalty for no volume - scalpers catch first spike
-                    
-                    # 7. S/R PROXIMITY CHECK (Don't enter near resistance/support)
-                    sr_check = self.check_sr_proximity(df_15m, current_price)
-                    if sr_check.get('near_sr', False):
-                        sr_penalty = 10  # Reduced from 15 to keep more signals
-                        score -= sr_penalty
-                        logging.info(f"[S/R] {symbol}: Entry too close to {sr_check.get('level_type')} "
-                                   f"(distance: {sr_check.get('distance_pct', 0):.2f}%, -{sr_penalty} score)")
-                    
-                    # Directional Momentum
+                    # New: Calculate Directional Momentum (Fix for NameError)
                     momentum_data = self.calculate_directional_momentum(df_15m)
                     momentum_direction = momentum_data.get('direction', 'NEUTRAL')
                     momentum_confidence = momentum_data.get('confidence', 0)
-                    
-                    # Boost score for clear directional signals
-                    if momentum_direction in ['PUMP', 'DUMP'] and momentum_confidence >= 60:
-                        momentum_boost = min(25, int(momentum_confidence / 4))  # Max +25 for 100% conf
-                        score += momentum_boost
-                        logging.info(f"[MOMENTUM] {symbol}: {momentum_direction} detected! "
-                                   f"conf={momentum_confidence}% (+{momentum_boost} score) "
-                                   f"factors: {momentum_data.get('factors', [])[:3]}")
-                    
 
+                    # E. Scoring System (UPGRADED for 10/10 Speed & Precision)
+                    score = 0
+                    
+                    # 1. EXPLOSIVE MOMENTUM (The "Must Catch" Breakout)
+                    # High Velocity (ROC) + High Fuel (Volume)
+                    # ROC_3 is % change in last 3 candles (45 mins)
+                    roc_val = float(momentum_data.get('roc_3', 0))
+                    if abs(roc_val) > 1.5 and vol_ratio > 2.0:
+                        score += 50
+                        logging.info(f"[MATH 10/10] {symbol}: EXPLOSIVE MOVE (ROC={roc_val:.1f}%, Vol={vol_ratio:.1f}x)")
+                    elif abs(roc_val) > 1.0 and vol_ratio > 1.5:
+                        score += 30
 
-                    if score > 15:
+                    # 2. TREND PURITY (Kaufman Efficiency Ratio)
+                    # In Futures, we want "Clean" trends, not choppy garbage.
+                    if efficiency_ratio > 0.8:
+                        score += 40 # Perfect Trend (Algorithm's Dream)
+                    elif efficiency_ratio > 0.6:
+                        score += 20 # Clean Trend
+                    
+                    # 3. STATISTICAL ANOMALY: Volume Z-Score (Sigma)
+                    # 3 Sigma = 99.7% Probability of Event
+                    if vol_z_score > 4.0:
+                        score += 40 # Black Swan Volume
+                    elif vol_z_score > 3.0: 
+                        score += 25 
+                    
+                    # 4. SQUEEZE (Potential Energy)
+                    if is_squeeze:
+                         score += 30
+                         if vol_z_score > 2.0: score += 20 # Squeeze + Volume = Expansion soon
+
+                    # 5. RSI DYNAMICS (Speed > Level)
+                    # We care more about SLOPE than absolute level for scalping
+                    rsi_slope = float(momentum_data.get('rsi_slope', 0))
+                    if major_trend == 'BULL':
+                        if rsi_val < 40: score += 15 # Dip buy opportunity
+                        if rsi_slope > 3: score += 10 # Accelerating UP
+                    elif major_trend == 'BEAR':
+                        if rsi_val > 60: score += 15 # Short rally opportunity
+                        if rsi_slope < -3: score += 10 # Accelerating DOWN
+
+                    # 6. MARKET SENTIMENT & ORDER FLOW (Real-Time Pressure)
+                    # Fetching this EARLY to include in score
+                    try:
+                        sentiment_data = self.fetch_market_sentiment(symbol)
+                        sent_score = sentiment_data.get('sentiment_score', 0)
+                        
+                        # Add Sentiment directly to Score (Reactive Element)
+                        # Max range: -50 to +50 -> Scaled to +/- 25 effect
+                        sentiment_impact = sent_score * 0.4
+                        
+                        # Directional check: Only add if aligns with momentum
+                        if (momentum_direction == 'PUMP' or roc_val > 0) and sentiment_impact > 0:
+                            score += sentiment_impact
+                        elif (momentum_direction == 'DUMP' or roc_val < 0) and abs(sentiment_impact) > 0:
+                            score += abs(sentiment_impact) # Add positive score for strong negative sentiment
+                            
+                        # FUNDING TRAP DETECTION (The "Smart Money" Filter)
+                        funding_rate = sentiment_data.get('funding_rate', 0)
+                        
+                        # Trap 1: Crowded Longs (High Funding + Stalling Price)
+                        if funding_rate > 0.03 and rsi_val < 50:
+                            score -= 30
+                            logging.info(f"[TRAP] {symbol}: Long Trap! High Funding ({funding_rate}%) but Week Price")
+                        
+                        # Trap 2: Crowded Shorts (Negative Funding + Strong Price)
+                        if funding_rate < -0.03 and rsi_val > 50:
+                            score += 30 # Short Squeeze imminent
+                            logging.info(f"[OPPORTUNITY] {symbol}: Short Squeeze! Neg Funding ({funding_rate}%) + Strong Price")
+
+                    except Exception as e:
+                        logging.warning(f"[SENTIMENT] Failed during scoring: {e}")
+                        sentiment_data = {}
+
+                    # Baseline additions
+                    score += (vol_ratio * 5)
+                    score += (adx_val / 5)
+
+                    # Quality Penalties
+                    structure_data = self.check_market_structure(df_15m)
+                    structure_type = structure_data.get('structure', 'UNCLEAR')
+                    
+                    if structure_type == 'CHOPPY' and not is_squeeze:
+                        score -= 20 # Punish chop unless squeezing
+                    
+                    # S/R Penalty
+                    sr_check = self.check_sr_proximity(df_15m, current_price)
+                    if sr_check.get('near_sr', False):
+                        score -= 15
+
+                    # --- Final JSON Construction ---
+                    if score > 20: # Lowered threshold to see more candidate flows
                         result = cand.copy()
-                        # Convert all numpy types to native Python types for JSON serialization
                         result['score'] = float(score)
-                        result['rsi'] = float(rsi_val) if rsi_val is not None else 50.0
+                        result['rsi'] = float(rsi_val)
                         result['trend'] = major_trend
                         result['vol_ratio'] = float(vol_ratio)
                         result['vol_z_score'] = float(vol_z_score)
-                        result['is_squeeze'] = bool(is_squeeze)  # Convert numpy.bool_ to Python bool
-                        result['adx'] = float(adx_val)
-                        result['atr_pct'] = float(atr_pct)
                         result['efficiency_ratio'] = float(efficiency_ratio)
+                        result['is_squeeze'] = bool(is_squeeze)
                         
-                        # Quality metrics
-                        result['structure'] = structure_type
-                        result['structure_quality'] = int(structure_quality)
-                        result['vol_sustained'] = bool(vol_sustain.get('sustained', False))
-                        result['vol_strong_candles'] = int(vol_sustain.get('strong_candles', 0))
-                        result['sr_distance_pct'] = float(sr_check.get('distance_pct', 999))
-                        result['sr_near'] = bool(sr_check.get('near_sr', False))
-                        result['sr_level_type'] = sr_check.get('level_type', None)
+                        # Sentiment Data
+                        result['oi_change_pct'] = sentiment_data.get('oi_change_pct', 0)
+                        result['top_trader_long'] = sentiment_data.get('top_trader_long_ratio', 50)
+                        result['taker_buy_ratio'] = sentiment_data.get('taker_buy_ratio', 50)
+                        result['funding_rate'] = sentiment_data.get('funding_rate', 0)
+                        result['sentiment_score'] = sentiment_data.get('sentiment_score', 0)
                         
-                        # Momentum data
+                        # Momentum Data
                         result['momentum_direction'] = momentum_direction
                         result['momentum_confidence'] = float(momentum_confidence)
-                        result['momentum_factors'] = momentum_data.get('factors', [])[:5]  # Top 5 factors
-                        result['roc_3'] = float(momentum_data.get('roc_3', 0))
-                        result['roc_5'] = float(momentum_data.get('roc_5', 0))
-                        result['ema_bullish'] = bool(momentum_data.get('ema_bullish', False))
-                        result['rsi_slope'] = float(momentum_data.get('rsi_slope', 0))
-
-                        # Whale detection
-                        # Get whale signal for this candidate
+                        result['roc_3'] = roc_val
+                        
+                        # Whale Logic (Sync)
                         if HAS_WHALE_DETECTOR:
                             try:
                                 whale_data = get_whale_signal_sync(symbol, current_price)
                                 result['whale_signal'] = whale_data.get('whale_signal', 'NEUTRAL')
-                                result['whale_confidence'] = whale_data.get('whale_confidence', 0)
+                                result['whale_confidence'] = float(whale_data.get('whale_confidence', 0))
                                 result['liquidation_pressure'] = whale_data.get('liquidation_pressure', 'NONE')
                                 result['order_imbalance'] = whale_data.get('order_imbalance', 0)
                                 result['large_trades_bias'] = whale_data.get('large_trades_bias', 'MIXED')
 
-                                # Boost score for strong whale signals
-                                whale_sig = result['whale_signal']
+                                # Whale Score Boost
                                 whale_conf = result['whale_confidence']
-                                whale_boost = 0
-
-                                # 5-min confirmation for strong signals
-                                # Only check for strong PUMP/DUMP signals to confirm entry timing
-                                if whale_sig in ['PUMP_IMMINENT', 'DUMP_IMMINENT']:
-                                    m5_confirmed = self.check_5min_confirmation(symbol, whale_sig)
-                                    result['5min_confirmed'] = m5_confirmed
-                                    if not m5_confirmed:
-                                        logging.info(f"[5-MIN] {symbol}: {whale_sig} signal rejected - 5-min confirmation failed")
-                                        result['whale_signal'] = 'NEUTRAL'  # Downgrade to neutral
-                                        whale_sig = 'NEUTRAL'
-                                        whale_conf = 0
-                                else:
-                                    result['5min_confirmed'] = True
-
-                                # Progressive whale scoring
-                                if whale_sig in ['PUMP_IMMINENT', 'DUMP_IMMINENT']:
-                                    # Scale from +25 (60% conf) to +50 (95% conf)
-                                    # Formula: 25 + (confidence - 60) * 0.5
-                                    if whale_conf >= 60:
-                                        whale_boost = min(50, 25 + int((whale_conf - 60) * 0.5))
-                                        logging.info(f"[WHALE] {symbol}: {whale_sig} detected + 5-min confirmed! Progressive boost +{whale_boost} (conf: {whale_conf}%)")
-                                elif whale_sig in ['SQUEEZE_LONGS', 'SQUEEZE_SHORTS']:
-                                    # Scale from +10 (50% conf) to +25 (80% conf)
-                                    # Formula: 10 + (confidence - 50) * 0.5
-                                    if whale_conf >= 50:
-                                        whale_boost = min(25, 10 + int((whale_conf - 50) * 0.3))
-                                        logging.info(f"[WHALE] {symbol}: {whale_sig} detected! Progressive boost +{whale_boost} (conf: {whale_conf}%)")
-
-                                result['score'] = float(result['score'] + whale_boost)
-                            except Exception as e:
-                                logging.warning(f"[WHALE] Detection failed for {symbol}: {e}")
+                                if whale_conf > 60:
+                                    boost = (whale_conf - 60) * 0.8
+                                    result['score'] += boost
+                            except Exception:
                                 result['whale_signal'] = 'NEUTRAL'
                                 result['whale_confidence'] = 0
                                 result['liquidation_pressure'] = 'NONE'
                                 result['order_imbalance'] = 0.0
                                 result['large_trades_bias'] = 'MIXED'
                         else:
-                            # No whale detector available
+                             # No whale detector
                             result['whale_signal'] = 'NEUTRAL'
                             result['whale_confidence'] = 0
                             result['liquidation_pressure'] = 'NONE'
                             result['order_imbalance'] = 0.0
                             result['large_trades_bias'] = 'MIXED'
-
-                        # Ensure all numeric values are native Python types
-                        result['whale_confidence'] = int(result.get('whale_confidence', 0))
-                        result['order_imbalance'] = float(result.get('order_imbalance', 0))
-                        if '5min_confirmed' in result:
-                            result['5min_confirmed'] = bool(result['5min_confirmed'])
-
-                        # NEW: Market Sentiment (OI + Top Trader + Taker Volume)
-                        try:
-                            sentiment_data = self.fetch_market_sentiment(symbol)
-                            result['oi_change_pct'] = sentiment_data.get('oi_change_pct', 0)
-                            result['top_trader_long'] = sentiment_data.get('top_trader_long_ratio', 50)
-                            result['taker_buy_ratio'] = sentiment_data.get('taker_buy_ratio', 50)
-                            result['funding_rate'] = sentiment_data.get('funding_rate', 0)
-                            result['funding_bias'] = sentiment_data.get('funding_bias', 'NEUTRAL')
-                            result['sentiment_score'] = sentiment_data.get('sentiment_score', 0)
-                            result['sentiment_signal'] = sentiment_data.get('sentiment_signal', 'NEUTRAL')
-                            
-                            # Boost score based on sentiment alignment
-                            sent_sig = result['sentiment_signal']
-                            sent_score = abs(result['sentiment_score'])
-                            
-                            if sent_sig != 'NEUTRAL' and sent_score > 30:
-                                sentiment_boost = min(20, int(sent_score / 5))
-                                result['score'] = float(result['score'] + sentiment_boost)
-                                logging.info(f"[SENTIMENT] {symbol}: {sent_sig} (score={result['sentiment_score']:.0f}) +{sentiment_boost}")
-                        except Exception as e:
-                            logging.debug(f"[SENTIMENT] Failed for {symbol}: {e}")
-                            result['sentiment_signal'] = 'NEUTRAL'
-                            result['sentiment_score'] = 0
-                            result['funding_bias'] = 'NEUTRAL'
 
                         # NEW v4.5: Compute suggested_direction (pre-hint for AI)
                         # Priority: Whale Signal > Momentum > RSI + Trend

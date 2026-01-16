@@ -25,54 +25,48 @@ except ImportError:
 
 
 def get_system_prompt() -> str:
-    """Returns the system prompt for PURE MEAN REVERSION SCALPER mode."""
-    return """ROLE: Ruthless Mean Reversion Scalper (M15 Specialist).
+    """Returns the system prompt for ADAPTIVE HYBRID SCALPER mode."""
+    return """ROLE: Adaptive Hybrid Scalper (Context-Aware).
     
-CONTEXT: You are analyzing coins that are already at EXTREME RSI LEVELS (>70 or <30) or OUTSIDE BOLLINGER BANDS.
-YOUR JOB: Find the REVERSAL Entry. Do NOT chase the trend. FADE the move.
+YOUR JOB: Switch between MEAN REVERSION (Default) and MOMENTUM FOLLOW (Exception) based on data.
 
-=== CORE PHILOSOPHY ===
-1. PRICE ALWAYS RETURNS TO THE MEAN (EMA 20).
-2. RSI > 70 is a SELL signal, NOT a "strong trend".
-3. RSI < 30 is a BUY signal, NOT a "crash".
-4. Parabolic moves (vertical candles) always collapse.
+=== MODE 1: MEAN REVERSION (DEFAULT) ===
+WHEN: Market is grinding, choppy, or normal overextension.
+- RSI > 70 is a SELL signal (Overbought).
+- RSI < 30 is a BUY signal (Oversold).
+- Price hitting Bollinger Bands usually reverses.
 
-[WHALE DETECTOR LOGIC (CONTRARIAN)]
-- IF Whale says "PUMP IMMINENT" BUT RSI > 75: This is retail FOMO/Buying Climax. -> SHORT IT.
-- IF Whale says "DUMP IMMINENT" BUT RSI < 25: This is retail Panic/Capitulation. -> LONG IT.
-- IF Whale says "SQUEEZE": Trust the squeeze direction (usually rapid reversal).
+=== MODE 2: MOMENTUM BREAKOUT (EXCEPTION) ===
+WHEN: "Explosive Momentum" or "Whale Signal" is detected.
+- IF ROC (Rate of Change) > 1.5% (Vertical Pump): DO NOT SHORT. WAIT or LONG.
+- IF Whale Signal = "PUMP_IMMINENT": DO NOT SHORT.
+- IF RSI > 80 + Whale Pump: This is a "Turbo Trend". CONTINUATION likely.
+- LOGIC: Parabolic moves with Volume Support need to be ridden, not faded.
 
-=== DECISION LOGIC ===
+=== DECISION MATRIX ===
 
-[FOR SHORT SIGNAL (RSI > 70)]
-- CONFIRMATION:
-  - Price touching/above Upper Bollinger Band? (BEST)
-  - Volume spiking? (Climax) -> YES = SHORT.
-  - Previous candle has long upper wick? -> YES = SHORT.
-- INVALIDATION (AVOID SHORT):
-  - Slow grind up (ladder steps) with low volume. (Trend might continue).
-  - Bitcoin is PUMPING hard (+2% in 1h).
+[SCENARIO A: RSI 75 + Low Volume/Choppy] 
+=> SIGNAL: SHORT (Mean Reversion).
 
-[FOR LONG SIGNAL (RSI < 30)]
-- CONFIRMATION:
-  - Price touching/below Lower Bollinger Band? (BEST)
-  - Volume spiking on dump? (Capitulation) -> YES = LONG.
-  - Previous candle has long lower wick? -> YES = LONG.
-- INVALIDATION (AVOID LONG):
-  - Slow bleed down with no volume.
-  - Bitcoin is CRASHING hard (-2% in 1h).
+[SCENARIO B: RSI 75 + Whale PUMP + ROC > 2%] 
+=> SIGNAL: LONG (Momentum Breakout). DO NOT FADE.
 
-=== FINAL VERDICT RULES ===
-- IF RSI > 80: SIGNAL = SHORT (Aggressive).
-- IF RSI < 20: SIGNAL = LONG (Aggressive).
-- IF RSI 70-80 + BB Extension: SIGNAL = SHORT.
+[SCENARIO C: RSI 25 + Whale DUMP + ROC < -2%]
+=> SIGNAL: SHORT (Momentum Breakdown). DO NOT CATCH KNIFE.
+
+=== FINAL CHECKLIST ===
+1. Check "Whale Signal" & "Momentum Data" FIRST.
+2. If Momentum is "EXPLOSIVE" -> Activate Mode 2.
+3. Else -> Activate Mode 1 (Mean Reversion).
+4. Never Short a "SQUEEZE_SHORTS" signal.
+5. Never Long a "SQUEEZE_LONGS" signal.
 
 === OUTPUT (JSON ONLY) ===
 {
   "symbol": "string",
   "signal": "LONG" | "SHORT" | "WAIT",
   "confidence": 0-100,
-  "reasoning": "Brief: [Key Factor 1] + [Key Factor 2] = [Decision]",
+  "reasoning": "Brief: [Mode Used] + [Key Factors] = [Decision]",
   "trade_params": {
     "entry_price": float,
     "stop_loss": float,
@@ -84,51 +78,40 @@ YOUR JOB: Find the REVERSAL Entry. Do NOT chase the trend. FADE the move.
 
 def get_vision_prompt() -> str:
     """
-    Returns the vision analysis prompt for PURE SCALPER mode (Mean Reversion Specialist)
-    Focus: Reversals, Exhaustion, and Wicks.
+    Returns the vision analysis prompt for ADAPTIVE SCALPER mode.
+    Focus: Identify if current Price Action is a REVERSAL or a BREAKOUT.
     """
-    return """ACT AS: Mean Reversion Scalper AI.
-CONTEXT: Analyzing M15 Chart for OVEREXTENDED price action relative to Bollinger Bands.
-TASK: CONFIRM if price is hitting a WALL (Reversal) or just pausing.
+    return """ACT AS: Adaptive Scalper AI (Breakout vs Reversal).
+CONTEXT: Analyzing M15 Chart.
+TASK: Determine if price is REVERSING (hitting wall) or BREAKING OUT (smashing wall).
 
-🔍 PATTERNS TO FIND (REVERSAL ONLY):
+🔍 PATTERNS TO FIND:
 
-1. **EXHAUSTION (High Probability)**:
-   - **PARABOLIC SPIKE**: 3+ Green candles vertical -> Expect DUMP.
-   - **BB EXTENSION**: Candle body fully OUTSIDE Bollinger Band -> SNAP BACK likely.
-   - **WICK REJECTION**: Long wick touching resistance/support -> REJECTION.
-   - **RAILROAD TRACKS**: Big Green followed immediately by Big Red.
+1. **REVERSAL (Mean Reversion)**:
+   - Long Wicks triggering Bollinger Bands.
+   - "Railroad Tracks" (Green candle immediately erased by Red).
+   - Divergence (Price High, RSI Low).
+   - Stalling volume at highs.
 
-2. **DIVERGENCE (Smart Money)**:
-   - **BEARISH DIV**: Price Higher High, RSI Lower High. (SHORT Signal)
-   - **BULLISH DIV**: Price Lower Low, RSI Higher Low. (LONG Signal)
-
-3. **WYCKOFF REVERSAL**:
-   - **SPRING/SHAKE**: False breakdown below support -> LONG.
-   - **UPTHRUST/UTAD**: False breakout above resistance -> SHORT.
-
-❌ PATTERNS TO IGNORE (NOISE):
-   - Bull/Bear Flags (Too slow for scalping)
-   - Breakout Retests (Often fake in M15)
-   - "Trend Continuation" (We want to fade the extremes, not chase)
+2. **BREAKOUT (Momentum)**:
+   - Full Body candle CLOSING outside Bollinger Bands.
+   - "Marubozu" (No wicks) implying strong pressure.
+   - Rising Volume on the push.
+   - Consolidation (Flag) followed by expansion.
 
 DECISION LOGIC:
-- If Price > Upper BB + Wick Rejection -> STRONG SHORT.
-- If Price < Lower BB + Spring/Wick -> STRONG LONG.
-- If Choppy/Sideways inside BB -> WAIT.
+- If Price > Upper BB + Long Wick -> REVERSAL (BEARISH).
+- If Price > Upper BB + Full Body + No Wick -> BREAKOUT (BULLISH).
+- If Choppy inside BB -> NEUTRAL.
 
 OUTPUT JSON VERDICT MUST BE: "BULLISH", "BEARISH", or "NEUTRAL".
 {
     "verdict": "BULLISH/BEARISH/NEUTRAL",
     "confidence": <0-100>,
-    "setup_valid": "VALID_SETUP" or "INVALID_CHOPPY" or "DANGEROUS_BREAKOUT",
-    "patterns_detected": ["Spring", "Higher Lows", "Squeeze", "Accumulation"],
-    "whale_confirmation": "Supports PUMP" or "Supports DUMP" or "Unclear",
-    "key_levels": {
-        "support": <price or null>,
-        "resistance": <price or null>
-    },
-    "analysis": "Visual analysis with whale-aware interpretation..."
+    "setup_valid": "VALID_SETUP" or "INVALID_CHOPPY",
+    "patterns_detected": ["Wick Rejection", "Marubozu Breakout", "Bear Flag"],
+    "price_action_mode": "REVERSAL" or "BREAKOUT" or "RANGE",
+    "analysis": "Visual analysis..."
 }"""
 
 
@@ -165,7 +148,7 @@ class AIHandler:
         learning_context: Insights from machine learning feedback loop
         """
         try:
-            # Get SCALPER system prompt
+            # Get ADAPTIVE system prompt
             system_prompt = get_system_prompt()
 
             # Prepare Metrics Text (QUANTITATIVE ALPHA)
@@ -178,6 +161,11 @@ class AIHandler:
                 adx = metrics.get('adx', 0)
                 atr_pct = metrics.get('atr_pct', 0)
                 ker = metrics.get('efficiency_ratio', 0)
+                
+                # Momentum Data (NEW)
+                roc_3 = metrics.get('roc_3', 0)
+                mom_dir = metrics.get('momentum_direction', 'NEUTRAL')
+                mom_conf = metrics.get('momentum_confidence', 0)
 
                 # Whale Detection Data (NEW v4.2)
                 whale_signal = metrics.get('whale_signal', 'NEUTRAL')
@@ -261,6 +249,13 @@ QUANTITATIVE ALPHA METRICS (CRITICAL):
 - Volatility (ATR): {atr_pct:.2f}%
 - Screener Score: {score}/100
 
+⚡ MOMENTUM & SPEED (BREAKOUT DATA):
+- ROC (3-Candle Speed): {roc_3:.2f}%
+- Direction: {mom_dir}
+- Confidence: {mom_conf}%
+
+(NOTE: ROC > 1.5% = EXPLOSIVE. If Direction matches ROC, this is a BREAKOUT, NOT REVERSAL.)
+
 🐋 WHALE DETECTION (SMART MONEY RADAR):
 - Whale Signal: {whale_str}
 - Liquidation Pressure: {liq_str}
@@ -269,13 +264,10 @@ QUANTITATIVE ALPHA METRICS (CRITICAL):
 - Long/Short Ratio: {ls_str}
 - Whale Confidence: {whale_confidence}%
 
-⚡ INTERPRETATION (CONTRARIAN SIGNALS):
-- PUMP: Whale PUMP_IMMINENT + Negative Funding + Short Crowded → STRONG LONG
-- DUMP: Whale DUMP_IMMINENT + High Funding + Long Crowded → STRONG SHORT
-- AVOID LONG: Liquidation LONG_HEAVY (longs getting rekt)
-- AVOID SHORT: Liquidation SHORT_HEAVY (shorts getting squeezed)
-- L/S Ratio > 1.5 = Too many longs = Dump risk = Bearish
-- L/S Ratio < 0.7 = Too many shorts = Squeeze risk = Bullish
+⚡ INTERPRETATION RULES:
+1. DEFAULT: Mean Reversion (Fade Extremes).
+2. EXCEPTION: If Whale=PUMP or ROC > 1.5% -> FOLLOW THE TREND (Breakout Mode).
+3. RISK: AVOID Longs if 'LONG_HEAVY' liq pressure.
 """
 
             # Inject Learning Context
@@ -392,19 +384,23 @@ Analyze for SCALPER entry (Mean Reversion / Ping-Pong / Predictive Alpha). Provi
                         # Risk:Reward ratio
                         rr_ratio = tp_distance_pct / sl_distance_pct if sl_distance_pct > 0 else 0
                         
-                        # Constraints (IMPROVED v5.0 - Reduce SL hits)
-                        MIN_SL_PCT = 0.5    # Minimum 0.5% SL (was 0.1% - too tight!)
-                        MAX_SL_PCT = 2.5    # Maximum 2.5% SL (was 5.0% - tighter capital protection)
-                        MIN_RR = 1.3        # Minimum 1.3:1 Risk:Reward (was 1.1 - better quality)
+                        # Constraints (IMPROVED v6.0 - Flexible Volatility Handling)
+                        MIN_SL_PCT = 0.2    # Minimum 0.2% (Scalping safety)
+                        MAX_SL_PCT = 5.0    # Maximum 5.0% (Allow volatility)
+                        MIN_RR = 1.1        # Minimum 1.1:1 (High winrate scalps allowed)
                         
                         rejection_reasons = []
+                        warning_reasons = []
                         
+                        # Hard Stop: SL to tight (Sniper risk)
                         if sl_distance_pct < MIN_SL_PCT:
                             rejection_reasons.append(f"SL too tight ({sl_distance_pct:.2f}% < {MIN_SL_PCT}%)")
                         
+                        # Warning: SL too wide (but allowed for high volatility)
                         if sl_distance_pct > MAX_SL_PCT:
-                            rejection_reasons.append(f"SL too wide ({sl_distance_pct:.2f}% > {MAX_SL_PCT}%)")
+                            warning_reasons.append(f"SL wide ({sl_distance_pct:.2f}% > {MAX_SL_PCT}%)")
                         
+                        # Hard Stop: Bad RR
                         if rr_ratio < MIN_RR:
                             rejection_reasons.append(f"Bad RR ({rr_ratio:.1f}:1 < {MIN_RR}:1)")
                         
@@ -414,6 +410,8 @@ Analyze for SCALPER entry (Mean Reversion / Ping-Pong / Predictive Alpha). Provi
                             result["confidence"] = 0
                             result["reasoning"] = f"REJECTED: {', '.join(rejection_reasons)}"
                         else:
+                            if warning_reasons:
+                                logging.info(f"[AI] Trade accepted with warnings: {', '.join(warning_reasons)}")
                             logging.info(f"[AI] Trade params valid: SL={sl_distance_pct:.2f}%, TP={tp_distance_pct:.2f}%, RR={rr_ratio:.1f}:1")
 
             return result
@@ -548,7 +546,19 @@ Analyze for SCALPER entry (Mean Reversion / Ping-Pong / Predictive Alpha). Provi
 
         if HAS_LEARNER and learner is not None and metrics:
             try:
-                prediction = learner.get_prediction(metrics)
+                # Prepare AI Context for ML (fixing 9 vs 18 feature mismatch)
+                raw_agreement = (logic_signal == 'LONG' and vision_verdict == 'BULLISH') or \
+                               (logic_signal == 'SHORT' and vision_verdict == 'BEARISH')
+                
+                ai_context = {
+                    'logic_confidence': logic_confidence,
+                    'vision_confidence': vision_confidence,
+                    # Use average as proxy for final since final isn't calculated yet
+                    'final_confidence': (logic_confidence + vision_confidence) / 2,
+                    'agreement': raw_agreement
+                }
+                
+                prediction = learner.get_prediction(metrics, ai_context=ai_context)
                 ml_win_prob = prediction.win_probability
                 ml_threshold = prediction.recommended_confidence_threshold
                 ml_insights = prediction.insights
@@ -564,6 +574,8 @@ Analyze for SCALPER entry (Mean Reversion / Ping-Pong / Predictive Alpha). Provi
                     logging.info(f"[ML] Rule-Based Fallback - Win Prob: {ml_win_prob:.0%} (Collecting data...)")
             except Exception as e:
                 logging.warning(f"[ML] Prediction failed: {e}")
+                # Fallback to rule-based if ML fails
+                ml_win_prob = 0.5
 
         # === 1. WHALE SQUEEZE VETO (Tier 1 - Prevents Liquidation Cascades) ===
         # Hard veto: Don't trade INTO liquidation squeezes
@@ -607,19 +619,35 @@ Analyze for SCALPER entry (Mean Reversion / Ping-Pong / Predictive Alpha). Provi
         # === 4. ML VETO CHECK ===
         # ONLY apply ML Veto if ML is actually trained with real data
         # If ML is not trained, we use standard Logic + Vision system
-        if ml_is_trained and ml_win_prob < 0.3 and logic_confidence < 85:
-            return {
-                "final_signal": "WAIT",
-                "combined_confidence": 0,
-                "agreement": False,
-                "setup_valid": setup_valid,
-                "logic_analysis": logic_result,
-                "vision_analysis": vision_result,
-                "recommendation": f"SKIP (ML Veto: Win Prob {ml_win_prob:.0%} too low)",
-                "ml_win_probability": ml_win_prob,
-                "ml_insights": ml_insights,
-                "ml_is_trained": ml_is_trained
-            }
+        if ml_is_trained:
+            # Critical Veto: ML thinks it's a guaranteed loss (Prob < 25%)
+            if ml_win_prob < 0.25:
+                 return {
+                    "final_signal": "WAIT",
+                    "combined_confidence": 0,
+                    "agreement": False,
+                    "setup_valid": setup_valid,
+                    "logic_analysis": logic_result,
+                    "vision_analysis": vision_result,
+                    "recommendation": f"SKIP (ML Critical Veto: Win Prob {ml_win_prob:.0%})",
+                    "ml_win_probability": ml_win_prob,
+                    "ml_insights": ml_insights,
+                    "ml_is_trained": ml_is_trained
+                }
+            # Soft Veto: ML thinks it's weak (Prob < 35%) unless Logic is super strong
+            elif ml_win_prob < 0.35 and logic_confidence < 85:
+                return {
+                    "final_signal": "WAIT",
+                    "combined_confidence": 0,
+                    "agreement": False,
+                    "setup_valid": setup_valid,
+                    "logic_analysis": logic_result,
+                    "vision_analysis": vision_result,
+                    "recommendation": f"SKIP (ML Soft Veto: Win Prob {ml_win_prob:.0%})",
+                    "ml_win_probability": ml_win_prob,
+                    "ml_insights": ml_insights,
+                    "ml_is_trained": ml_is_trained
+                }
 
         # === NEW v5.0: QUALITY FILTER VETO ===
         # Check screener quality metrics and apply penalties/veto
