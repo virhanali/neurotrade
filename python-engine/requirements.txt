@@ -9,7 +9,7 @@ pydantic==2.5.3
 pydantic-settings==2.1.0
 
 # Exchange & Trading
-ccxt==4.2.25
+ccxt>=4.4.0
 ta==0.11.0
 
 # Visualization

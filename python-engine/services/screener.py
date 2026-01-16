@@ -1641,24 +1641,49 @@ class MarketScreener:
                 source = "REST"
 
             # Pre-filter: Low-cap coins with some movement
+            # Validate with Executor (Ensure we can actually trade it)
+            from services.execution import executor
+            
+            # Ensure markets are loaded in executor for validation
+            if not executor.markets:
+                 try:
+                     # Attempt sync load if empty (using default client)
+                     if executor.default_client:
+                         executor.markets = executor.default_client.load_markets()
+                 except Exception as e:
+                     logging.warning(f"[SCREENER] Failed to load executor markets for validation: {e}")
+
             low_cap_candidates = []
             for symbol, ticker in raw_tickers.items():
                 # Parse symbol
+                formatted_symbol = symbol
+                
                 if source == "WEBSOCKET":
                     if not symbol.endswith("USDT"):
                         continue
                     base = symbol[:-4]
-                    clean_symbol = f"{base}/USDT"
-                else:
-                    if not symbol.endswith("/USDT:USDT"):
-                        continue
-                    clean_symbol = symbol.replace(":USDT", "")
+                    formatted_symbol = f"{base}/USDT"
+                elif source == "REST":
+                    # REST Usually returns "BTC/USDT" or "BTC/USDT:USDT"
+                    # We want "BTC/USDT"
+                    if not symbol.endswith("USDT"): continue
+                    if ":" in symbol:
+                        formatted_symbol = symbol.split(":")[0]
 
-                quote_volume = ticker.get('quoteVolume', 0) or 0
-                pct_change = ticker.get('percentage', 0) or 0
+                # CRITICAL: Filter out coins that CCXT doesn't recognize (Can't execute)
+                if executor.markets and formatted_symbol not in executor.markets:
+                    # logging.debug(f"[SCREENER] Skipping {formatted_symbol} - Not in Executor Markets")
+                    continue
+
+                # Filter Logic...
+                quote_volume = float(ticker.get('quoteVolume', 0)) if source == "WEBSOCKET" else float(ticker.get('quoteVolume', 0))
+                percentage = float(ticker.get('percentage', 0)) if source == "WEBSOCKET" else float(ticker.get('percentage', 0))
+                
+                # Check liquid (using passed clean symbol)
+                clean_symbol = formatted_symbol
 
                 # Low-cap filter: $1M - $50M volume AND showing some movement (>2%)
-                if 1_000_000 < quote_volume < 50_000_000 and abs(pct_change) > 2:
+                if 1_000_000 < quote_volume < 50_000_000 and abs(percentage) > 2:
                     low_cap_candidates.append({
                         'symbol': clean_symbol,
                         'volume_24h': quote_volume,
