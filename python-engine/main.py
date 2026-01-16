@@ -142,6 +142,17 @@ async def startup_event():
     ws_manager.on_order_update = handle_order_update
     await ws_manager.start()
     print("[WS] User Data Stream Manager started")
+    
+    # Start Binance Futures User Data Stream (Event Driven Balance)
+    from services.execution import user_stream
+    binance_api_key = settings.BINANCE_API_KEY
+    binance_api_secret = settings.BINANCE_API_SECRET
+    
+    if binance_api_key and binance_api_secret:
+        await user_stream.start_stream(binance_api_key, binance_api_secret)
+        print("[WS] Binance Futures User Data Stream (Balance/Positions) started")
+    else:
+        print("[WS] Binance Keys missing, User Data Stream skipped")
 
     # Start whale liquidation monitoring (background task)
     if HAS_WHALE:

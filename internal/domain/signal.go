@@ -28,6 +28,7 @@ type Signal struct {
 	TPPrice         float64          `json:"tp_price"`
 	Confidence      int              `json:"confidence"`
 	Reasoning       string           `json:"reasoning"`
+	EntryReasoning  string           `json:"entry_reasoning"` // New field for Math/Entry Logic
 	Status          string           `json:"status"`
 	ReviewResult    *string          `json:"review_result,omitempty"`
 	ReviewPnL       *float64         `json:"review_pnl,omitempty"`
@@ -67,15 +68,18 @@ type TradeParams struct {
 
 // AISignalResponse represents the response from Python AI engine
 type AISignalResponse struct {
-	Symbol             string                 `json:"symbol"`
-	FinalSignal        string                 `json:"final_signal"`
-	CombinedConfidence int                    `json:"combined_confidence"`
-	Agreement          bool                   `json:"agreement"`
-	Recommendation     string                 `json:"recommendation"`
-	LogicReasoning     string                 `json:"logic_reasoning"`
-	VisionAnalysis     string                 `json:"vision_analysis"`
-	TradeParams        *TradeParams           `json:"trade_params"`
-	ScreenerMetrics    map[string]interface{} `json:"screener_metrics,omitempty"` // ML metrics for feedback loop
+	Symbol             string       `json:"symbol"`
+	FinalSignal        string       `json:"final_signal"`
+	CombinedConfidence int          `json:"combined_confidence"`
+	Agreement          bool         `json:"agreement"`
+	Recommendation     string       `json:"recommendation"`
+	LogicReasoning     string       `json:"logic_reasoning"`
+	VisionAnalysis     string       `json:"vision_analysis"`
+	TradeParams        *TradeParams `json:"trade_params"`
+	EntryParams        *struct {
+		Reasoning string `json:"reasoning"`
+	} `json:"entry_params"`
+	ScreenerMetrics map[string]interface{} `json:"screener_metrics,omitempty"` // ML metrics for feedback loop
 }
 
 // SignalRepository defines the interface for signal data operations

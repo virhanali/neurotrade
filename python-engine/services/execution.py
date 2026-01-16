@@ -403,8 +403,23 @@ class BinanceExecutor:
 
     async def get_balance(self, api_key: Optional[str] = None, api_secret: Optional[str] = None) -> Dict:
         """
-        Fetch USDT balance from Binance Futures
+        Fetch USDT balance from Binance Futures (Event-Driven Prefered)
         """
+        # 0. Check Real-Time Cache (0ms latency)
+        # Use simple Time-to-Live (TTL) of 60s if stream is active
+        # Or if stream is just active and cache is populated, use it.
+        import time
+        if user_stream.is_running and user_stream.cache["balance"].get("total") > 0:
+            last_update = user_stream.cache["balance"].get("updated_at", 0)
+            # If data is fresh enough (e.g. < 5 mins) or just trust WS
+            if time.time() - last_update < 300: 
+                 logger.info("[EXEC] Using Cached Balance (WS Speed)")
+                 return {
+                    "asset": "USDT",
+                    "total": user_stream.cache["balance"]["total"],
+                    "free": user_stream.cache["balance"]["free"]
+                 }
+
         client, is_temp = self._get_client(api_key, api_secret)
         
         if not client:
@@ -423,7 +438,15 @@ class BinanceExecutor:
             if total == 0 and 'total' in balance:
                 total = balance['total'].get('USDT', 0.0)
                 free = balance['free'].get('USDT', 0.0)
-                
+            
+            # Update Cache since we fetched it manually
+            if user_stream.is_running:
+                user_stream.cache["balance"] = {
+                    "total": float(total),
+                    "free": float(free),
+                    "updated_at": time.time()
+                }
+
             return {
                 "asset": "USDT",
                 "total": float(total),
@@ -437,5 +460,145 @@ class BinanceExecutor:
                 # Sync client cleanup
                 pass
 
+# WebSocket User Data Stream (v10.1 - Cleaned)
+class UserDataStream:
+    def __init__(self, executor_ref):
+        self.executor = executor_ref
+        self.listen_key = None
+        self.ws_url = "wss://fstream.binance.com/ws/"
+        self.is_running = False
+        self.last_update = 0
+        
+        # In-Memory Real-Time Cache
+        self.cache = {
+            "balance": {"total": 0.0, "free": 0.0, "updated_at": 0},
+            "positions": {}  # symbol -> {qty, entryPrice, pnl, etc}
+        }
+
+    async def start_stream(self, api_key, api_secret):
+        """Start the User Data Stream for a specific user"""
+        if self.is_running: return
+        
+        self.is_running = True
+        logger.info("[WS] Starting User Data Stream (Event-Driven Mode)...")
+        
+        # 1. Get Listen Key
+        self.listen_key = await self._get_listen_key(api_key, api_secret)
+        if not self.listen_key:
+            logger.error("[WS] Failed to get listen key. WS Disabled.")
+            self.is_running = False
+            return
+
+        # 2. Start Keep-Alive Loop (Every 50 mins)
+        asyncio.create_task(self._keep_alive_loop(api_key, api_secret))
+
+        # 3. Start WS Listener
+        asyncio.create_task(self._listen_socket())
+
+    async def _get_listen_key(self, api_key, api_secret):
+        """Fetch listenKey from Binance REST API"""
+        import requests
+        url = "https://fapi.binance.com/fapi/v1/listenKey"
+        headers = {"X-MBX-APIKEY": api_key}
+        try:
+            resp = await asyncio.to_thread(requests.post, url, headers=headers)
+            if resp.status_code == 200:
+                return resp.json().get("listenKey")
+            logger.error(f"[WS] ListenKey Error: {resp.text}")
+        except Exception as e:
+            logger.error(f"[WS] ListenKey Exception: {e}")
+        return None
+
+    async def _keep_alive_loop(self, api_key, api_secret):
+        """Renew listenKey every 50 minutes"""
+        import requests
+        url = "https://fapi.binance.com/fapi/v1/listenKey"
+        headers = {"X-MBX-APIKEY": api_key}
+        
+        while self.is_running:
+            await asyncio.sleep(50 * 60) # 50 mins
+            try:
+                if self.listen_key:
+                    await asyncio.to_thread(requests.put, url, headers=headers)
+                    logger.info("[WS] ListenKey renewed")
+            except Exception as e:
+                logger.error(f"[WS] Keep-alive failed: {e}")
+
+    async def _listen_socket(self):
+        """Connect to WebSocket and listen for events"""
+        import websockets
+        uri = f"{self.ws_url}{self.listen_key}"
+        
+        while self.is_running:
+            try:
+                async with websockets.connect(uri) as websocket:
+                    logger.info("[WS] Connected to Binance User Stream")
+                    while self.is_running:
+                        msg = await websocket.recv()
+                        await self._handle_message(msg)
+            except Exception as e:
+                logger.error(f"[WS] Connection error: {e}")
+                await asyncio.sleep(5) # Reconnect delay
+
+    async def _handle_message(self, msg_str):
+        """Process WS messages (ACCOUNT_UPDATE & ORDER_TRADE_UPDATE)"""
+        try:
+            data = json.loads(msg_str)
+            event_type = data.get("e")
+            import time
+            now = time.time()
+            
+            # --- Event: ACCOUNT_UPDATE (Balance & Position specific changes) ---
+            if event_type == "ACCOUNT_UPDATE":
+                update_data = data.get("a", {})
+                
+                # 1. Handle Balance (B)
+                balances = update_data.get("B", [])
+                for asset_info in balances:
+                    if asset_info.get("a") == "USDT":
+                        wallet_balance = float(asset_info.get("wb"))
+                        cross_wallet = float(asset_info.get("cw"))
+                        
+                        # Update Cache
+                        self.cache["balance"] = {
+                            "total": wallet_balance,
+                            "free": cross_wallet, # Approximation, usually use crossWalletBalance
+                            "updated_at": now
+                        }
+                        logger.debug(f"[WS] Balance Updated: {wallet_balance} USDT")
+
+                # 2. Handle Positions (P) inside ACCOUNT_UPDATE
+                positions = update_data.get("P", [])
+                for pos in positions:
+                    symbol = pos.get("s")
+                    amount = float(pos.get("pa"))
+                    entry_price = float(pos.get("ep"))
+                    upnl = float(pos.get("up"))
+                    
+                    self.cache["positions"][symbol] = {
+                        "amount": amount,
+                        "entry_price": entry_price,
+                        "unrealized_pnl": upnl,
+                        "updated_at": now
+                    }
+                    if amount == 0:
+                        # Optional: Cleanup zero positions or keep for history?
+                        # Keeping it as 0 is safer for referencing close status
+                        pass
+
+            # --- Event: ORDER_TRADE_UPDATE (Order status changes) ---
+            elif event_type == "ORDER_TRADE_UPDATE":
+                order_data = data.get("o", {})
+                symbol = order_data.get("s")
+                status = order_data.get("X") # NEW, PARTIALLY_FILLED, FILLED, CANCELED
+                side = order_data.get("S")
+                
+                logger.info(f"[WS] Order Update: {symbol} {side} -> {status}")
+                # We can use this to trigger specific notifications if needed
+
+        except Exception as e:
+            pass # Silent fail to prevent loop crash
+
 # Global Instance
 executor = BinanceExecutor()
+user_stream = UserDataStream(executor)

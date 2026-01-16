@@ -221,6 +221,52 @@ class MarketScreener:
             
         return direction / volatility
 
+    def calculate_hurst_exponent(self, closes: np.array, min_window: int = 10) -> float:
+        """
+        Calculate Hurst Exponent (H) to detect Market Regime.
+        H < 0.5: Mean Reverting ( choppy / range-bound ) -> Ideal for RSI Reversal
+        H ~ 0.5: Random Walk ( unpredictable noise ) -> AVOID
+        H > 0.5: Trending ( persistent ) -> Ideal for Breakouts / Momentum
+        
+        Using simplified R/S analysis suitable for shorter timeframes.
+        """
+        try:
+            if len(closes) < min_window * 2:
+                return 0.5
+            
+            # Use log-returns for stationarity
+            log_returns = np.diff(np.log(closes))
+            
+            # Simple R/S analysis on varying window sizes
+            # We split the data into chunks and calc R/S
+            # This is a simplified "scalar" Hurst for speed (not full fractal dim)
+            
+            # Check 3 different lags to estimate H
+            lags = range(2, 20)
+            tau = []
+            lagvec = []
+            
+            for lag in lags:
+                # Calculate Price difference (Volatility at lag)
+                pp = np.subtract(closes[lag:], closes[:-lag])
+                lagvec.append(lag)
+                tau.append(np.sqrt(np.std(pp)))
+            
+            # Slope of log(tau) vs log(lag) approximates H
+            # H = log(sigma) / log(time_lag)
+            if len(lagvec) < 2 or len(tau) < 2:
+                return 0.5
+                
+            m = np.polyfit(np.log(lagvec), np.log(tau), 1)
+            hurst = m[0] * 2.0 # Adjusted for standard price series (non-integrated)
+            
+            # Clamp result
+            return max(0.0, min(1.0, hurst))
+            
+        except Exception as e:
+            # logging.warning(f"[HURST] Error: {e}")
+            return 0.5
+
     def calculate_volume_z_score(self, volumes: np.array, window: int = 20) -> float:
         """
         Calculate Volume Z-Score (Standard Deviations from mean).
@@ -1272,6 +1318,17 @@ class MarketScreener:
                     except:
                         vol_z_score = 0
 
+                    # NEW: Hurst Exponent (Market Regime)
+                    # H > 0.5 = Trending, H < 0.5 = Mean Reversion
+                    try:
+                        hurst = self.calculate_hurst_exponent(df_15m['close'].values)
+                        if hurst > 0.6: regime = "TRENDING"
+                        elif hurst < 0.4: regime = "MEAN_REVERSION"
+                        else: regime = "RANDOM_WALK"
+                    except:
+                        hurst = 0.5
+                        regime = "UNKNOWN"
+
                     # FILTER LOGIC (QUALITY CONTROL):
                     # 1. Reject Messy/Choppy Price Action (ER < 0.25)
                     # Unless it's a Squeeze (Accumulation is often messy)
@@ -1404,6 +1461,10 @@ class MarketScreener:
                         result['momentum_direction'] = momentum_direction
                         result['momentum_confidence'] = float(momentum_confidence)
                         result['roc_3'] = roc_val
+                        
+                        # Market Regime (Hurst)
+                        result['hurst'] = float(hurst)
+                        result['market_regime'] = regime
                         
                         # Whale Logic (Sync)
                         if HAS_WHALE_DETECTOR:

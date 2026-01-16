@@ -13,7 +13,7 @@ Unlike traditional bots, NeuroTrade doesn't just trade—it **learns**. With its
 
 ###  Hybrid AI Intelligence
 *   **Logic Core (DeepSeek V3):** Analyzes market structure, price action, and risk ratios with human-like reasoning.
-*   **Vision Core (Qwen3 VL 235B):** "Sees" the chart like a pro trader, identifying patterns (Head & Shoulders, Flags) and validating support/resistance levels.
+*   **Vision Core (Gemini):** "Sees" the chart like a pro trader, identifying patterns (Head & Shoulders, Flags) and validating support/resistance levels.
 *   **Consensus Engine:** Trades are only executed when both Logic and Vision AI agree (High Agreement Rate).
 
 ###  Anti-Fake & Whale Detection
@@ -50,7 +50,7 @@ graph TD
     subgraph "Python AI Engine"
         Screener[Market Screener]
         Logic[DeepSeek Logic]
-        Vision[Qwen Vision]
+        Vision[google/gemini-2.5-flash-lite]
         Whale[Whale Detector]
         ML[LightGBM Learner]
     end
@@ -81,7 +81,7 @@ NeuroTrade includes a dedicated **AI Analytics Dashboard** providing deep insigh
 ### Prerequisites
 *   Docker & Docker Compose
 *   Binance Futures Account (Testnet or Real)
-*   API Keys: DeepSeek, OpenRouter (for Qwen Vision)
+*   API Keys: DeepSeek, OpenRouter (for google/gemini-2.5-flash-lite)
 
 ### Installation
 

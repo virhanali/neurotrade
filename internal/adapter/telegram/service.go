@@ -64,6 +64,15 @@ func (s *NotificationService) SendSignal(signal domain.Signal) error {
 		sideEmoji = "🔴"
 	}
 
+	// Entry Logic Text (Truncate if too long to maintain readability)
+	entryReasoning := signal.EntryReasoning
+	if entryReasoning == "" {
+		entryReasoning = "Standard Market Execution"
+	}
+	if len(entryReasoning) > 100 {
+		entryReasoning = entryReasoning[:97] + "..."
+	}
+
 	// Format message with Markdown
 	message := fmt.Sprintf(
 		"🚀 *NEW TRADING SIGNAL*\n\n"+
@@ -74,6 +83,7 @@ func (s *NotificationService) SendSignal(signal domain.Signal) error {
 			"🎯 Take Profit: `$%.4f`\n"+
 			"📈 Confidence: `%d%%`\n"+
 			"🕒 Time: `%s`\n\n"+
+			"📐 *Strategy Math:*\n`%s`\n\n"+
 			"💡 *Reasoning:*\n%s",
 		sideEmoji,
 		signal.Type,
@@ -83,6 +93,7 @@ func (s *NotificationService) SendSignal(signal domain.Signal) error {
 		signal.TPPrice,
 		signal.Confidence,
 		signal.CreatedAt.In(s.location).Format("2006-01-02 15:04:05"),
+		entryReasoning,
 		signal.Reasoning,
 	)
 

@@ -73,7 +73,8 @@ WHEN: "Explosive Momentum" or "Whale Signal" is detected.
     "take_profit": float,
     "suggested_leverage": int
   }
-}"""
+}
+NOTE: For 'entry_price', use the Current Price provided in input context unless you see a specific support/resistance level to bid at."""
 
 
 def get_vision_prompt() -> str:
@@ -240,8 +241,23 @@ class AIHandler:
                 else:
                     ls_str += " (Balanced)"
 
+                # Market Regime (Hurst Exponent)
+                hurst = metrics.get('hurst', 0.5)
+                regime = metrics.get('market_regime', 'UNKNOWN')
+                hurst_str = f"{hurst:.2f}"
+                if hurst > 0.6:
+                     hurst_str += " (STRONG TREND - FOLLOW BREAKOUTS)"
+                elif hurst < 0.4:
+                     hurst_str += " (MEAN REVERSION - FADE EXTREMES)"
+                else:
+                     hurst_str += " (RANDOM WALK - CAUTION)"
+                
+                # Prepend regime to context
+                regime_context = f"MARKET REGIME: {regime} (H={hurst:.2f})"
+
                 metrics_txt = f"""
 QUANTITATIVE ALPHA METRICS (CRITICAL):
+- Market Regime (Hurst): {hurst_str}
 - Volume: {vol_str}
 - Trend Efficiency (KER): {ker_str}
 - Bollinger Squeeze: {squeeze_str}
@@ -360,6 +376,38 @@ Analyze for SCALPER entry (Mean Reversion / Ping-Pong / Predictive Alpha). Provi
                 result["confidence"] = 0
             
             # 4. Validate trade_params if present
+            # 4. Validate trade_params if present
+            # === AUTO-CORRECT AI PARAMS (v8.0) ===
+            # If AI signal is actionable (LONG/SHORT) but params are junk (0 or None), 
+            # we AUTO-FILL them using Math Logic BEFORE validation kills the trade.
+            if result.get("signal") in ["LONG", "SHORT"]:
+                # Initialize trade_params if missing
+                if not result.get("trade_params"):
+                     result["trade_params"] = {}
+                
+                tp_obj = result["trade_params"]
+                
+                # Check for bad entry
+                bad_entry = "entry_price" not in tp_obj or tp_obj["entry_price"] is None or tp_obj["entry_price"] <= 0
+                
+                if bad_entry and metrics:
+                    current_price = metrics.get('current_price', 0)
+                    atr_val = metrics.get('atr_val', 0)
+                    if current_price > 0:
+                         logging.info(f"[AUTO-FIX] AI provided bad entry, using Current Price: {current_price}")
+                         tp_obj["entry_price"] = current_price
+                         
+                         # Auto-calc SL/TP if also missing (Safety fallback)
+                         safe_atr = atr_val if atr_val > 0 else (current_price * 0.01)
+                         
+                         if "stop_loss" not in tp_obj or tp_obj["stop_loss"] <= 0:
+                             dist = safe_atr * 2.5
+                             tp_obj["stop_loss"] = current_price - dist if result["signal"] == "LONG" else current_price + dist
+                             
+                         if "take_profit" not in tp_obj or tp_obj["take_profit"] <= 0:
+                             dist = safe_atr * 4.0
+                             tp_obj["take_profit"] = current_price + dist if result["signal"] == "LONG" else current_price - dist
+
             if result.get("trade_params"):
                 tp = result["trade_params"]
                 required = ["entry_price", "stop_loss", "take_profit"]
@@ -449,7 +497,7 @@ Analyze for SCALPER entry (Mean Reversion / Ping-Pong / Predictive Alpha). Provi
             prompt = get_vision_prompt()
 
             # Call OpenRouter Vision API
-            # Using Gemini 2.0 Flash Lite - Fast & Efficient Multimodal Model
+            # Using google/gemini-2.5-flash-lite - Fast & Efficient Multimodal Model
             response = self.vision_client.chat.completions.create(
                 model="google/gemini-2.5-flash-lite",  # Gemini 2.0 Flash Lite
                 messages=[
@@ -917,10 +965,10 @@ Analyze for SCALPER entry (Mean Reversion / Ping-Pong / Predictive Alpha). Provi
                 
                 if logic_signal == "LONG":
                      limit_price = current_price - offset
-                     entry_reasoning = f"Sniper Long (RSI {rsi_value:.1f}) - Catch Wick"
+                     entry_reasoning = f"Sniper Long (RSI {rsi_value:.1f}) - Catch Wick (-{offset:.5f})"
                 else:
                      limit_price = current_price + offset
-                     entry_reasoning = f"Sniper Short (RSI {rsi_value:.1f}) - Catch Wick"
+                     entry_reasoning = f"Sniper Short (RSI {rsi_value:.1f}) - Catch Wick (+{offset:.5f})"
             
             # 3. NORMAL TREND -> LIMIT (Fee Saving)
             # Currently disabled to ensure fills, default to MARKET for now unless explicitly Reversal
@@ -928,9 +976,44 @@ Analyze for SCALPER entry (Mean Reversion / Ping-Pong / Predictive Alpha). Provi
                  entry_type = "MARKET"
                  entry_reasoning = "Standard Trend Execution"
 
+            # === MATH OVERRIDE: FORCE STATISTICAL ENTRY/SL/TP (v7.0) ===
+            # We override AI's numbers with strict volatility-based calculations
+            
+            final_entry_price = current_price
             if entry_type == "LIMIT" and limit_price:
-                 logging.info(f"[SMART ENTRY] {metrics.get('symbol')} {logic_signal}: LIMIT @ {limit_price:.4f} ({entry_reasoning})")
-        
+                final_entry_price = limit_price
+            
+            # Default ATR to 1% of price if missing (Safety fallback)
+            safe_atr = atr_val if atr_val > 0 else (current_price * 0.01)
+            
+            # SCALPER SETTINGS
+            ATR_SL_MULT = 2.5  # Stop Loss: 2.5x ATR (Generous room to breathe)
+            ATR_TP_MULT = 4.0  # Take Profit: 4.0x ATR (High RR)
+            
+            sl_dist = safe_atr * ATR_SL_MULT
+            tp_dist = safe_atr * ATR_TP_MULT
+            
+            computed_sl = 0
+            computed_tp = 0
+            
+            if logic_signal == "LONG":
+                computed_sl = final_entry_price - sl_dist
+                computed_tp = final_entry_price + tp_dist
+            elif logic_signal == "SHORT":
+                computed_sl = final_entry_price + sl_dist
+                computed_tp = final_entry_price - tp_dist
+                
+            # Update logic_result trade params directly
+            if logic_result.get('trade_params'):
+                 logic_result['trade_params']['entry_price'] = final_entry_price
+                 logic_result['trade_params']['stop_loss'] = computed_sl
+                 logic_result['trade_params']['take_profit'] = computed_tp
+                 
+                 logging.info(f"[MATH OVERRIDE] {metrics.get('symbol')} {logic_signal}")
+                 logging.info(f"   Entry: {final_entry_price:.4f} (Type: {entry_type})")
+                 logging.info(f"   SL: {computed_sl:.4f} ({ATR_SL_MULT}x ATR)")
+                 logging.info(f"   TP: {computed_tp:.4f} ({ATR_TP_MULT}x ATR)")
+
         except Exception as e:
             logging.warning(f"[SMART ENTRY] Failed calculation, defaulting to MARKET: {e}")
             entry_type = "MARKET"
