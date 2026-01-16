@@ -158,6 +158,18 @@ class BinanceExecutor:
 
             # 5. Apply Precision using CCXT built-in method
             # amount_to_precision returns a string, we need to pass float/string to create_order
+            
+            # Check if symbol is in client's market cache first, if not reload CLIENT markets
+            if symbol not in client.markets:
+                 logger.warning(f"[EXEC] Symbol {symbol} not in client cache, reloading...")
+                 await asyncio.to_thread(client.load_markets, True)
+                 # Update local cache as well
+                 self.markets = client.markets
+            
+            if symbol not in client.markets:
+                 print(f"DEBUG_EXEC_ERROR: Symbol {symbol} not found after reload")
+                 return {"error": f"Symbol {symbol} not found on Binance Futures"}
+
             quantity_str = client.amount_to_precision(symbol, raw_quantity)
             quantity = float(quantity_str)
             
@@ -165,10 +177,6 @@ class BinanceExecutor:
             if symbol not in self.markets:
                  # Last ditch effort
                  self.markets = await asyncio.to_thread(client.load_markets, True)
-            
-            if symbol not in self.markets:
-                 print(f"DEBUG_EXEC_ERROR: Symbol {symbol} not found after reload")
-                 return {"error": f"Symbol {symbol} not found on Binance Futures"}
 
             price_precision = self.markets[symbol]['precision']['price']
 

@@ -14,6 +14,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Optional
 from functools import lru_cache
 from config import settings
+import math
 
 # Import Whale Detector
 try:
@@ -198,6 +199,46 @@ class MarketScreener:
         
         # Session for direct Binance API calls (non-CCXT)
         self.session = session
+    
+    def calculate_efficiency_ratio(self, closes: np.array, period: int = 10) -> float:
+        """
+        Calculate Kaufman Efficiency Ratio (KER) / Fractal Efficiency.
+        ER = Direction / Volatility
+        Range: 0.0 (Choppy) to 1.0 (Smooth Trend).
+        > 0.3 usually indicates a tradeable trend.
+        """
+        if len(closes) < period + 1:
+            return 0.0
+        
+        # Direction: Net change over period
+        direction = abs(closes[-1] - closes[-period-1])
+        
+        # Volatility: Sum of absolute changes candle-to-candle
+        volatility = np.sum(np.abs(np.diff(closes[-period-1:])))
+        
+        if volatility == 0:
+            return 0.0
+            
+        return direction / volatility
+
+    def calculate_volume_z_score(self, volumes: np.array, window: int = 20) -> float:
+        """
+        Calculate Volume Z-Score (Standard Deviations from mean).
+        Z > 3.0 implies statistically significant outlier (Whale/Breakout).
+        """
+        if len(volumes) < window:
+            return 0.0
+            
+        recent_vol = volumes[-window:]
+        mean = np.mean(recent_vol)
+        std = np.std(recent_vol)
+        
+        if std == 0:
+            return 0.0
+            
+        current_vol = volumes[-1]
+        z_score = (current_vol - mean) / std
+        return z_score
     
     def fetch_market_sentiment(self, symbol: str) -> Dict:
         """
