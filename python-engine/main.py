@@ -209,6 +209,11 @@ class TradeParams(BaseModel):
     suggested_leverage: Optional[int] = None
     position_size_usdt: Optional[float] = None
 
+class EntryParams(BaseModel):
+    type: str # MARKET or LIMIT
+    limit_price: Optional[float] = None
+    reasoning: Optional[str] = None
+
 
 class SignalResult(BaseModel):
     symbol: str
@@ -219,6 +224,7 @@ class SignalResult(BaseModel):
     logic_reasoning: str
     vision_analysis: str
     trade_params: Optional[TradeParams]
+    entry_params: Optional[EntryParams] = None # NEW: Smart Entry instructions
     screener_metrics: Optional[Dict] = None  # ML metrics for feedback loop
 
 
@@ -543,7 +549,9 @@ async def analyze_market(request: MarketAnalysisRequest):
                     if combined.get('recommendation') == 'EXECUTE':
                         ml_prob = combined.get('ml_win_probability', 0.5)
                         logging.info(f"[SIGNAL] SIGNAL FOUND: {symbol} {combined.get('final_signal')} (Conf: {combined.get('combined_confidence')}%, ML: {ml_prob:.0%})")
-                        trade_params = logic_result.get('trade_params')
+                        trade_params_data = logic_result.get('trade_params')
+                        entry_params_data = combined.get('entry_params')
+                        
                         return SignalResult(
                             symbol=symbol,
                             final_signal=combined['final_signal'],
@@ -552,7 +560,8 @@ async def analyze_market(request: MarketAnalysisRequest):
                             recommendation=combined['recommendation'],
                             logic_reasoning=logic_result.get('reasoning', ''),
                             vision_analysis=vision_result.get('analysis', ''),
-                            trade_params=TradeParams(**trade_params) if trade_params else None,
+                            trade_params=TradeParams(**trade_params_data) if trade_params_data else None,
+                            entry_params=EntryParams(**entry_params_data) if entry_params_data else None,
                             screener_metrics=candidate  # Pass metrics for feedback loop
                         )
                     return None

@@ -4,27 +4,19 @@
 
 This is the React-based frontend application for NeuroTrade, designed to provide comprehensive visibility and control over the autonomous trading system. It communicates with the Go backend via REST APIs.
 
-## 🖥️ key Features
+## Key Features
 
-### 1. **Live Trading Dashboard**
-*   **Real-time PnL:** Watch your equity grow (or shrink) in real-time.
-*   **Active Positions:** Monitor open trades with live price updates and dynamic PnL coloring.
-*   **Mode Switcher:** Seamlessly toggle between **REAL** (Live Money) and **PAPER** (Simulation) modes with a single click.
+### 1. Intelligent Trade Execution
+The system now employs a hybrid execution strategy. Instead of simple market orders, it intelligently selects between Limit orders for reversals (sniper entries) and Market orders for momentum breakouts. This maximizes entry efficiency and captures better prices during volatility.
 
-### 2. **AI Brain Center (Analytics)**
-*   **Deep Insights:** Visualize *why* the AI took a trade.
-*   **Confidence Heatmaps:** See the distribution of AI confidence levels.
-*   **Whale Radar:** Track institutional signals acting in the market.
-*   **Market Hours Analysis:** Understand which hours yield the best trading opportunities.
+### 2. Advanced AI Analysis
+Powered by DeepSeek V3 and Gemini Vision, the AI Brain Center digs deep into market structure. It doesn't just look at indicators; it analyzes visual patterns, volume anomalies, and whale movements to form a high-confidence thesis before any trade is proposed.
 
-### 3. **Trade History**
-*   **Performance Tracking:** Detailed log of past trades including profit/loss, fees, and duration.
-*   **Outcome Analysis:** See how simulated "learning" trades would have performed.
+### 3. Real-Time Risk Management
+Every trade is protected by dynamic robust stop-loss mechanisms derived from ATR (Average True Range). If market conditions change or Bitcoin shows weakness, the system proactively vetoes or adjusts positions to protect capital.
 
-### 4. **Modern UX/UI**
-*   **Dark Mode First:** Sleek, professional dark theme designed for long trading sessions.
-*   **Responsive:** Fully optimized for Mobile, Tablet, and Desktop.
-*   **Fast:** Built with **Vite** for lightning-fast loading and HMR.
+### 4. Professional Live Dashboard
+Monitor your equity curve, active positions, and detailed trade history in real-time. The interface is designed for clarity, allowing you to switch between Simulation and Real Trading modes instantly without complex reconfiguration.
 
 ---
 
