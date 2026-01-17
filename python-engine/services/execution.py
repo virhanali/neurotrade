@@ -25,12 +25,23 @@ class BinanceExecutor:
                 },
                 'enableRateLimit': True
             })
+            
+            self.markets = {}
+            self.precisions = {}
+            
+            logger.info("[EXEC] Loading markets for default client on startup...")
+            try:
+                self.default_client.load_markets()
+                logger.info(f"[EXEC] Loaded {len(self.markets)} markets (Default Client)")
+            except Exception as e:
+                logger.error(f"[EXEC] Failed to load default client markets: {e}")
+                self.markets = {}
+                self.precisions = {}
         else:
             logger.warning("[EXEC] Binance credentials not found in ENV.")
-
-        # Cache for market rules (precisions)
-        self.markets = {}
-        self.precisions = {}
+            
+            self.markets = {}
+            self.precisions = {}
         
     async def initialize(self):
         """Fetch exchange info / market rules using default client"""
@@ -61,17 +72,34 @@ class BinanceExecutor:
                 },
                 'enableRateLimit': True
             })
+            
+            try:
+                logger.info(f"[EXEC] Loading markets for temp client (API key: {api_key[:10]}...)")
+                client.load_markets()
+                logger.info("[EXEC] Temp client markets loaded successfully")
+            except Exception as e:
+                logger.error(f"[EXEC] Failed to load temp client markets: {e}")
+                # Don't fail - will be loaded on-demand if needed
+            
             return client, True
         
         return self.default_client, False
 
     async def _ensure_markets_loaded(self, client):
-        """Ensure markets are loaded (using the provided client if global cache is empty)"""
-        if not self.markets:
-            if not client: return
+        """
+        Ensure markets are loaded for the specific client.
+        Note: Each client should load its own markets if not loaded.
+        """
+        # Check if THIS client has markets loaded (not global self.markets)
+        # CCXT client.markets is a dict, check if it's populated
+        if not client.markets or len(client.markets) == 0:
+            if not client:
+                logger.warning("[EXEC] No client available to load markets")
+                return
             try:
-                self.markets = await asyncio.to_thread(client.load_markets)
-                logger.info(f"[EXEC] Loaded {len(self.markets)} markets rules (On-Demand).")
+                logger.info(f"[EXEC] Loading markets on-demand for client...")
+                await asyncio.to_thread(client.load_markets)
+                logger.info(f"[EXEC] Loaded {len(client.markets)} markets (On-Demand)")
             except Exception as e:
                 logger.error(f"[EXEC] Failed to load market rules: {e}")
 
