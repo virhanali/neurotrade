@@ -410,3 +410,54 @@ func (r *PositionRepositoryImpl) GetClosedPositions(ctx context.Context, userID 
 
 	return positions, nil
 }
+
+// GetActivePositions retrieves all active positions (OPEN or PENDING_APPROVAL)
+// This is used for deduplication to prevent duplicate orders
+func (r *PositionRepositoryImpl) GetActivePositions(ctx context.Context) ([]*domain.Position, error) {
+	query := `
+		SELECT id, user_id, signal_id, symbol, side, entry_price,
+		       sl_price, tp_price, size, leverage, exit_price, pnl, status,
+		       created_at, closed_at
+		FROM positions
+		WHERE status IN ('OPEN', 'PENDING_APPROVAL')
+		ORDER BY created_at ASC
+	`
+
+	rows, err := r.db.Query(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query active positions: %w", err)
+	}
+	defer rows.Close()
+
+	var positions []*domain.Position
+	for rows.Next() {
+		position := &domain.Position{}
+		err := rows.Scan(
+			&position.ID,
+			&position.UserID,
+			&position.SignalID,
+			&position.Symbol,
+			&position.Side,
+			&position.EntryPrice,
+			&position.SLPrice,
+			&position.TPPrice,
+			&position.Size,
+			&position.Leverage,
+			&position.ExitPrice,
+			&position.PnL,
+			&position.Status,
+			&position.CreatedAt,
+			&position.ClosedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan position: %w", err)
+		}
+		positions = append(positions, position)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating positions: %w", err)
+	}
+
+	return positions, nil
+}

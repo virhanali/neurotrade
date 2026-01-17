@@ -96,16 +96,16 @@ func (ts *TradingService) ProcessMarketScan(ctx context.Context, balance float64
 	savedCount := 0
 	processedSymbols := make(map[string]bool)
 
-	// Pre-fetch active positions to avoid duplicates
-	activePositions, err := ts.positionRepo.GetOpenPositions(ctx)
+	// Pre-fetch active positions to avoid duplicates (from LOCAL DB)
+	// Include both OPEN and PENDING_APPROVAL statuses
+	activePositions, err := ts.positionRepo.GetActivePositions(ctx)
 	activeSymbolMap := make(map[string]bool)
 	if err == nil {
 		for _, pos := range activePositions {
-			// Check if status is OPEN or PENDING_APPROVAL
-			if pos.Status == domain.StatusOpen || pos.Status == domain.StatusPositionPendingApproval {
-				activeSymbolMap[pos.Symbol] = true
-			}
+			activeSymbolMap[pos.Symbol] = true
+			log.Printf("[DEDUP] Active position in DB: %s (status=%s)", pos.Symbol, pos.Status)
 		}
+		log.Printf("[DEDUP] Found %d active positions in DB", len(activeSymbolMap))
 	} else {
 		log.Printf("WARNING: Failed to fetch open positions: %v", err)
 	}
@@ -123,28 +123,31 @@ func (ts *TradingService) ProcessMarketScan(ctx context.Context, balance float64
 			continue
 		}
 
-		// Dedup check 3: Prevent duplicate signals (Spam Protection)
-		// Check if we recently generated a signal for this symbol (created < 120 mins ago)
-		// This prevents creating new signals if the previous one is still active or valid
+		// Dedup check 3: Enhanced Signal History Check (Spam Protection)
 		isDuplicate := false
 		recentSignals, _ := ts.signalRepo.GetBySymbol(ctx, aiSignal.Symbol, 1)
 		if len(recentSignals) > 0 {
 			lastSignal := recentSignals[0]
-
-			// 1. Time-based Deduplication (120 mins)
-			isRecent := time.Since(lastSignal.CreatedAt).Minutes() < 120
-
-			// 2. Status-based Deduplication
-			// If PENDING or EXECUTED (and not closed), treat as active
-			isActive := lastSignal.Status == domain.StatusPending || lastSignal.Status == domain.StatusExecuted
-
-			// 3. Direction Check (Only block if same direction)
+			minutesSinceSignal := time.Since(lastSignal.CreatedAt).Minutes()
 			sameDirection := lastSignal.Type == aiSignal.FinalSignal
 
-			if isRecent && isActive && sameDirection {
-				log.Printf("Skipping %s: Recent active signal exists (id=%s, age=%.0fm, status=%s)",
-					aiSignal.Symbol, lastSignal.ID, time.Since(lastSignal.CreatedAt).Minutes(), lastSignal.Status)
-				isDuplicate = true
+			// Rule 1: Block if PENDING/EXECUTED within 120 mins (same direction)
+			if minutesSinceSignal < 120 {
+				if lastSignal.Status == domain.StatusPending || lastSignal.Status == domain.StatusExecuted {
+					if sameDirection {
+						log.Printf("[DEDUP] Skipping %s: Active signal exists (status=%s, age=%.0fm)",
+							aiSignal.Symbol, lastSignal.Status, minutesSinceSignal)
+						isDuplicate = true
+					}
+				}
+
+				// Rule 2: Block if FAILED within 30 mins (cooldown period)
+				// This prevents retry spam when execution keeps failing
+				if lastSignal.Status == domain.StatusFailed && minutesSinceSignal < 30 {
+					log.Printf("[DEDUP] Skipping %s: Recent FAILED signal in cooldown (age=%.0fm, cooldown=30m)",
+						aiSignal.Symbol, minutesSinceSignal)
+					isDuplicate = true
+				}
 			}
 		}
 		if isDuplicate {
@@ -436,12 +439,25 @@ func (ts *TradingService) createPositionForUser(ctx context.Context, user *domai
 		log.Printf("[REAL] Executing Entry for %s: %s %s Notional: %.2f USDT (Margin: %.2f, Leverage: %.0fx)",
 			user.Username, signal.Symbol, side, totalNotionalValue, entrySizeUSDT, leverage)
 
+		// Step 0: BINANCE POSITION CHECK (Ultimate Dedup)
+		// Check if we already have an open position on Binance for this symbol
+		hasPosition, err := ts.aiService.HasOpenPosition(ctx, signal.Symbol, user.BinanceAPIKey, user.BinanceAPISecret)
+		if err != nil {
+			log.Printf("[WARN] Failed to check Binance position for %s: %v (proceeding with caution)", signal.Symbol, err)
+			// Don't block on error - let Binance API reject if duplicate
+		} else if hasPosition {
+			log.Printf("[DEDUP] 🚫 BLOCKED: %s already has OPEN position on Binance (preventing duplicate order)", signal.Symbol)
+			return fmt.Errorf("position already exists on Binance for %s", signal.Symbol)
+		} else {
+			log.Printf("[DEDUP] ✅ Binance check passed: No open position for %s", signal.Symbol)
+		}
+
 		// Safety: Double-check minimum notional before execution
 		if totalNotionalValue < 5.0 {
 			return fmt.Errorf("position notional value ($%.2f) below Binance minimum ($5)", totalNotionalValue)
 		}
 
-		// Build execution params with SL/TP/Trailing
+		// Build execution params with SL/TP
 		execParams := &domain.EntryParams{
 			Symbol:           signal.Symbol,
 			Side:             side,
@@ -451,26 +467,108 @@ func (ts *TradingService) createPositionForUser(ctx context.Context, user *domai
 			APISecret:        user.BinanceAPISecret,
 			SLPrice:          signal.SLPrice,
 			TPPrice:          signal.TPPrice,
-			TrailingCallback: 1.0, // 1% trailing stop callback (can be made configurable)
+			TrailingCallback: 1.0,
 		}
 
-		// Execute with SL/TP/Trailing all placed on Binance
+		// Step 1: Execute Entry Order
 		execResult, err := ts.aiService.ExecuteEntry(ctx, execParams)
 		if err != nil {
-			return fmt.Errorf("REAL ORDER FAILED for %s: %w", signal.Symbol, err)
+			log.Printf("[REAL] Entry order FAILED for %s: %v", signal.Symbol, err)
+			return fmt.Errorf("REAL ENTRY ORDER FAILED for %s: %w", signal.Symbol, err)
 		}
 
-		// Verify execution result
-		if execResult == nil || execResult.Status != "FILLED" {
-			return fmt.Errorf("REAL ORDER NOT FILLED for %s: status=%s", signal.Symbol, execResult.Status)
+		// Step 2: Verify Entry was filled
+		if execResult == nil {
+			return fmt.Errorf("REAL ENTRY ORDER returned nil for %s", signal.Symbol)
 		}
 
-		// Update position details with REAL execution data
-		signal.EntryPrice = execResult.AvgPrice
-		positionSize = execResult.ExecutedQty
-		log.Printf("[REAL] Order Filled: %s | Price: %.4f | Qty: %.4f | SL: %s | TP: %s | Trailing: %s",
-			execResult.OrderID, execResult.AvgPrice, execResult.ExecutedQty,
-			execResult.SLOrderID, execResult.TPOrderID, execResult.TrailingOrderID)
+		if execResult.Status != "FILLED" && execResult.Status != "filled" {
+			return fmt.Errorf("REAL ENTRY ORDER NOT FILLED for %s: status=%s", signal.Symbol, execResult.Status)
+		}
+
+		// Step 3: Update signal with ACTUAL fill data
+		actualEntryPrice := execResult.AvgPrice
+		actualPositionSize := execResult.ExecutedQty
+
+		log.Printf("[REAL] ✅ Entry Filled: ID=%s Price=%.4f Qty=%.4f",
+			execResult.OrderID, actualEntryPrice, actualPositionSize)
+
+		// Step 4: IMMEDIATELY SAVE POSITION TO DB
+		// This is CRITICAL fix - we save BEFORE any SL/TP attempt
+		// Even if SL/TP fails, we have a record of position
+		position := &domain.Position{
+			ID:         uuid.New(),
+			UserID:     user.ID,
+			SignalID:   &signal.ID,
+			Symbol:     signal.Symbol,
+			Side:       side,
+			EntryPrice: actualEntryPrice,
+			SLPrice:    signal.SLPrice,
+			TPPrice:    signal.TPPrice,
+			Size:       actualPositionSize,
+			Leverage:   leverage,
+			Status:     domain.StatusOpen,
+			CreatedAt:  time.Now(),
+		}
+
+		if err := ts.positionRepo.Save(ctx, position); err != nil {
+			// CRITICAL ERROR: Position is on Binance but we can't save to DB
+			// Log prominently but don't return error - position exists on exchange!
+			log.Printf("[CRITICAL] ⚠️ Position on Binance but DB save failed: %s - %v", signal.Symbol, err)
+			log.Printf("[CRITICAL] ⚠️ Manual reconciliation needed! Symbol=%s, Size=%.4f, Entry=%.4f",
+				signal.Symbol, actualPositionSize, actualEntryPrice)
+			// Continue anyway - we'll try to update signal status
+		} else {
+			log.Printf("[REAL] ✅ Position saved to DB: %s (ID=%s)", signal.Symbol, position.ID)
+		}
+
+		// Step 5: Update signal status to EXECUTED
+		if signal.ID != uuid.Nil {
+			if err := ts.signalRepo.UpdateStatus(ctx, signal.ID, domain.StatusExecuted); err != nil {
+				log.Printf("WARNING: Failed to update signal status to EXECUTED: %v", err)
+			}
+		}
+
+		// Step 6: Log SL/TP order IDs (already placed by Python)
+		// Note: SL/TP are placed in execute_entry() by Python - we just log the results
+		if execResult.SLOrderID != "" {
+			log.Printf("[REAL] SL Order placed: %s", execResult.SLOrderID)
+		} else {
+			log.Printf("[WARN] SL Order ID not returned (may have failed)")
+		}
+
+		if execResult.TPOrderID != "" {
+			log.Printf("[REAL] TP Order placed: %s", execResult.TPOrderID)
+		} else {
+			log.Printf("[WARN] TP Order ID not returned (may have failed)")
+		}
+
+		// Position already saved above - skip the normal PAPER flow below
+		return nil
+	}
+
+	// Build execution params with SL/TP/Trailing
+	execParams := &domain.EntryParams{
+		Symbol:           signal.Symbol,
+		Side:             side,
+		AmountUSDT:       totalNotionalValue,
+		Leverage:         int(leverage),
+		APIKey:           user.BinanceAPIKey,
+		APISecret:        user.BinanceAPISecret,
+		SLPrice:          signal.SLPrice,
+		TPPrice:          signal.TPPrice,
+		TrailingCallback: 1.0, // 1% trailing stop callback (can be made configurable)
+	}
+
+	// Execute with SL/TP/Trailing all placed on Binance
+	execResult, err := ts.aiService.ExecuteEntry(ctx, execParams)
+	if err != nil {
+		return fmt.Errorf("REAL ORDER FAILED for %s: %w", signal.Symbol, err)
+	}
+
+	// Verify execution result
+	if execResult == nil || execResult.Status != "FILLED" {
+		return fmt.Errorf("REAL ORDER NOT FILLED for %s: status=%s", signal.Symbol, execResult.Status)
 	}
 
 	// Determine initial status based on Auto-Trade setting
@@ -478,6 +576,9 @@ func (ts *TradingService) createPositionForUser(ctx context.Context, user *domai
 	if user.IsAutoTradeEnabled {
 		initialStatus = domain.StatusOpen
 	}
+
+	// Calculate position size for PAPER mode (already declared at line 434)
+	positionSize = (entrySizeUSDT * leverage) / signal.EntryPrice
 
 	// Create paper position
 	position := &domain.Position{

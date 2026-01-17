@@ -37,6 +37,10 @@ type AIService interface {
 
 	// GetAIAnalytics fetches AI behavior analytics from Python Engine
 	GetAIAnalytics(ctx context.Context) (map[string]interface{}, error)
+
+	// HasOpenPosition checks if a symbol has an open position on Binance
+	// Returns (hasPosition bool, error)
+	HasOpenPosition(ctx context.Context, symbol string, apiKey string, apiSecret string) (bool, error)
 }
 
 // EntryParams contains all parameters for executing an entry order

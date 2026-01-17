@@ -63,7 +63,10 @@ type PositionRepository interface {
 	// GetOpenPositions retrieves all open positions (across all users or specific user)
 	GetOpenPositions(ctx context.Context) ([]*Position, error)
 
-	// Update updates position status, exit price, and PnL
+	// GetActivePositions retrieves all active positions (OPEN or PENDING_APPROVAL)
+	GetActivePositions(ctx context.Context) ([]*Position, error)
+
+	// Update updates position status, exit price and PnL
 	Update(ctx context.Context, position *Position) error
 
 	// GetByID retrieves a position by ID

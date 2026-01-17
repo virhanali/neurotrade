@@ -1143,9 +1143,49 @@ async def get_real_balance(request: BalanceRequest):
     
     # 3. Start Stream for Next Time (Lazy Loading)
     if "error" not in result:
-        asyncio.create_task(ws_manager.start_user_stream(request.api_key, request.api_secret))
+         asyncio.create_task(ws_manager.start_user_stream(request.api_key, request.api_secret))
     
     if "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])
         
     return result
+
+class HasPositionRequest(BaseModel):
+    symbol: str
+    api_key: Optional[str] = None
+    api_secret: Optional[str] = None
+
+@app.post("/execute/has-position")
+async def check_has_position(request: HasPositionRequest):
+    """
+    Check if there's an open position for a symbol on Binance.
+    Uses WebSocket cache first (0ms latency), falls back to REST API.
+    
+    This is ULTIMATE deduplication check - Binance is the source of truth.
+    """
+    result = await executor.has_open_position(
+        symbol=request.symbol,
+        api_key=request.api_key,
+        api_secret=request.api_secret
+    )
+    
+    if "error" in result and result.get("source") == "error":
+        logger.warning(f"[HAS-POS] Error checking {request.symbol}: {result.get('error')}")
+    
+    return result
+
+@app.get("/execute/positions")
+async def get_all_positions():
+    """
+    Get all open positions from WebSocket cache.
+    Useful for debugging and dashboard sync.
+    """
+    from services.execution import user_stream
+    
+    return {
+        "status": "ok",
+        "ws_running": user_stream.is_running,
+        "initial_fetch_done": user_stream.initial_fetch_done,
+        "positions": user_stream.cache.get("positions", {}),
+        "balance": user_stream.cache.get("balance", {})
+    }

@@ -66,7 +66,7 @@ temp/
 *.tmp
 
 # Claude Code state
-.claude/
+# .claude/
 
 # Production files (sensitive)
 .env.production

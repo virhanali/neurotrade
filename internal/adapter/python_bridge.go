@@ -413,3 +413,61 @@ func (pb *PythonBridge) GetAIAnalytics(ctx context.Context) (map[string]interfac
 
 	return result, nil
 }
+
+// HasOpenPosition checks Binance for open position via Python Engine
+func (pb *PythonBridge) HasOpenPosition(ctx context.Context, symbol string, apiKey string, apiSecret string) (bool, error) {
+	type hasPositionRequest struct {
+		Symbol    string `json:"symbol"`
+		APIKey    string `json:"api_key,omitempty"`
+		APISecret string `json:"api_secret,omitempty"`
+	}
+
+	reqBody := hasPositionRequest{
+		Symbol:    symbol,
+		APIKey:    apiKey,
+		APISecret: apiSecret,
+	}
+
+	jsonBody, err := json.Marshal(reqBody)
+	if err != nil {
+		return false, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	url := fmt.Sprintf("%s/execute/has-position", pb.baseURL)
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonBody))
+	if err != nil {
+		return false, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := pb.httpClient.Do(req)
+	if err != nil {
+		log.Printf("[WARN] HasOpenPosition request failed: %v", err)
+		return false, nil
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		HasPosition bool    `json:"has_position"`
+		PositionAmt float64 `json:"position_amt"`
+		Source      string  `json:"source"`
+		Error       string  `json:"error,omitempty"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		log.Printf("[WARN] HasOpenPosition decode failed: %v", err)
+		return false, nil
+	}
+
+	if result.Error != "" {
+		log.Printf("[WARN] Binance position check error: %s", result.Error)
+		return false, nil
+	}
+
+	if result.HasPosition {
+		log.Printf("[DEDUP] Binance has open position for %s: amount=%.4f (source=%s)",
+			symbol, result.PositionAmt, result.Source)
+	}
+
+	return result.HasPosition, nil
+}

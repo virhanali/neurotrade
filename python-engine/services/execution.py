@@ -457,6 +457,106 @@ class BinanceExecutor:
                 # Sync client cleanup
                 pass
 
+    async def has_open_position(self, symbol: str,
+                             api_key: Optional[str] = None,
+                             api_secret: Optional[str] = None) -> Dict:
+        """
+        Check if there's an open position for a symbol on Binance.
+        Uses WebSocket cache first (0ms), falls back to REST API if cache miss.
+
+        Args:
+            symbol: Trading pair (e.g., "BTC/USDT" or "BTCUSDT")
+            api_key: Optional API key for REST fallback
+            api_secret: Optional API secret for REST fallback
+
+        Returns:
+            {
+                "has_position": bool,
+                "position_amt": float,  # Positive = LONG, Negative = SHORT
+                "entry_price": float,
+                "unrealized_pnl": float,
+                "source": "cache" | "rest" | "error"
+            }
+        """
+        import time
+
+        # Normalize symbol
+        symbol_normalized = symbol.replace("/", "")  # BTC/USDT -> BTCUSDT
+
+        # 1. Check WebSocket Cache First (0ms latency)
+        if user_stream.is_running:
+            cache_result = user_stream.has_position(symbol)
+            if cache_result["source"] == "cache":
+                logger.debug(f"[EXEC] Position check from cache: {symbol} = {cache_result}")
+                return {
+                    "has_position": cache_result["has_position"],
+                    "position_amt": cache_result["amount"],
+                    "entry_price": cache_result["entry_price"],
+                    "unrealized_pnl": cache_result.get("unrealized_pnl", 0),
+                    "source": "cache"
+                }
+
+        # 2. Fallback to REST API (if cache miss or WS not running)
+        logger.info(f"[EXEC] Position check via REST API: {symbol}")
+
+        client, is_temp = self._get_client(api_key, api_secret)
+        if not client:
+            return {
+                "error": "Binance client not initialized",
+                "has_position": False,
+                "source": "error"
+            }
+
+        try:
+            # Fetch positions for this symbol
+            positions = await asyncio.to_thread(client.fetch_positions, [symbol])
+
+            for pos in positions:
+                pos_symbol = pos.get('symbol', '')
+                contracts = float(pos.get('contracts', 0))
+
+                # Check if this is our symbol (handle format differences)
+                if pos_symbol.replace("/", "") == symbol_normalized:
+                    pos_amt = contracts
+                    if pos.get('side') == 'short':
+                        pos_amt = -contracts
+
+                    # Update cache for future lookups
+                    if user_stream.is_running and abs(pos_amt) > 0:
+                        user_stream.cache["positions"][symbol_normalized] = {
+                            "amount": pos_amt,
+                            "entry_price": float(pos.get('entryPrice', 0)),
+                            "unrealized_pnl": float(pos.get('unrealizedPnl', 0)),
+                            "updated_at": time.time()
+                        }
+
+                    return {
+                        "has_position": abs(pos_amt) > 0,
+                        "position_amt": pos_amt,
+                        "entry_price": float(pos.get('entryPrice', 0)),
+                        "unrealized_pnl": float(pos.get('unrealizedPnl', 0)),
+                        "source": "rest"
+                    }
+
+            return {
+                "has_position": False,
+                "position_amt": 0,
+                "entry_price": 0,
+                "unrealized_pnl": 0,
+                "source": "rest"
+            }
+
+        except Exception as e:
+            logger.error(f"[EXEC] Failed to check position for {symbol}: {e}")
+            return {
+                "error": str(e),
+                "has_position": False,
+                "source": "error"
+            }
+        finally:
+            if is_temp and client:
+                pass
+
 # WebSocket User Data Stream (v10.1 - Cleaned)
 class UserDataStream:
     def __init__(self, executor_ref):
@@ -469,15 +569,23 @@ class UserDataStream:
         # In-Memory Real-Time Cache
         self.cache = {
             "balance": {"total": 0.0, "free": 0.0, "updated_at": 0},
-            "positions": {}  # symbol -> {qty, entryPrice, pnl, etc}
+            "positions": {}  # symbol -> {amount, entry_price, unrealized_pnl, updated_at}
         }
+        
+        # Track initialization state
+        self.initial_fetch_done = False
 
     async def start_stream(self, api_key, api_secret):
         """Start the User Data Stream for a specific user"""
-        if self.is_running: return
+        if self.is_running:
+            return
         
         self.is_running = True
         logger.info("[WS] Starting User Data Stream (Event-Driven Mode)...")
+        
+        # Store credentials for initial fetch
+        self._api_key = api_key
+        self._api_secret = api_secret
         
         # 1. Get Listen Key
         self.listen_key = await self._get_listen_key(api_key, api_secret)
@@ -485,11 +593,15 @@ class UserDataStream:
             logger.error("[WS] Failed to get listen key. WS Disabled.")
             self.is_running = False
             return
-
-        # 2. Start Keep-Alive Loop (Every 50 mins)
+        
+        # 2. INITIAL POSITION FETCH (NEW!)
+        # Populate cache with existing positions before WS starts
+        await self._fetch_initial_positions(api_key, api_secret)
+        
+        # 3. Start Keep-Alive Loop (Every 50 mins)
         asyncio.create_task(self._keep_alive_loop(api_key, api_secret))
-
-        # 3. Start WS Listener
+        
+        # 4. Start WS Listener
         asyncio.create_task(self._listen_socket())
 
     async def _get_listen_key(self, api_key, api_secret):
@@ -594,7 +706,102 @@ class UserDataStream:
                 # We can use this to trigger specific notifications if needed
 
         except Exception as e:
-            pass # Silent fail to prevent loop crash
+            pass
+
+    async def _fetch_initial_positions(self, api_key: str, api_secret: str):
+        """
+        Fetch all current positions from Binance REST API on startup.
+        This ensures cache is populated even before first ACCOUNT_UPDATE event.
+        """
+        try:
+            logger.info("[WS] Fetching initial positions from Binance...")
+            
+            client = self.executor._get_client(api_key, api_secret)[0]
+            if not client:
+                logger.warning("[WS] No client available for initial fetch")
+                return
+            
+            # Fetch all positions
+            positions = await asyncio.to_thread(client.fetch_positions)
+            
+            import time
+            now = time.time()
+            
+            open_count = 0
+            for pos in positions:
+                symbol = pos.get('symbol', '')
+                contracts = float(pos.get('contracts', 0))
+                
+                # Only cache non-zero positions
+                if abs(contracts) > 0:
+                    # Normalize symbol format (BTCUSDT -> BTC/USDT for consistency)
+                    # Note: Binance WS uses BTCUSDT, CCXT uses BTC/USDT
+                    # We'll store both formats for easy lookup
+                    
+                    pos_amt = contracts
+                    if pos.get('side') == 'short':
+                        pos_amt = -contracts
+                    
+                    self.cache["positions"][symbol] = {
+                        "amount": pos_amt,
+                        "entry_price": float(pos.get('entryPrice', 0)),
+                        "unrealized_pnl": float(pos.get('unrealizedPnl', 0)),
+                        "updated_at": now
+                    }
+                    open_count += 1
+                    logger.info(f"[WS] Cached position: {symbol} = {pos_amt}")
+            
+            self.initial_fetch_done = True
+            logger.info(f"[WS] Initial fetch complete: {open_count} open positions cached")
+            
+        except Exception as e:
+            logger.error(f"[WS] Initial position fetch failed: {e}")
+            # Don't block startup on failure - WS events will populate cache
+
+    def has_position(self, symbol: str) -> dict:
+        """
+        Check if symbol has an open position (from cache).
+
+        Args:
+            symbol: Trading pair (supports both BTC/USDT and BTCUSDT formats)
+
+        Returns:
+            {
+                "has_position": bool,
+                "amount": float (positive=LONG, negative=SHORT),
+                "entry_price": float,
+                "source": "cache" | "not_found"
+            }
+        """
+        import time
+
+        # Normalize symbol - try both formats
+        symbol_ccxt = symbol.replace("/", "")
+        symbol_slash = f"{symbol[:-4]}/{symbol[-4:]}" if not "/" in symbol else symbol
+
+        # Check cache
+        for sym in [symbol, symbol_ccxt, symbol_slash]:
+            if sym in self.cache["positions"]:
+                pos = self.cache["positions"][sym]
+
+                # Only trust cache if updated within last 5 minutes
+                cache_age = time.time() - pos.get("updated_at", 0)
+                if cache_age < 300:
+                    return {
+                        "has_position": abs(pos["amount"]) > 0,
+                        "amount": pos["amount"],
+                        "entry_price": pos.get("entry_price", 0),
+                        "unrealized_pnl": pos.get("unrealized_pnl", 0),
+                        "source": "cache",
+                        "cache_age_seconds": cache_age
+                    }
+
+        return {
+            "has_position": False,
+            "amount": 0,
+            "entry_price": 0,
+            "source": "not_found"
+        }
 
 # Global Instance
 executor = BinanceExecutor()

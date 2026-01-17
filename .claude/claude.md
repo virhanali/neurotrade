@@ -6,18 +6,39 @@
 
 ## 📌 CURRENT SESSION CONTEXT
 
-### 🔴 Session Context (2026-01-16) - Part 2:
-**ISSUE:**
-1.  **Spam Signals:** Users receiving multiple identical signals (e.g., 3x LONG BDXN) in short succession.
-2.  **Execution Failure:** Valid signals failing to execute due to "Real Balance Cache = 0" even with funds in Binance.
-3.  **Invalid Entry Price:** AI signals returning `Entry: 0.0000`, causing silent database rejections and duplicate notifications.
+### 🔴 Session Context (2026-01-17) - Persistent Critical Issues:
+**ISSUE: Double Order / Margin Compounding (The "Infinite Loop" Bug)**
+**Symptoms:** Bot opens multiple positions for the same signal (e.g., BROCCOLI/USDT), causing margin to multiply (3x -> 6x -> 9x).
 
-**ROOT CAUSES FOUND:**
-1.  **Deduplication Window:** Old 60-min blocked window was too short for scalp trades that linger.
-2.  **Cache Sync Lag:** Go backend failed to sync balance on startup, blocking "REAL" mode orders.
-3.  **Metric Loss:** `screener.py` failed to pass `current_price` to `ai_handler`, breaking the "Auto-Fix" logic for prices.
+**MECHANISM (The "Loop of Death"):**
+1.  **Signal:** AI generates a valid signal.
+2.  **Execution Request:** Go calls Python `ExecuteEntry`.
+3.  **Partial Failure (The Root Cause):**
+    *   Python posts Entry Order to Binance -> **SUCCESS**.
+    *   Python attempts SL Order -> **FAILS** (Error -1106: `reduceOnly` conflict).
+4.  **Error Propagation:**
+    *   Python (intentionally or via crash) returns an error state or Go fails to decode the response for the SL failure.
+    *   Go `trading_service.go` detects `err != nil` from `ExecuteEntry`.
+5.  **Critial Logic Flaw (DB Skip):**
+    *   Because Go sees an error, it **ABORTS** the function early.
+    *   **The Code to SAVE Position to DB is SKIPPED.**
+6.  **Result:** Use has an Open Position in Binance, but NeuroTrade DB is empty (Zero records).
+7.  **Re-Execution:**
+    *   Next Cron Job runs (30s/5m later).
+    *   Screener finds the same opportunity.
+    *   Deduplication check looks at DB -> **EMPTY** (No record of previous trade).
+    *   **RESULT:** Bot executes the order AGAIN.
 
-### ✅ ALL FIXES APPLIED:
+**✅ FIXES APPLIED:**
+1.  **Python Fix (Root Cause):** Removed `reduceOnly: True` from `STOP_MARKET` and `TAKE_PROFIT_MARKET` logic in `execution.py`. This prevents the SL failure, allowing the full flow to complete successfully.
+2.  **Screener Fix:** Enforced `current_price` and `atr_val` to be passed to AI, preventing `Entry: 0` errors which also caused DB rejections.
+
+**⚠️ PENDING MONITORING:**
+*   **Struct Validation:** Need to verify `EvaluationResult` struct in Go matches Python's JSON output (Active concern: String vs Int for `order_id`).
+*   **Architecture Debt:** Go logic handles "Partial Success" poorly. If SL fails in the future, it should still save the Entry to DB to prevent loops.
+
+### ✅ ALL FIXES APPLIED (Previous):
+**1. Anti-Spam & Deduplication:**
 **1. Anti-Spam & Deduplication:**
 *   **120-Minute Window:** Extended signal suppression window from 60m to 120m.
 *   **Status Check:** Now blocks new signals if previous one is `PENDING` or `EXECUTED` (prevents stacking).
