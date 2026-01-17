@@ -659,7 +659,7 @@ BAD TRADE (WAIT - CONTRADICTION):
 
             # Call Gemini Flash (fast model)
             response = self.judge_client.chat.completions.create(
-                model="google/gemini-2.0-flash-exp",  # Flash for speed
+                model="google/gemini-3-flash-preview",  # Flash for speed
                 messages=[
                     {
                         "role": "user",
@@ -716,7 +716,7 @@ BAD TRADE (WAIT - CONTRADICTION):
                 'recommendation': 'Do NOT execute - AI Judge unavailable'
             }
 
-    def combine_analysis(self, logic_result: Dict, vision_result: Dict, metrics: Dict = None, whale_signal: str = 'NEUTRAL', whale_confidence: int = 0) -> Dict:
+    def combine_analysis(self, logic_result: Dict, vision_result: Dict, metrics: Dict = None, whale_signal: str = 'NEUTRAL', whale_confidence: int = 0, judge_result: Dict = None) -> Dict:
         """
         Combine DeepSeek logic and Gemini vision results using HYBRID AGGRESSIVE VETO
         Enhanced with ML-based win probability prediction (v4.0) + WHALE DETECTION VETO (Tier 1)

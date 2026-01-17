@@ -12,33 +12,36 @@ load_dotenv()
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables"""
-
+    
     # AI Provider APIs (Required)
-    DEEPSEEK_API_KEY: str = os.getenv("DEEPSEEK_API_KEY", "")  # Logic analysis
-    OPENROUTER_API_KEY: str = os.getenv("OPENROUTER_API_KEY", "")  # Vision analysis
-
+    DEEPSEEK_API_KEY: str
+    OPENROUTER_API_KEY: str
+    
     # Exchange API (Optional - only for real trading)
-    BINANCE_API_KEY: str = os.getenv("BINANCE_API_KEY", "")
-    BINANCE_API_SECRET: str = os.getenv("BINANCE_API_SECRET", "")
-    BINANCE_WS_URL: str = os.getenv("BINANCE_WS_URL", "wss://fstream.binance.com/ws/!ticker@arr")
-
+    BINANCE_API_KEY: str = ""
+    BINANCE_API_SECRET: str = ""
+    BINANCE_WS_URL: str = "wss://fstream.binance.com/ws/!ticker@arr"
+    
     # Database
-    DATABASE_URL: str = os.getenv("DATABASE_URL", "")
-
+    DATABASE_URL: str = ""
+    
     # Application
-    PYTHON_ENV: str = os.getenv("PYTHON_ENV", "development")
-    LOG_LEVEL: str = os.getenv("LOG_LEVEL", "info")
-
-    MIN_VOLUME_USDT: float = float(os.getenv("MIN_VOLUME_USDT", "30000000"))  # $30M minimum volume (Lowered to catch Mid-Caps)
-    MIN_VOLATILITY_1H: float = float(os.getenv("MIN_VOLATILITY_1H", "0.8"))  # 0.5% min vol
-    TOP_COINS_LIMIT: int = int(os.getenv("TOP_COINS_LIMIT", "15"))  # Top 15 is the Sweet Spot (Cost vs Opportunity)
-    MAX_RISK_PERCENT: float = float(os.getenv("MAX_RISK_PERCENT", "2.0"))  # Max 2% risk per trade
-    MIN_CONFIDENCE: int = int(os.getenv("MIN_CONFIDENCE", "75"))  # Minimum 75% confidence to execute
-
+    PYTHON_ENV: str = "development"
+    LOG_LEVEL: str = "info"
+    
+    # Trading Parameters
+    MIN_VOLUME_USDT: float = 30000000.0  # $30M minimum volume (Lowered to catch Mid-Caps)
+    MIN_VOLATILITY_1H: float = 0.8  # 0.5% min vol
+    TOP_COINS_LIMIT: int = 15  # Top 15 is Sweet Spot (Cost vs Opportunity)
+    MAX_RISK_PERCENT: float = 2.0  # Max 2% risk per trade
+    MIN_CONFIDENCE: int = 75  # Minimum 75% confidence to execute
+    
     class Config:
         env_file = ".env"
-        case_sensitive = True
+        case_sensitive = False
+        extra = "allow"  # Allow extra fields
 
 
 # Global settings instance
 settings = Settings()
+
