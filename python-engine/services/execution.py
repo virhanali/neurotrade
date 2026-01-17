@@ -607,30 +607,27 @@ class UserDataStream:
         """Start the User Data Stream for a specific user"""
         if self.is_running:
             return
-        
+
         self.is_running = True
+
         logger.info("[WS] Starting User Data Stream (Event-Driven Mode)...")
-        
-        # Store credentials for initial fetch
-        self._api_key = api_key
-        self._api_secret = api_secret
-        
-        # 1. Get Listen Key
-        self.listen_key = await self._get_listen_key(api_key, api_secret)
-        if not self.listen_key:
-            logger.error("[WS] Failed to get listen key. WS Disabled.")
+
+        # Check if user has valid Binance credentials
+        if not api_key or not api_secret:
+            logger.warning("[WS] Binance credentials not provided in ENV. Skipping User Data Stream.")
             self.is_running = False
             return
-        
+
         # 2. INITIAL POSITION FETCH (NEW!)
         # Populate cache with existing positions before WS starts
         await self._fetch_initial_positions(api_key, api_secret)
-        
+
         # 3. Start Keep-Alive Loop (Every 50 mins)
         asyncio.create_task(self._keep_alive_loop(api_key, api_secret))
-        
+
         # 4. Start WS Listener
         asyncio.create_task(self._listen_socket())
+
 
     async def _get_listen_key(self, api_key, api_secret):
         """Fetch listenKey from Binance REST API"""

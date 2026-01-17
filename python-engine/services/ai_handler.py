@@ -133,6 +133,12 @@ class AIHandler:
             base_url="https://openrouter.ai/api/v1"
         )
 
+        # NEW: AI Judge using Gemini Flash for final decision
+        self.judge_client = OpenAI(
+            api_key=settings.OPENROUTER_API_KEY,
+            base_url="https://openrouter.ai/api/v1"
+        )
+
     def analyze_logic(
         self,
         btc_data: Dict,
@@ -546,6 +552,169 @@ Analyze for SCALPER entry (Mean Reversion / Ping-Pong / Predictive Alpha). Provi
             }
         except Exception as e:
             raise Exception(f"OpenRouter vision analysis failed: {str(e)}")
+
+    def ai_judge(
+        self,
+        logic_result: Dict,
+        vision_result: Dict,
+        whale_signal: str,
+        ml_win_prob: float,
+        metrics: Dict = None
+    ) -> Dict:
+        """
+        Use Gemini Flash to evaluate trade validity and detect contradictions
+
+        This acts as an intelligent arbiter that:
+        1. Detects contradictions between Logic and Vision
+        2. Evaluates ML prediction confidence
+        3. Makes final EXECUTE/WAIT decision
+
+        Returns:
+        {
+            "decision": "EXECUTE" or "WAIT",
+            "confidence": 0-100,
+            "final_signal": "LONG" or "SHORT" (null if WAIT),
+            "reasoning": "clear explanation",
+            "warning_level": "LOW", "MEDIUM", or "HIGH",
+            "contradictions_detected": true/false,
+            "key_factors": ["factor1", "factor2"],
+            "recommendation": "specific action"
+        }
+        """
+        try:
+            # Build prompt for AI Judge
+            logic_signal = logic_result.get('signal', 'WAIT')
+            logic_confidence = logic_result.get('confidence', 0)
+            logic_reasoning = logic_result.get('reasoning', '')
+            vision_analysis = vision_result.get('analysis', '')
+            vision_verdict = vision_result.get('verdict', 'NEUTRAL')
+
+            prompt = f"""You are an EXPERT TRADING ARBITER. Your job is to evaluate if a trade signal is VALID.
+
+INPUT DATA:
+1. LOGIC ANALYSIS (Technical Indicators):
+   - Signal: {logic_signal} ({logic_confidence}% confidence)
+   - Reasoning: {logic_reasoning}
+
+2. VISION ANALYSIS (Price Action):
+   - Verdict: {vision_verdict}
+   - Analysis: {vision_analysis}
+
+3. WHALE SIGNAL (Large trader activity):
+   - Signal: {whale_signal}
+
+4. ML PREDICTION (Historical win rate):
+   - Win Probability: {ml_win_prob:.0%}
+
+TASK:
+Analyze these inputs and determine if this is a VALID trade.
+
+CHECK FOR CONTRADICTIONS:
+- Does Logic say one thing but Vision confirm the opposite?
+- Example: Logic says "Short (mean reversion at RSI 94)" but Vision says "Strong breakout with Marubozu"
+
+RISK ASSESSMENT:
+- Is ML prediction too low (< 35%)?
+- Are there contradictory signals?
+- Is confidence realistic?
+
+OUTPUT FORMAT (JSON ONLY):
+{{
+    "decision": "EXECUTE" or "WAIT",
+    "confidence": <0-100>,
+    "final_signal": "LONG" or "SHORT" (null if WAIT),
+    "reasoning": "<clear explanation>",
+    "warning_level": "LOW", "MEDIUM", or "HIGH",
+    "contradictions_detected": <true/false>,
+    "key_factors": ["factor1", "factor2"],
+    "recommendation": "<specific action>"
+}}
+
+EXAMPLE RESPONSES:
+
+GOOD TRADE (EXECUTE):
+{{
+    "decision": "EXECUTE",
+    "confidence": 85,
+    "final_signal": "LONG",
+    "reasoning": "Logic and Vision agree on LONG. RSI oversold (32) + Price bounced off support + Volume confirming entry. ML predicts 72% win rate.",
+    "warning_level": "LOW",
+    "contradictions_detected": false,
+    "key_factors": ["Consensus", "Good ML prediction", "Support bounce"],
+    "recommendation": "Execute LONG with standard SL/TP"
+}}
+
+BAD TRADE (WAIT - CONTRADICTION):
+{{
+    "decision": "WAIT",
+    "confidence": 0,
+    "final_signal": null,
+    "reasoning": "CRITICAL CONTRADICTION: Logic says Short (fade RSI 94) but Vision confirms strong breakout with Marubozu pattern. Never fade strong momentum. ML predicts only 27% win rate.",
+    "warning_level": "HIGH",
+    "contradictions_detected": true,
+    "key_factors": ["Contradictory signals", "Low ML prediction", "Momentum fading"],
+    "recommendation": "Do NOT enter. Wait for momentum exhaustion."
+}}
+"""
+
+            # Call Gemini Flash (fast model)
+            response = self.judge_client.chat.completions.create(
+                model="google/gemini-2.0-flash-exp",  # Flash for speed
+                messages=[
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                temperature=0.3,  # Lower for consistent decisions
+                max_tokens=800
+            )
+
+            # Parse response
+            content = response.choices[0].message.content
+
+            # Extract JSON
+            if "```json" in content:
+                content = content.split("```json")[1].split("```")[0].strip()
+            elif "```" in content:
+                content = content.split("```")[1].split("```")[0].strip()
+
+            result = json.loads(content)
+
+            # Add symbol for logging
+            if metrics:
+                symbol = metrics.get('symbol', 'UNKNOWN')
+                logging.info(f"[AI-JUDGE] {symbol}: Decision={result.get('decision')}, Confidence={result.get('confidence')}%, Warning={result.get('warning_level')}")
+                logging.info(f"[AI-JUDGE] {symbol}: {result.get('reasoning')}")
+
+            return result
+
+        except json.JSONDecodeError as e:
+            logging.error(f"[AI-JUDGE] Failed to parse JSON response: {e}")
+            # Fallback: Conservative WAIT
+            return {
+                'decision': 'WAIT',
+                'confidence': 0,
+                'final_signal': None,
+                'reasoning': 'Failed to parse AI Judge response - Safety SKIP',
+                'warning_level': 'HIGH',
+                'contradictions_detected': True,
+                'key_factors': ['Parse error'],
+                'recommendation': 'Do NOT execute - AI Judge unavailable'
+            }
+        except Exception as e:
+            logging.error(f"[AI-JUDGE] Error during analysis: {e}")
+            # Fallback: Conservative WAIT
+            return {
+                'decision': 'WAIT',
+                'confidence': 0,
+                'final_signal': None,
+                'reasoning': f'AI Judge error: {str(e)} - Safety SKIP',
+                'warning_level': 'HIGH',
+                'contradictions_detected': True,
+                'key_factors': ['AI Judge error'],
+                'recommendation': 'Do NOT execute - AI Judge unavailable'
+            }
 
     def combine_analysis(self, logic_result: Dict, vision_result: Dict, metrics: Dict = None, whale_signal: str = 'NEUTRAL', whale_confidence: int = 0) -> Dict:
         """

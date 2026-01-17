@@ -1,6 +1,260 @@
 # 📋 NeuroTrade AI - Current System Context
 **Last Updated:** 2026-01-18  
 **Purpose: Current system state and architecture documentation
+
+---
+
+## 🎯 AI Judge Layer (NEW v5.0)
+
+### Problem Solved
+**Issue:** STO/USDT Short signal executed 3 times in 10 minutes despite 99% confidence, resulting in $8 loss.
+
+**Root Cause:** 
+- Logic Analysis (DeepSeek): SHORT (fade RSI 94 - Mean Reversion)
+- Vision Analysis (Gemini): BULLISH (Marubozu Breakout - Strong Momentum)
+- System: Shorted anyway (Logic weighted more than Vision)
+- Result: $8 loss (never fade strong momentum)
+
+### Solution: AI Judge (Gemini 3 Flash)
+
+**Architecture:**
+```
+┌─────────────────────────────────────────────────────────────┐
+│            Enhanced AI Pipeline (v5.0)                │
+├─────────────────────────────────────────────────────────────┤
+│                                                               │
+│ 1. Market Data → Screener (Top candidates)               │
+│    ↓                                                     │
+│ 2. DeepSeek (Logic Analysis)                              │
+│    - Technical indicators (RSI, ADX, etc.)                    │
+│    - Signal: SHORT (95% conf)                              │
+│    - Reasoning: "Fade RSI 94 (overbought)"                │
+│    ↓                                                     │
+│ 3. Gemini 1.5 (Vision Analysis)                           │
+│    - Chart image analysis (candle patterns)                      │
+│    - Verdict: "Bullish Marubozu breakout"                    │
+│    - Analysis: "Strong momentum with high volume"               │
+│    ↓                                                     │
+│ 4. ML Prediction (Historical win rate)                        │
+│    - Win Probability: 27% (WARNING!)                        │
+│    ↓                                                     │
+│ 5. 🆕 AI JUDGE (Gemini 3 Flash) ← NEW LAYER         │
+│    Input: Logic + Vision + ML + Whale Data                   │
+│    Task: "Evaluate trade validity, detect contradictions"       │
+│    ↓                                                     │
+│    Output:                                                 │
+│    {                                                      │
+│      "decision": "EXECUTE" or "WAIT",                       │
+│      "confidence": 0-100,                                  │
+│      "final_signal": "LONG" or "SHORT" (null if WAIT),       │
+│      "reasoning": "Clear explanation",                         │
+│      "warning_level": "LOW/MEDIUM/HIGH",                       │
+│      "contradictions_detected": true/false,                      │
+│      "key_factors": ["factor1", "factor2"],                    │
+│      "recommendation": "specific action"                         │
+│    }                                                      │
+│    ↓                                                     │
+│ 6. Validation                                              │
+│    IF decision == "EXECUTE" AND confidence >= MIN_CONFIDENCE:   │
+│       - Send to Telegram (NEW FORMAT)                        │
+│       - Execute Order                                          │
+│    ELSE:                                                     │
+│       - Log warning (SKIP execution)                             │
+│       - No Telegram notification                                  │
+│                                                               │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Example: STO/USDT Case
+**Before (v4.0 - WRONG):**
+```
+Logic: SHORT (95%) - "Fade RSI 94"
+Vision: "Bullish Marubozu breakout"
+Combined: SHORT (99% confidence) ❌
+
+Result: Executed SHORT → $8 loss
+```
+
+**After (v5.0 - CORRECT):**
+```
+Logic: SHORT (95%) - "Fade RSI 94"
+Vision: "Bullish Marubozu breakout" 
+ML: 27% win rate
+
+AI Judge Output:
+{
+  "decision": "WAIT",
+  "confidence": 0,
+  "final_signal": null,
+  "reasoning": "CRITICAL CONTRADICTION: Logic says Short (fade RSI 94) but Vision confirms strong breakout with Marubozu pattern. Never fade strong momentum. ML predicts only 27% win rate.",
+  "warning_level": "HIGH",
+  "contradictions_detected": true,
+  "key_factors": ["Contradictory signals", "Low ML prediction", "Momentum fading"],
+  "recommendation": "Do NOT enter. Wait for momentum exhaustion."
+}
+
+Result: ✅ BLOCKED - No order, no loss
+```
+
+### Implementation Details
+
+#### File: `python-engine/services/ai_handler.py`
+
+**Added `ai_judge()` method:**
+- Uses Gemini 2.0 Flash (fast, cheap)
+- Detects Logic vs Vision contradictions
+- Evaluates ML prediction warnings
+- Makes final EXECUTE/WAIT decision
+- Returns structured reasoning
+
+#### File: `python-engine/main.py`
+
+**Updated `analyze_single_candidate()` function:**
+```python
+# Step 4: AI JUDGE (Gemini Flash)
+judge_result = await ai_handler.ai_judge(
+    logic_result=logic_result,
+    vision_result=vision_result,
+    whale_signal=candidate.get('whale_signal'),
+    ml_win_prob=ml_win_prob,
+    metrics=candidate
+)
+
+# Step 5: Validate Judge Decision
+if judge_result.get('decision') != 'EXECUTE':
+    logging.info(f"[AI-JUDGE] {symbol}: BLOCKED - {judge_result.get('reasoning')}")
+    return None  # Skip this signal
+
+if judge_result.get('confidence') < MIN_CONFIDENCE:
+    logging.info(f"[AI-JUDGE] {symbol}: Low confidence {judge_conf}% < {MIN_CONFIDENCE}%")
+    return None
+
+# Step 6: Combine results with Judge metadata
+combined['judge_decision'] = judge_result.get('decision')
+combined['judge_reasoning'] = judge_result.get('reasoning')
+combined['warning_level'] = judge_result.get('warning_level')
+combined['contradictions_detected'] = judge_result.get('contradictions_detected')
+combined['judge_key_factors'] = judge_result.get('key_factors', [])
+combined['judge_recommendation'] = judge_result.get('recommendation')
+```
+
+#### File: `internal/domain/signal.go`
+
+**Added AI Judge fields:**
+```go
+// AI Judge fields (NEW v5.0)
+JudgeDecision     *string   `json:"judge_decision,omitempty"`     // "APPROVE" or "REJECT"
+JudgeReasoning   *string   `json:"judge_reasoning,omitempty"`   // AI Judge's explanation
+WarningLevel     *string   `json:"warning_level,omitempty"`     // "LOW", "MEDIUM", "HIGH"
+MLWinProb        *float64  `json:"ml_win_prob,omitempty"`       // ML prediction percentage
+KeyFactors       []string  `json:"key_factors,omitempty"`       // Factors from AI Judge
+JudgeRecommendation *string `json:"judge_recommendation,omitempty"` // Specific action recommendation
+```
+
+#### File: `internal/adapter/telegram/service.go`
+
+**Updated `SendSignal()` with two formats:**
+
+**1. Approved Signal Format:**
+```
+🚀 *NEW TRADING SIGNAL*
+━━━━━━━━━━━━━━━━━
+🟢 LONG BTC/USDT
+━━━━━━━━━━━━━━━━━
+📊 Entry: `$45,000.00`
+🛑 Stop Loss: `$44,100.00`
+🎯 Take Profit: `$46,500.00`
+📈 Confidence: `85%`
+⚖️ Risk/Reward: `1.5:1`
+🕒 Time: `2026-01-18 03:10:44`
+━━━━━━━━━━━━━━━━━
+✅ *AI JUDGE APPROVED*
+━━━━━━━━━━━━━━━━━
+
+📝 Reasoning:
+Logic and Vision agree on LONG. RSI oversold (32) + Price bounced off support + Volume confirming entry.
+
+🔑 Key Factors:
+• Consensus
+• Good ML prediction
+• Support bounce
+
+━━━━━━━━━━━━━━━━━
+📊 ML Win Probability: `72%`
+
+━━━━━━━━━━━━━━━━━
+💡 Strategy: Sniper Long (RSI 32) - Catch Wick (-$5.00)
+━━━━━━━━━━━━━━━━━
+```
+
+**2. Rejected Signal Format:**
+```
+⚠️ *AI JUDGE REJECTED SIGNAL*
+━━━━━━━━━━━━━━━━━
+🔴 SIGNAL BLOCKED: STO/USDT
+━━━━━━━━━━━━━━━━━
+
+🚨 WHY REJECTED:
+CRITICAL CONTRADICTION: Logic says Short (fade RSI 94) but Vision confirms strong breakout with Marubozu pattern. Never fade strong momentum. ML predicts only 27% win rate.
+
+📐 Logic: SHORT (95%)
+👁️ Vision: BULLISH (Strong breakout)
+
+🚨 Judge Assessment:
+CRITICAL CONTRADICTION detected
+
+📉 ML Warning: `27%` win probability (too low)
+
+━━━━━━━━━━━━━━━━━
+💡 Action: Do NOT enter. Wait for momentum exhaustion.
+━━━━━━━━━━━━━━━━━
+```
+
+### Benefits
+
+1. **Intelligent Decision Making**
+   - AI Judge understands context better than hardcoded rules
+   - Detects subtle contradictions like "Fade overbought during Marubozu breakout"
+
+2. **Prevents Bad Trades**
+   - Blocks signals like STO/USDT case (saved $8)
+   - No more blindly following Logic when Vision disagrees
+
+3. **Explainable**
+   - Clear reasoning for why trade was rejected
+   - Key factors listed for learning
+   - User understands what went wrong
+
+4. **Educational**
+   - Users learn from rejected signals
+   - Builds intuition for future manual trading
+
+5. **Cost-Effective**
+   - Gemini Flash is fast and cheap ($0.0005 per call)
+   - Prevents 1 losing trade = pays for 730 extra analyses
+
+### Safety Mechanisms
+
+1. **Contradiction Detection**
+   - Logic SHORT + Vision LONG = BLOCK
+   - Logic LONG + Vision SHORT = BLOCK
+   - Never trade against strong momentum
+
+2. **ML Guardrail**
+   - Win probability < 35% = BLOCK
+   - Win probability < 25% = CRITICAL BLOCK
+   - ML overrides confidence threshold
+
+3. **Warning Levels**
+   - LOW: Minor issues, proceed with caution
+   - MEDIUM: Some concerns, consider carefully
+   - HIGH: Serious issues, BLOCK immediately
+
+4. **Transparency**
+   - All signals clearly labeled APPROVED or REJECTED
+   - Telegram format reflects AI Judge decision
+   - No ambiguity about why signal was blocked
+
 ---
 
 ## 📊 Project Overview
@@ -468,7 +722,33 @@ curl http://your-domain.com/health
 
 ## 📝 Current Issues
 
-### 1. Binance API Permission Issue (Active)
+### 1. Order Duplication (FIXED)
+**Status:** ✅ Fixed  
+**Issue:** Multiple orders created for same symbol within short timeframe due to race conditions  
+**Example:** STO/USDT created 3 orders within 10 minutes (20:00:45, 20:06:07, 20:10:53)  
+**Root Cause:**
+1. Binance position check via WebSocket cache/REST API has latency
+2. Multiple market scans (every 30s) can trigger before cache updates
+3. System only checked Binance positions, not database positions
+
+**Fix Applied:**
+- Added database-level deduplication check in `createPositionForUser()` (trading_service.go:258)
+- Check existing OPEN positions in database before executing order
+- This is the "last line of defense" against race conditions
+
+**Flow After Fix:**
+```
+For each signal:
+  1. Batch check Binance positions (existing)
+  2. Skip if position exists on Binance
+  3. Save signal to DB
+  4. For each user:
+      - Check DB for existing OPEN position (NEW - prevents duplicates)
+      - If exists: Skip with [DEDUP-DB] log
+      - If not exists: Execute order
+```
+
+### 2. Binance API Permission Issue (Active)
 **Status:** ❌ Blocking order execution  
 **Error:** `code:-2015, msg:"Invalid API-key, IP, or permissions for action"`  
 **Root Cause:** API key lacks Futures Trading permission or IP not whitelisted  
@@ -478,7 +758,7 @@ curl http://your-domain.com/health
 2. Verify permissions: ✅ Enable Futures, ✅ Enable Reading, ✅ Enable Trading
 3. Add IP `43.133.140.5` to whitelist (or use VPN with whitelisted IP)
 
-### 2. WebSocket Not Starting (Active)
+### 3. WebSocket Not Starting (Active)
 **Status:** ⚠️ Warning - Fallback to REST working  
 **Log:** `[WS] Failed to get listen key. WS Disabled.`  
 **Impact:** Slower position checks (~200ms instead of 0ms)  

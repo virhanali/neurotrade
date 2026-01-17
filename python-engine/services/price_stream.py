@@ -29,13 +29,14 @@ class PriceStreamService:
     def __init__(self):
         # prices: symbol -> price (for Bodyguard)
         self.prices: Dict[str, float] = {}
-        # tickers: symbol -> full ticker data dict (for Screener)
+        # tickers: symbol -> full ticker data (for Screener)
         self.tickers: Dict[str, Dict] = {}
         self.last_update: Optional[datetime] = None
         self.last_error: Optional[str] = None
         self._running = False
         self._ws = None
         self._task = None
+        self.initial_ready = False  # Flag untuk Screener - data awal siap?
     
     async def start(self):
         """Start the WebSocket connection in background"""
@@ -113,6 +114,11 @@ class PriceStreamService:
                     if not self._running:
                         break
                     await self._process_message(message)
+                    
+                    # Set initial_ready setelah data pertama selesai diproses
+                    if not self.initial_ready and len(self.prices) >= 10:
+                        self.initial_ready = True
+                        logger.info("[WS] Initial data ready")
             except asyncio.CancelledError:
                 logger.info("WebSocket stream cancelled")
                 raise
@@ -184,6 +190,11 @@ class PriceStreamService:
     def is_connected(self) -> bool:
         """Check if WebSocket is connected"""
         return self._ws is not None and self._ws.open
+
+    @property
+    def is_ready(self) -> bool:
+        """Check if initial data is ready (for Screener)"""
+        return self.initial_ready
     
     @property
     def price_count(self) -> int:

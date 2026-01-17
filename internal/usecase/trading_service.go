@@ -264,6 +264,22 @@ func (ts *TradingService) createPositionForUser(ctx context.Context, user *domai
 		return fmt.Errorf("invalid entry price: %.4f", signal.EntryPrice)
 	}
 
+	// === CRITICAL FIX: CHECK DB FOR EXISTING POSITION ===
+	// Prevent duplicate orders by checking database for existing OPEN position
+	// This is our LAST LINE of defense against race conditions
+	userPositions, err := ts.positionRepo.GetByUserID(ctx, user.ID)
+	if err != nil {
+		log.Printf("[WARN] Failed to check user positions for dedup: %v", err)
+		// Continue anyway - let Binance reject if duplicate
+	} else {
+		for _, pos := range userPositions {
+			if pos.Symbol == signal.Symbol && pos.Status == domain.StatusOpen {
+				log.Printf("[DEDUP-DB] %s: User %s already has OPEN position, skipping duplicate order", signal.Symbol, user.Username)
+				return nil
+			}
+		}
+	}
+
 	// === BALANCE PROTECTION ===
 	// Check if user has sufficient balance before creating position
 	requiredMargin := user.FixedOrderSize

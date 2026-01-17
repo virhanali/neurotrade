@@ -1103,18 +1103,18 @@ class MarketScreener:
     def get_top_opportunities(self) -> List[Dict]:
         """Screen market for top trading opportunities. Returns list of candidates with metrics."""
         try:
-            # Try to get data from WebSocket (MANDATORY)
             from services.price_stream import price_stream
             
             raw_tickers = {}
             source = "WEBSOCKET"
             
             # Wait for WS to warm up if empty (up to 15s - increased for slow connections)
+            # Check initial_ready flag for cleaner startup
             retries = 0
             ticker_count = len(price_stream.get_all_tickers())
-            logging.info(f"[SCREENER] Waiting for WebSocket... (current: {ticker_count} tickers, connected: {price_stream.is_connected})")
+            logging.info(f"[SCREENER] Waiting for WebSocket... (current: {ticker_count} tickers, ready: {price_stream.is_ready})")
             
-            while ticker_count < 10 and retries < 30:
+            while not price_stream.is_ready and retries < 30:
                 time.sleep(0.5)
                 retries += 1
                 ticker_count = len(price_stream.get_all_tickers())
@@ -1122,11 +1122,13 @@ class MarketScreener:
             if ticker_count > 10:
                 raw_tickers = price_stream.get_all_tickers()
                 logging.info(f"[SCREENER] Using WebSocket data ({len(raw_tickers)} tickers)")
+                source = "WEBSOCKET"
             else:
                 # FALLBACK: Use Direct REST API (fapi) when WebSocket is down
                 # We bypass CCXT here to ensure we hit fapi.binance.com and avoid api.binance.com (Spot) 503 errors
                 ws_error = getattr(price_stream, 'last_error', 'Unknown')
-                logging.warning(f"[SCREENER] WebSocket down (tickers={ticker_count}, connected={price_stream.is_connected}, error='{ws_error}'), using REST fallback")
+                logging.warning(f"[SCREENER] WebSocket timeout after {retries * 0.5:.1f}s ({retries} retries), using REST fallback")
+                logging.warning(f"[SCREENER] WebSocket status: ready={price_stream.is_ready}, connected={price_stream.is_connected}, tickers={ticker_count}")
                 
                 try:
                     import requests
@@ -1143,29 +1145,27 @@ class MarketScreener:
                     
                 except Exception as e:
                     logging.error(f"[SCREENER-CRITICAL] REST fallback also failed: {e}")
-                    # Try one more valid endpoint (Premium Index) just in case, or fail
                     return []
-
+            
             # Filter USDT futures pairs
             opportunities = []
-
+        
             for symbol, ticker in raw_tickers.items():
                 is_usdt = False
                 clean_symbol = ""
-                
+
                 # Handle raw symbols from WS or Direct REST (e.g. "BTCUSDT")
                 if source in ["WEBSOCKET", "DIRECT_REST"]:
-                     if symbol.endswith("USDT"):
-                         is_usdt = True
-                         base = symbol[:-4]
-                         clean_symbol = f"{base}/USDT"
-                
+                    if symbol.endswith("USDT"):
+                        is_usdt = True
+                        base = symbol[:-4]
+                        clean_symbol = f"{base}/USDT"
                 # Handle CCXT format (e.g. "BTC/USDT:USDT")
                 else:
                     if symbol.endswith("/USDT:USDT"):
                         is_usdt = True
                         clean_symbol = symbol.replace(":USDT", "")
-                
+
                 if not is_usdt:
                     continue
 
@@ -1185,13 +1185,13 @@ class MarketScreener:
 
                 if quote_volume is None or percentage_change is None:
                     continue
-                
+
                 # Check STATUS (active trading only) - Skip for Direct Rest/WS as we assume active if ticking
                 if source == "REST" and symbol in self.exchange.markets:
                     status = self.exchange.markets[symbol].get('info', {}).get('status', 'UNKNOWN')
                     if status != 'TRADING':
                         continue
-                
+
                 # Initial pre-filter
                 if quote_volume >= settings.MIN_VOLUME_USDT and abs(percentage_change) >= settings.MIN_VOLATILITY_1H:
                     opportunities.append({

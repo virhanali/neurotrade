@@ -34,6 +34,14 @@ type Signal struct {
 	ReviewPnL       *float64         `json:"review_pnl,omitempty"`
 	ScreenerMetrics *ScreenerMetrics `json:"screener_metrics,omitempty"`
 	CreatedAt       time.Time        `json:"created_at"`
+
+	// AI Judge fields (NEW v5.0)
+	JudgeDecision       *string  `json:"judge_decision,omitempty"`       // "APPROVE" or "REJECT"
+	JudgeReasoning      *string  `json:"judge_reasoning,omitempty"`      // AI Judge's explanation
+	WarningLevel        *string  `json:"warning_level,omitempty"`        // "LOW", "MEDIUM", "HIGH"
+	MLWinProb           *float64 `json:"ml_win_prob,omitempty"`          // ML prediction percentage
+	KeyFactors          []string `json:"key_factors,omitempty"`          // Factors from AI Judge
+	JudgeRecommendation *string  `json:"judge_recommendation,omitempty"` // Specific action recommendation
 }
 
 // SignalType constants

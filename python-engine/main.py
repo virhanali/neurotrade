@@ -546,7 +546,32 @@ async def analyze_market(request: MarketAnalysisRequest):
                         chart_buffer
                     )
 
-                    # Combine results (pass metrics for ML prediction + whale data for Tier 1 veto)
+                    # Step 4: AI JUDGE (Gemini Flash) - Final Arbiter Layer
+                    # Get ML prediction first for judge
+                    ml_prediction = learner.get_prediction(candidate) if HAS_LEARNER and learner else None
+                    ml_win_prob = ml_prediction.win_probability if ml_prediction else 0.5
+
+                    # Call AI Judge to evaluate trade validity
+                    judge_result = await asyncio.to_thread(
+                        ai_handler.ai_judge,
+                        logic_result=logic_result,
+                        vision_result=vision_result,
+                        whale_signal=candidate.get('whale_signal', 'NEUTRAL'),
+                        ml_win_prob=ml_win_prob,
+                        metrics=candidate
+                    )
+
+                    # Step 5: Validate Judge Decision
+                    if judge_result.get('decision') != 'EXECUTE':
+                        logging.info(f"[AI-JUDGE] {symbol}: BLOCKED - {judge_result.get('reasoning')}")
+                        return None  # Skip this signal
+
+                    judge_confidence = judge_result.get('confidence', 0)
+                    if judge_confidence < settings.MIN_CONFIDENCE:
+                        logging.info(f"[AI-JUDGE] {symbol}: Low confidence {judge_confidence}% < {settings.MIN_CONFIDENCE}%")
+                        return None
+
+                    # Step 6: Combine results (pass metrics for ML prediction + whale data for Tier 1 veto)
                     whale_signal = candidate.get('whale_signal', 'NEUTRAL')
                     whale_confidence = candidate.get('whale_confidence', 0)
                     combined = ai_handler.combine_analysis(
@@ -556,6 +581,19 @@ async def analyze_market(request: MarketAnalysisRequest):
                         whale_signal=whale_signal,
                         whale_confidence=whale_confidence
                     )
+
+                    # Override with Judge's confidence and signal
+                    combined['combined_confidence'] = judge_confidence
+                    if judge_result.get('final_signal'):
+                        combined['final_signal'] = judge_result['final_signal']
+
+                    # Add judge metadata to combined result
+                    combined['judge_decision'] = judge_result.get('decision')
+                    combined['judge_reasoning'] = judge_result.get('reasoning')
+                    combined['warning_level'] = judge_result.get('warning_level')
+                    combined['contradictions_detected'] = judge_result.get('contradictions_detected')
+                    combined['judge_key_factors'] = judge_result.get('key_factors', [])
+                    combined['judge_recommendation'] = judge_result.get('recommendation')
 
                     if combined.get('recommendation') == 'EXECUTE':
                         ml_prob = combined.get('ml_win_probability', 0.5)
