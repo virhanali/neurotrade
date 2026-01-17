@@ -41,6 +41,10 @@ type AIService interface {
 	// HasOpenPosition checks if a symbol has an open position on Binance
 	// Returns (hasPosition bool, error)
 	HasOpenPosition(ctx context.Context, symbol string, apiKey string, apiSecret string) (bool, error)
+
+	// BatchHasOpenPositions checks positions for multiple symbols in a single call (Phase 2)
+	// Returns map[symbol]hasPosition
+	BatchHasOpenPositions(ctx context.Context, symbols []string, apiKey string, apiSecret string) (map[string]bool, error)
 }
 
 // EntryParams contains all parameters for executing an entry order

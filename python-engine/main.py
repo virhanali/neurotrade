@@ -1174,6 +1174,44 @@ async def check_has_position(request: HasPositionRequest):
     
     return result
 
+
+class BatchPositionRequest(BaseModel):
+    symbols: List[str]
+    api_key: str
+    api_secret: str
+
+
+@app.post("/execute/has-positions-batch")
+async def check_positions_batch(request: BatchPositionRequest):
+    """
+    Batch check positions for multiple symbols.
+    Returns map of symbol -> position data.
+    Single HTTP call instead of N calls for N symbols.
+    """
+    results = {}
+    cache_hits = 0
+    rest_calls = 0
+    
+    for symbol in request.symbols:
+        result = await executor.has_open_position(
+            symbol=symbol,
+            api_key=request.api_key,
+            api_secret=request.api_secret
+        )
+        results[symbol] = result
+        
+        if result.get("source") == "cache":
+            cache_hits += 1
+        else:
+            rest_calls += 1
+    
+    return {
+        "positions": results,
+        "total_checked": len(request.symbols),
+        "cache_hits": cache_hits,
+        "rest_calls": rest_calls
+    }
+
 @app.get("/execute/positions")
 async def get_all_positions():
     """

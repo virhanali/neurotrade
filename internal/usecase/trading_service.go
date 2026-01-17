@@ -72,98 +72,65 @@ func (ts *TradingService) ProcessMarketScan(ctx context.Context, balance float64
 		ts.scanMu.Unlock()
 	}()
 
-	log.Printf("=== Starting Market Scan [Mode: %s] ===", mode)
 	startTime := time.Now()
 
-	// Step 1: Call Python AI Engine to analyze market
-	log.Printf("Calling Python AI Engine for market analysis (Mode: %s)...", mode)
 	aiSignals, err := ts.aiService.AnalyzeMarket(ctx, balance, mode)
 	if err != nil {
 		return fmt.Errorf("failed to analyze market: %w", err)
 	}
 
-	log.Printf("Received %d signals from AI Engine", len(aiSignals))
+	log.Printf("[SCAN] %d signals from AI (%s)", len(aiSignals), mode)
+	if err != nil {
+		return fmt.Errorf("failed to analyze market: %w", err)
+	}
 
 	// Get all eligible users for auto-trading
 	users, err := ts.userRepo.GetAll(ctx)
 	if err != nil {
-		log.Printf("WARNING: Failed to fetch users for auto-trading: %v", err)
-		// We still process signals to save them to DB
+		log.Printf("[WARN] Failed to fetch users: %v", err)
 	}
-	log.Printf("Found %d users for potential auto-trading", len(users))
 
-	// Step 2: Process each signal
 	savedCount := 0
+
+	// Batch position check
+	symbols := make([]string, 0, len(aiSignals))
+	for _, aiSignal := range aiSignals {
+		symbols = append(symbols, aiSignal.Symbol)
+	}
+
+	var batchPositions map[string]bool
+	if len(users) > 0 && len(symbols) > 0 {
+		user := users[0]
+		batchPositions, err = ts.aiService.BatchHasOpenPositions(ctx, symbols, user.BinanceAPIKey, user.BinanceAPISecret)
+		if err != nil {
+			log.Printf("[WARN] Batch position check failed: %v", err)
+			batchPositions = nil
+		}
+	}
 	processedSymbols := make(map[string]bool)
 
-	// Pre-fetch active positions to avoid duplicates (from LOCAL DB)
-	// Include both OPEN and PENDING_APPROVAL statuses
-	activePositions, err := ts.positionRepo.GetActivePositions(ctx)
-	activeSymbolMap := make(map[string]bool)
-	if err == nil {
-		for _, pos := range activePositions {
-			activeSymbolMap[pos.Symbol] = true
-			log.Printf("[DEDUP] Active position in DB: %s (status=%s)", pos.Symbol, pos.Status)
-		}
-		log.Printf("[DEDUP] Found %d active positions in DB", len(activeSymbolMap))
-	} else {
-		log.Printf("WARNING: Failed to fetch open positions: %v", err)
-	}
-
 	for _, aiSignal := range aiSignals {
-		// Dedup check 1: Prevent processing the same symbol twice in one batch
+		// Dedup check: Prevent processing of same symbol twice in one batch
 		if processedSymbols[aiSignal.Symbol] {
 			continue
 		}
 		processedSymbols[aiSignal.Symbol] = true
 
-		// Dedup check 2: Prevent processing if we already have an active position
-		if activeSymbolMap[aiSignal.Symbol] {
-			log.Printf("Skipping %s: Active position already exists", aiSignal.Symbol)
-			continue
-		}
-
-		// Dedup check 3: Enhanced Signal History Check (Spam Protection)
-		isDuplicate := false
-		recentSignals, _ := ts.signalRepo.GetBySymbol(ctx, aiSignal.Symbol, 1)
-		if len(recentSignals) > 0 {
-			lastSignal := recentSignals[0]
-			minutesSinceSignal := time.Since(lastSignal.CreatedAt).Minutes()
-			sameDirection := lastSignal.Type == aiSignal.FinalSignal
-
-			// Rule 1: Block if PENDING/EXECUTED within 120 mins (same direction)
-			if minutesSinceSignal < 120 {
-				if lastSignal.Status == domain.StatusPending || lastSignal.Status == domain.StatusExecuted {
-					if sameDirection {
-						log.Printf("[DEDUP] Skipping %s: Active signal exists (status=%s, age=%.0fm)",
-							aiSignal.Symbol, lastSignal.Status, minutesSinceSignal)
-						isDuplicate = true
-					}
-				}
-
-				// Rule 2: Block if FAILED within 30 mins (cooldown period)
-				// This prevents retry spam when execution keeps failing
-				if lastSignal.Status == domain.StatusFailed && minutesSinceSignal < 30 {
-					log.Printf("[DEDUP] Skipping %s: Recent FAILED signal in cooldown (age=%.0fm, cooldown=30m)",
-						aiSignal.Symbol, minutesSinceSignal)
-					isDuplicate = true
-				}
+		// Batch Binance position check
+		if batchPositions != nil {
+			if hasPosition, exists := batchPositions[aiSignal.Symbol]; exists && hasPosition {
+				log.Printf("[SKIP] %s: Position exists", aiSignal.Symbol)
+				continue
 			}
-		}
-		if isDuplicate {
-			continue
 		}
 
 		// Skip WAIT signals (not actionable)
 		if aiSignal.FinalSignal == "WAIT" {
-			log.Printf("Skipping %s: signal is WAIT (not actionable)", aiSignal.Symbol)
 			continue
 		}
 
 		// Check confidence threshold
 		if aiSignal.CombinedConfidence < ts.minConfidence {
-			log.Printf("Skipping %s: confidence %d%% below threshold %d%%",
-				aiSignal.Symbol, aiSignal.CombinedConfidence, ts.minConfidence)
 			continue
 		}
 
@@ -172,54 +139,33 @@ func (ts *TradingService) ProcessMarketScan(ctx context.Context, balance float64
 
 		// Save signal to database
 		if err := ts.signalRepo.Save(ctx, signal); err != nil {
-			log.Printf("ERROR: Failed to save signal for %s: %v", aiSignal.Symbol, err)
+			log.Printf("[ERROR] Failed to save signal for %s: %v", aiSignal.Symbol, err)
 			continue
 		}
 
 		// Log success
-		log.Printf("[OK] Saved High Confidence Signal: %s | %s | Confidence: %d%% | Entry: %.4f | SL: %.4f | TP: %.4f",
-			signal.Symbol,
-			signal.Type,
-			signal.Confidence,
-			signal.EntryPrice,
-			signal.SLPrice,
-			signal.TPPrice,
-		)
+		log.Printf("[SIGNAL] %s %s @ %.4f (Conf: %d%%)", signal.Symbol, signal.Type, signal.EntryPrice, signal.Confidence)
 
 		// Send Telegram notification
 		if ts.notificationService != nil {
 			if err := ts.notificationService.SendSignal(*signal); err != nil {
-				log.Printf("WARNING: Failed to send Telegram notification: %v", err)
+				log.Printf("[WARN] Failed to send Telegram: %v", err)
 			}
 		}
 
 		// Distribute signal to ALL users
 		for _, user := range users {
-			// Check if AutoTrade is enabled for this user (REAL or PAPER)
-			// Users with AutoTrade disabled will only receive the Signal Notification (if configured)
-			// but we can still create a PENDING_APPROVAL position if desired.
-			// For now, allow all modes to proceed to createPositionForUser.
-
-			// Auto-create paper position for this user
 			if err := ts.createPositionForUser(ctx, user, signal, aiSignal.TradeParams); err != nil {
-				log.Printf("[ERROR] FAILED to create position for user %s (%s): %v", user.Username, signal.Symbol, err)
-				// Update signal status to FAILED so we know it tried and failed
-				_ = ts.signalRepo.UpdateStatus(ctx, signal.ID, domain.StatusFailed)
+				log.Printf("[ERROR] Failed to create position for user %s (%s): %v", user.Username, signal.Symbol, err)
 			} else {
-				log.Printf("[SUCCESS] Position created for user %s (%s)", user.Username, signal.Symbol)
+				savedCount++
 			}
 		}
-
-		savedCount++
 	}
 
-	// Step 3: Log summary
-	elapsed := time.Since(startTime)
-	log.Println("=== Market Scan Complete ===")
-	log.Printf("Total AI Signals: %d", len(aiSignals))
-	log.Printf("Saved Signals: %d", savedCount)
-	log.Printf("Execution Time: %.2f seconds", elapsed.Seconds())
-	log.Println("===========================")
+	if savedCount > 0 {
+		log.Printf("[SCAN] %d signals saved (%.1fs)", savedCount, time.Since(startTime).Seconds())
+	}
 
 	return nil
 }
@@ -438,19 +384,6 @@ func (ts *TradingService) createPositionForUser(ctx context.Context, user *domai
 	if user.Mode == "REAL" && user.IsAutoTradeEnabled {
 		log.Printf("[REAL] Executing Entry for %s: %s %s Notional: %.2f USDT (Margin: %.2f, Leverage: %.0fx)",
 			user.Username, signal.Symbol, side, totalNotionalValue, entrySizeUSDT, leverage)
-
-		// Step 0: BINANCE POSITION CHECK (Ultimate Dedup)
-		// Check if we already have an open position on Binance for this symbol
-		hasPosition, err := ts.aiService.HasOpenPosition(ctx, signal.Symbol, user.BinanceAPIKey, user.BinanceAPISecret)
-		if err != nil {
-			log.Printf("[WARN] Failed to check Binance position for %s: %v (proceeding with caution)", signal.Symbol, err)
-			// Don't block on error - let Binance API reject if duplicate
-		} else if hasPosition {
-			log.Printf("[DEDUP] 🚫 BLOCKED: %s already has OPEN position on Binance (preventing duplicate order)", signal.Symbol)
-			return fmt.Errorf("position already exists on Binance for %s", signal.Symbol)
-		} else {
-			log.Printf("[DEDUP] ✅ Binance check passed: No open position for %s", signal.Symbol)
-		}
 
 		// Safety: Double-check minimum notional before execution
 		if totalNotionalValue < 5.0 {

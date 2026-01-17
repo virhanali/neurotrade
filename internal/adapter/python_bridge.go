@@ -471,3 +471,60 @@ func (pb *PythonBridge) HasOpenPosition(ctx context.Context, symbol string, apiK
 
 	return result.HasPosition, nil
 }
+
+// BatchHasOpenPositions checks positions for multiple symbols in a single call
+func (pb *PythonBridge) BatchHasOpenPositions(ctx context.Context, symbols []string, apiKey string, apiSecret string) (map[string]bool, error) {
+	type batchRequest struct {
+		Symbols   []string `json:"symbols"`
+		APIKey    string   `json:"api_key"`
+		APISecret string   `json:"api_secret"`
+	}
+
+	reqBody := batchRequest{
+		Symbols:   symbols,
+		APIKey:    apiKey,
+		APISecret: apiSecret,
+	}
+
+	jsonBody, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal batch request: %w", err)
+	}
+
+	url := fmt.Sprintf("%s/execute/has-positions-batch", pb.baseURL)
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonBody))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := pb.httpClient.Do(req)
+	if err != nil {
+		log.Printf("[WARN] BatchHasOpenPositions request failed: %v", err)
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		Positions    map[string]map[string]interface{} `json:"positions"`
+		TotalChecked int                               `json:"total_checked"`
+		CacheHits    int                               `json:"cache_hits"`
+		RestCalls    int                               `json:"rest_calls"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		log.Printf("[WARN] BatchHasOpenPositions decode failed: %v", err)
+		return nil, fmt.Errorf("failed to decode batch response: %w", err)
+	}
+
+	positions := make(map[string]bool)
+	for symbol, data := range result.Positions {
+		hasPosition, ok := data["has_position"].(bool)
+		if !ok {
+			hasPosition = false
+		}
+		positions[symbol] = hasPosition
+	}
+
+	return positions, nil
+}
