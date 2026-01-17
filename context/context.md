@@ -1,10 +1,11 @@
-# 📋 NeuroTrade AI - Current System Context
+# 📋 NeuroTrade AI - System Context
 **Last Updated:** 2026-01-18  
-**Purpose: Current system state and architecture documentation
+**Version:** v5.0  
+**Purpose: Complete system architecture and current state
 
 ---
 
-## 🎯 AI Judge Layer (NEW v5.0)
+## 🎯 Version 5.0 - AI Judge Layer
 
 ### Problem Solved
 **Issue:** STO/USDT Short signal executed 3 times in 10 minutes despite 99% confidence, resulting in $8 loss.
@@ -65,7 +66,8 @@
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Example: STO/USDT Case
+### Real-World Example: STO/USDT
+
 **Before (v4.0 - WRONG):**
 ```
 Logic: SHORT (95%) - "Fade RSI 94"
@@ -98,117 +100,44 @@ Result: ✅ BLOCKED - No order, no loss
 
 ### Implementation Details
 
-#### File: `python-engine/services/ai_handler.py`
+#### Files Modified:
 
-**Added `ai_judge()` method:**
+**1. `python-engine/services/ai_handler.py`**
+- Added `ai_judge()` method
 - Uses Gemini 2.0 Flash (fast, cheap)
 - Detects Logic vs Vision contradictions
 - Evaluates ML prediction warnings
-- Makes final EXECUTE/WAIT decision
 - Returns structured reasoning
 
-#### File: `python-engine/main.py`
+**2. `python-engine/main.py`**
+- Updated `analyze_single_candidate()` function
+- Added AI Judge as Step 4 (before combine_analysis)
+- Validates judge decision before proceeding
 
-**Updated `analyze_single_candidate()` function:**
-```python
-# Step 4: AI JUDGE (Gemini Flash)
-judge_result = await ai_handler.ai_judge(
-    logic_result=logic_result,
-    vision_result=vision_result,
-    whale_signal=candidate.get('whale_signal'),
-    ml_win_prob=ml_win_prob,
-    metrics=candidate
-)
+**3. `internal/domain/signal.go`**
+- Added AI Judge fields:
+  - `JudgeDecision` - "APPROVE" or "REJECT"
+  - `JudgeReasoning` - AI Judge's explanation
+  - `WarningLevel` - "LOW", "MEDIUM", "HIGH"
+  - `MLWinProb` - ML prediction percentage
+  - `KeyFactors` - Factors from AI Judge
+  - `JudgeRecommendation` - Specific action
 
-# Step 5: Validate Judge Decision
-if judge_result.get('decision') != 'EXECUTE':
-    logging.info(f"[AI-JUDGE] {symbol}: BLOCKED - {judge_result.get('reasoning')}")
-    return None  # Skip this signal
+**4. `internal/adapter/telegram/service.go`**
+- Updated `SendSignal()` with two formats:
+  - `sendApprovedSignal()` - For valid trades
+  - `sendRejectedSignal()` - For blocked signals
 
-if judge_result.get('confidence') < MIN_CONFIDENCE:
-    logging.info(f"[AI-JUDGE] {symbol}: Low confidence {judge_conf}% < {MIN_CONFIDENCE}%")
-    return None
+**5. `python-engine/config.py`**
+- Fixed Pydantic Settings configuration
+- Changed from `os.getenv()` to direct field declarations
+- Added `extra = "allow"` to prevent validation errors
+- Changed `case_sensitive` to `False` for better compatibility
 
-# Step 6: Combine results with Judge metadata
-combined['judge_decision'] = judge_result.get('decision')
-combined['judge_reasoning'] = judge_result.get('reasoning')
-combined['warning_level'] = judge_result.get('warning_level')
-combined['contradictions_detected'] = judge_result.get('contradictions_detected')
-combined['judge_key_factors'] = judge_result.get('key_factors', [])
-combined['judge_recommendation'] = judge_result.get('recommendation')
-```
-
-#### File: `internal/domain/signal.go`
-
-**Added AI Judge fields:**
-```go
-// AI Judge fields (NEW v5.0)
-JudgeDecision     *string   `json:"judge_decision,omitempty"`     // "APPROVE" or "REJECT"
-JudgeReasoning   *string   `json:"judge_reasoning,omitempty"`   // AI Judge's explanation
-WarningLevel     *string   `json:"warning_level,omitempty"`     // "LOW", "MEDIUM", "HIGH"
-MLWinProb        *float64  `json:"ml_win_prob,omitempty"`       // ML prediction percentage
-KeyFactors       []string  `json:"key_factors,omitempty"`       // Factors from AI Judge
-JudgeRecommendation *string `json:"judge_recommendation,omitempty"` // Specific action recommendation
-```
-
-#### File: `internal/adapter/telegram/service.go`
-
-**Updated `SendSignal()` with two formats:**
-
-**1. Approved Signal Format:**
-```
-🚀 *NEW TRADING SIGNAL*
-━━━━━━━━━━━━━━━━━
-🟢 LONG BTC/USDT
-━━━━━━━━━━━━━━━━━
-📊 Entry: `$45,000.00`
-🛑 Stop Loss: `$44,100.00`
-🎯 Take Profit: `$46,500.00`
-📈 Confidence: `85%`
-⚖️ Risk/Reward: `1.5:1`
-🕒 Time: `2026-01-18 03:10:44`
-━━━━━━━━━━━━━━━━━
-✅ *AI JUDGE APPROVED*
-━━━━━━━━━━━━━━━━━
-
-📝 Reasoning:
-Logic and Vision agree on LONG. RSI oversold (32) + Price bounced off support + Volume confirming entry.
-
-🔑 Key Factors:
-• Consensus
-• Good ML prediction
-• Support bounce
-
-━━━━━━━━━━━━━━━━━
-📊 ML Win Probability: `72%`
-
-━━━━━━━━━━━━━━━━━
-💡 Strategy: Sniper Long (RSI 32) - Catch Wick (-$5.00)
-━━━━━━━━━━━━━━━━━
-```
-
-**2. Rejected Signal Format:**
-```
-⚠️ *AI JUDGE REJECTED SIGNAL*
-━━━━━━━━━━━━━━━━━
-🔴 SIGNAL BLOCKED: STO/USDT
-━━━━━━━━━━━━━━━━━
-
-🚨 WHY REJECTED:
-CRITICAL CONTRADICTION: Logic says Short (fade RSI 94) but Vision confirms strong breakout with Marubozu pattern. Never fade strong momentum. ML predicts only 27% win rate.
-
-📐 Logic: SHORT (95%)
-👁️ Vision: BULLISH (Strong breakout)
-
-🚨 Judge Assessment:
-CRITICAL CONTRADICTION detected
-
-📉 ML Warning: `27%` win probability (too low)
-
-━━━━━━━━━━━━━━━━━
-💡 Action: Do NOT enter. Wait for momentum exhaustion.
-━━━━━━━━━━━━━━━━━
-```
+**6. `internal/usecase/trading_service.go`**
+- Added DB-level deduplication check
+- Prevents duplicate orders for same symbol
+- Checks existing OPEN positions before executing
 
 ### Benefits
 
@@ -245,19 +174,24 @@ CRITICAL CONTRADICTION detected
    - Win probability < 25% = CRITICAL BLOCK
    - ML overrides confidence threshold
 
-3. **Warning Levels**
+3. **DB-Level Deduplication**
+   - Check existing OPEN positions before executing
+   - Last line of defense against race conditions
+   - Prevents duplicate orders (STO/USDT case)
+
+4. **Warning Levels**
    - LOW: Minor issues, proceed with caution
    - MEDIUM: Some concerns, consider carefully
    - HIGH: Serious issues, BLOCK immediately
 
-4. **Transparency**
+5. **Transparency**
    - All signals clearly labeled APPROVED or REJECTED
    - Telegram format reflects AI Judge decision
    - No ambiguity about why signal was blocked
 
 ---
 
-## 📊 Project Overview
+## 📊 System Overview
 
 **Project:** NeuroTrade AI - Crypto Trading Bot  
 **Stack:** Go 1.23 + Python 3.12 + PostgreSQL + Binance API  
