@@ -476,6 +476,9 @@ async def analyze_market(request: MarketAnalysisRequest):
                 else:
                    # Whale signal alone is strong, but needs some technical backing
                    total_math_confidence = max(math_score, whale_conf)
+            
+            # Cap at 100% (prevent overflow)
+            total_math_confidence = min(100, total_math_confidence)
 
             # THRESHOLD: 75% (High Confidence Required)
             # This ensures we don't waste AI tokens on weak signals

@@ -827,6 +827,44 @@ class UserDataStream:
             "entry_price": 0,
             "source": "not_found"
         }
+    
+    def fetch_ohlcv(self, symbol: str, timeframe: str = "1h", limit: int = 100) -> list:
+        """
+        Fetch OHLCV (candlestick) data for a symbol
+        
+        Args:
+            symbol: Trading pair (e.g., "BTC/USDT")
+            timeframe: Timeframe (e.g., "5m", "15m", "1h", "4h")
+            limit: Number of candles to fetch
+            
+        Returns:
+            List of OHLCV dicts: [{"timestamp": int, "open": float, "high": float, "low": float, "close": float, "volume": float}, ...]
+        """
+        if not self.default_client:
+            logger.error("[EXEC] No default client available for fetch_ohlcv")
+            return []
+        
+        try:
+            # Fetch OHLCV data using CCXT
+            ohlcv = self.default_client.fetch_ohlcv(symbol, timeframe, limit=limit)
+            
+            # Convert to dict format for easier use
+            candles = []
+            for candle in ohlcv:
+                candles.append({
+                    "timestamp": candle[0],
+                    "open": candle[1],
+                    "high": candle[2],
+                    "low": candle[3],
+                    "close": candle[4],
+                    "volume": candle[5]
+                })
+            
+            return candles
+        
+        except Exception as e:
+            logger.error(f"[EXEC] Failed to fetch OHLCV for {symbol} ({timeframe}): {e}")
+            return []
 
 # Global Instance
 executor = BinanceExecutor()
