@@ -406,13 +406,19 @@ Analyze for SCALPER entry (Mean Reversion / Ping-Pong / Predictive Alpha). Provi
                          # Auto-calc SL/TP if also missing (Safety fallback)
                          safe_atr = atr_val if atr_val > 0 else (current_price * 0.01)
                          
+                         # v6.0: Use adaptive multipliers from risk profile
+                         sl_multiplier = metrics.get('sl_atr_multiplier', 2.5)
+                         tp_multiplier = metrics.get('tp_atr_multiplier', 4.0)
+                         
                          if "stop_loss" not in tp_obj or tp_obj["stop_loss"] <= 0:
-                             dist = safe_atr * 2.5
+                             dist = safe_atr * sl_multiplier
                              tp_obj["stop_loss"] = current_price - dist if result["signal"] == "LONG" else current_price + dist
+                             logging.info(f"[AUTO-FIX] SL calculated: {tp_obj['stop_loss']:.4f} ({sl_multiplier}x ATR)")
                              
                          if "take_profit" not in tp_obj or tp_obj["take_profit"] <= 0:
-                             dist = safe_atr * 4.0
+                             dist = safe_atr * tp_multiplier
                              tp_obj["take_profit"] = current_price + dist if result["signal"] == "LONG" else current_price - dist
+                             logging.info(f"[AUTO-FIX] TP calculated: {tp_obj['take_profit']:.4f} ({tp_multiplier}x ATR)")
 
             if result.get("trade_params"):
                 tp = result["trade_params"]
@@ -757,7 +763,8 @@ BAD TRADE (WAIT - CONTRADICTION):
 
         # === 1. ML PREDICTION (if available) ===
         ml_win_prob = 0.5
-        ml_threshold = settings.MIN_CONFIDENCE
+        # v6.0: Use adaptive ML threshold from risk profile (regime-based)
+        ml_threshold = metrics.get('ml_threshold_adaptive', settings.MIN_CONFIDENCE) if metrics else settings.MIN_CONFIDENCE
         ml_insights = []
         ml_is_trained = False  # Flag: Is ML model trained with real data?
 
@@ -836,9 +843,15 @@ BAD TRADE (WAIT - CONTRADICTION):
         # === 4. ML VETO CHECK ===
         # ONLY apply ML Veto if ML is actually trained with real data
         # If ML is not trained, we use standard Logic + Vision system
+        # v6.0: Use adaptive thresholds based on market regime
+        ml_threshold_decimal = ml_threshold / 100.0  # Convert 25% -> 0.25
+        critical_threshold = max(0.20, ml_threshold_decimal - 0.10)  # 10% below adaptive threshold
+        
         if ml_is_trained:
-            # Critical Veto: ML thinks it's a guaranteed loss (Prob < 25%)
-            if ml_win_prob < 0.25:
+            # Critical Veto: ML thinks it's a guaranteed loss
+            if ml_win_prob < critical_threshold:
+                 market_regime = metrics.get('market_regime', 'UNKNOWN') if metrics else 'UNKNOWN'
+                 logging.info(f"[ML-VETO] CRITICAL: Win Prob {ml_win_prob:.0%} < {critical_threshold:.0%} ({market_regime} regime)")
                  return {
                     "final_signal": "WAIT",
                     "combined_confidence": 0,
@@ -846,13 +859,15 @@ BAD TRADE (WAIT - CONTRADICTION):
                     "setup_valid": setup_valid,
                     "logic_analysis": logic_result,
                     "vision_analysis": vision_result,
-                    "recommendation": f"SKIP (ML Critical Veto: Win Prob {ml_win_prob:.0%})",
+                    "recommendation": f"SKIP (ML Critical Veto: Win Prob {ml_win_prob:.0%} < {critical_threshold:.0%})",
                     "ml_win_probability": ml_win_prob,
                     "ml_insights": ml_insights,
                     "ml_is_trained": ml_is_trained
                 }
-            # Soft Veto: ML thinks it's weak (Prob < 35%) unless Logic is super strong
-            elif ml_win_prob < 0.35 and logic_confidence < 85:
+            # Soft Veto: ML thinks it's weak unless Logic is super strong
+            elif ml_win_prob < ml_threshold_decimal and logic_confidence < 85:
+                market_regime = metrics.get('market_regime', 'UNKNOWN') if metrics else 'UNKNOWN'
+                logging.info(f"[ML-VETO] SOFT: Win Prob {ml_win_prob:.0%} < {ml_threshold_decimal:.0%} ({market_regime} regime, Logic {logic_confidence}%)")
                 return {
                     "final_signal": "WAIT",
                     "combined_confidence": 0,
@@ -860,7 +875,7 @@ BAD TRADE (WAIT - CONTRADICTION):
                     "setup_valid": setup_valid,
                     "logic_analysis": logic_result,
                     "vision_analysis": vision_result,
-                    "recommendation": f"SKIP (ML Soft Veto: Win Prob {ml_win_prob:.0%})",
+                    "recommendation": f"SKIP (ML Soft Veto: Win Prob {ml_win_prob:.0%} < {ml_threshold_decimal:.0%})",
                     "ml_win_probability": ml_win_prob,
                     "ml_insights": ml_insights,
                     "ml_is_trained": ml_is_trained

@@ -31,10 +31,15 @@ class Settings(BaseSettings):
     
     # Trading Parameters
     MIN_VOLUME_USDT: float = 30000000.0  # $30M minimum volume (Lowered to catch Mid-Caps)
-    MIN_VOLATILITY_1H: float = 0.8  # 0.5% min vol
+    MIN_VOLATILITY_1H: float = 0.8  # 0.8% min vol
     TOP_COINS_LIMIT: int = 15  # Top 15 is Sweet Spot (Cost vs Opportunity)
-    MAX_RISK_PERCENT: float = 2.0  # Max 2% risk per trade
+    MAX_RISK_PERCENT: float = 10.0  # 10% per trade (optimized for small accounts $50-200)
     MIN_CONFIDENCE: int = 75  # Minimum 75% confidence to execute
+    
+    # v6.0: Adaptive ML Thresholds per Market Regime
+    ML_THRESHOLD_RANGING: int = 25  # Lower threshold for ranging scalping
+    ML_THRESHOLD_TRENDING: int = 35  # Standard threshold for trending
+    ML_THRESHOLD_EXPLOSIVE: int = 45  # Strict threshold to avoid FOMO
     
     class Config:
         env_file = ".env"

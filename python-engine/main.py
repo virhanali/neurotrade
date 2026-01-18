@@ -19,6 +19,7 @@ from services.ai_handler import AIHandler
 from services.price_stream import price_stream
 from services.execution import executor
 from services.ws_manager import ws_manager
+from services.risk_profiler import DynamicRiskProfiler  # v6.0: Adaptive Risk Profiling
 
 # ML Learner (for learning context)
 try:
@@ -75,6 +76,7 @@ data_fetcher = DataFetcher()
 screener = MarketScreener()
 charter = ChartGenerator()
 ai_handler = AIHandler()
+risk_profiler = DynamicRiskProfiler(executor)  # v6.0: Adaptive Risk Profiling
 
 
 # Track if streams are started (singleton pattern)
@@ -503,6 +505,26 @@ async def analyze_market(request: MarketAnalysisRequest):
                     chart_buffer = await asyncio.to_thread(
                         charter.generate_chart_image, chart_df, symbol, "15M"
                     )
+
+                    # === v6.0: GENERATE DYNAMIC RISK PROFILE ===
+                    # Get all symbols for percentile calculation
+                    all_symbols = [c['symbol'] for c in top_candidates]
+                    
+                    # Generate profile (cached for 5 min)
+                    profile = await asyncio.to_thread(
+                        risk_profiler.get_profile,
+                        symbol,
+                        all_symbols,
+                        ["5m", "15m", "1h"]  # Multi-timeframe analysis
+                    )
+                    
+                    # Add profile to candidate metrics for AI
+                    candidate['risk_profile'] = profile
+                    candidate['ml_threshold_adaptive'] = profile['ml_confidence_threshold']
+                    candidate['sl_atr_multiplier'] = profile['sl_atr_multiplier']
+                    candidate['tp_atr_multiplier'] = profile['tp_atr_multiplier']
+                    candidate['entry_type'] = profile['entry_type']
+                    candidate['market_regime'] = profile['market_regime']
 
                     # === COST OPTIMIZATION: Logic First, Vision Only If Needed ===
                     # Step 1: Run Logic Analysis (cheaper API)
