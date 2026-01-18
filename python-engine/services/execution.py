@@ -485,6 +485,39 @@ class BinanceExecutor:
                 # Sync client cleanup
                 pass
 
+    def fetch_ohlcv(self, symbol: str, timeframe: str = "1h", limit: int = 100) -> list:
+        """
+        Fetch OHLCV (candlestick) data for a symbol (sync)
+
+        Args:
+            symbol: Trading pair (e.g., "BTC/USDT")
+            timeframe: Timeframe (e.g., "5m", "15m", "1h", "4h")
+            limit: Number of candles to fetch
+
+        Returns:
+            List of OHLCV dicts
+        """
+        if not self.default_client:
+            logger.error("[EXEC] No default client for fetch_ohlcv")
+            return []
+
+        try:
+            ohlcv = self.default_client.fetch_ohlcv(symbol, timeframe, limit=limit)
+            return [
+                {
+                    "timestamp": c[0],
+                    "open": c[1],
+                    "high": c[2],
+                    "low": c[3],
+                    "close": c[4],
+                    "volume": c[5]
+                }
+                for c in ohlcv
+            ]
+        except Exception as e:
+            logger.error(f"[EXEC] fetch_ohlcv failed {symbol} ({timeframe}): {e}")
+            return []
+
     async def has_open_position(self, symbol: str,
                              api_key: Optional[str] = None,
                              api_secret: Optional[str] = None) -> Dict:
