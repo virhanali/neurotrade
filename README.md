@@ -439,37 +439,6 @@ docker-compose exec postgres psql -U postgres -d neurotrade -f internal/database
 
 ---
 
-## Current Issues (v5.0)
-
-### ✅ Fixed in v5.0
-1. **Order Duplication (FIXED)**
-   - Status: ✅ Fixed
-   - Issue: Multiple orders created for same symbol within short timeframe
-   - Solution: Added DB-level deduplication check
-
-2. **Pydantic Config Error (FIXED)**
-   - Status: ✅ Fixed
-   - Issue: `extra_forbidden` errors in config.py
-   - Solution: Changed to direct field declarations with `extra = "allow"`
-
-3. **Logic vs Vision Contradiction (FIXED)**
-   - Status: ✅ Fixed
-   - Issue: STO/USDT case - Logic SHORT, Vision LONG, system SHORTED anyway
-   - Solution: AI Judge layer blocks contradictory signals
-
-### ⚠️ Active Issues
-1. **Binance API Permission Issue**
-   - Status: ❌ Blocking order execution
-   - Error: `code:-2015, msg:"Invalid API-key, IP, or permissions for action"`
-   - Solution: Enable Futures Trading permission, whitelist IP in Binance
-
-2. **WebSocket Not Starting**
-   - Status: ⚠️ Warning - Fallback to REST working
-   - Log: `[WS] Failed to get listen key. WS Disabled.`
-   - Impact: Slower position checks (~200ms instead of 0ms)
-
----
-
 ## Contributing
 
 **Current Status:** Production-ready bot actively trading
