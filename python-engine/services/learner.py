@@ -545,7 +545,7 @@ class DeepLearner:
 
         # If still no model, use dynamic rule-based fallback
         if self.model is None or self.scaler is None:
-            return self._rule_based_probability(metrics)
+            return self._rule_based_probability(metrics, ai_context)
 
         try:
             # Prepare features (Must match _prepare_features logic exactly)
@@ -606,47 +606,147 @@ class DeepLearner:
 
         except Exception as e:
             logging.error(f"[LEARNER] Prediction failed ({len(e.args) if e.args else 0} args): {e}")
-            return self._rule_based_probability(metrics)
+            return self._rule_based_probability(metrics, ai_context)
 
-    def _rule_based_probability(self, metrics: Dict) -> float:
-        """Fallback rule-based win probability estimation (Upgraded v5.0)."""
+    def _rule_based_probability(self, metrics: Dict, ai_context: Optional[Dict] = None) -> float:
+        """
+        Enhanced rule-based win probability estimation (v6.0).
+        
+        Improvements:
+        - Directional volume (vol + price direction)
+        - ADX trend strength consideration
+        - RSI extreme penalty (falling knife protection)
+        - Funding rate integration
+        - Logic/Vision agreement bonus
+        """
         score = 0.5  # Base probability
         
-        # 1. Trend Quality (Efficiency Ratio) - Most important for clean moves
+        # Extract metrics
         ker = float(metrics.get('efficiency_ratio', metrics.get('ker', 0)) or 0)
-        if ker > 0.8: score += 0.15   # Perfect trend
-        elif ker > 0.6: score += 0.08 # Clean trend
-        elif ker < 0.25: score -= 0.1 # Choppy/Messy
-        
-        # 2. Volume Anomalies (Whale Activity)
         vol_z = float(metrics.get('vol_z_score', 0) or 0)
+        roc_3 = float(metrics.get('roc_3', 0) or 0)
+        adx = float(metrics.get('adx', 25) or 25)
+        rsi = float(metrics.get('rsi', 50) or 50)
         whale_sig = metrics.get('whale_signal', 'NEUTRAL')
-        if vol_z > 4.0: score += 0.15 # Black swan volume
-        elif vol_z > 2.0: score += 0.08
+        whale_conf = float(metrics.get('whale_confidence', 0) or 0)
+        funding_rate = float(metrics.get('funding_rate', 0) or 0)
+        momentum_dir = metrics.get('momentum_direction', 'NEUTRAL')
+        is_squeeze = metrics.get('is_squeeze', False)
+        structure = metrics.get('structure', 'UNCLEAR')
         
-        # 3. Momentum (Explosive Speed)
-        roc_3 = abs(float(metrics.get('roc_3', 0)))
+        # AI Context (if available)
+        ctx = ai_context or {}
+        logic_signal = ctx.get('logic_signal', 'WAIT')
+        vision_signal = ctx.get('vision_signal', 'NEUTRAL')
+        
+        # === 1. TREND QUALITY (Efficiency Ratio) ===
+        if ker > 0.8: 
+            score += 0.12   # Perfect trend
+        elif ker > 0.6: 
+            score += 0.07   # Clean trend
+        elif ker < 0.25 and not is_squeeze:
+            score -= 0.08   # Choppy (exclude squeeze)
+        
+        # === 2. DIRECTIONAL VOLUME (New!) ===
+        # Volume is only bullish if price is also moving UP
+        if vol_z > 3.0:
+            if roc_3 > 0.5:  # High vol + price UP = bullish
+                score += 0.12
+            elif roc_3 < -0.5:  # High vol + price DOWN = BEARISH (was bonus, now neutral/penalty)
+                score -= 0.05  # Slight penalty - momentum against
+            # else: neutral - high vol but no direction
+        elif vol_z > 1.5:
+            if roc_3 > 0.3:
+                score += 0.06
+            elif roc_3 < -0.3:
+                score -= 0.03
+        
+        # === 3. ADX TREND STRENGTH (New!) ===
+        # Strong trends = higher probability for trend-following
+        if adx > 40:
+            score += 0.08  # Very strong trend - momentum likely continues
+        elif adx > 30:
+            score += 0.05  # Strong trend
+        elif adx < 18:
+            # Low ADX = ranging market
+            # Mean reversion more likely to work
+            if rsi < 35 or rsi > 65:  # Oversold/overbought in range
+                score += 0.05  # Mean reversion opportunity
+        
+        # === 4. RSI EXTREME PENALTY (New! - Falling Knife Protection) ===
+        # Extremely oversold + high volume = likely still dumping
+        if rsi < 20:
+            if vol_z > 2.0:
+                score -= 0.10  # Falling knife - high vol panic selling
+            elif adx > 35:
+                score -= 0.08  # Strong downtrend - don't catch knife
+            else:
+                score += 0.03  # Low vol oversold in ranging = ok
+        elif rsi > 80:
+            if vol_z > 2.0:
+                score -= 0.10  # Parabolic top - don't short yet
+            elif adx > 35:
+                score -= 0.08  # Strong uptrend
+            else:
+                score += 0.03  # Overbought in ranging = ok
+        
+        # === 5. MOMENTUM CONFLUENCE ===
         if roc_3 > 1.5 and ker > 0.5:
-            score += 0.12 # Strong momentum + clean trend
+            score += 0.10  # Strong momentum + clean trend
+        elif roc_3 > 1.0 and ker > 0.4:
+            score += 0.05
         
-        # 4. Whale Confidence
-        whale_conf = float(metrics.get('whale_confidence', 0))
+        # === 6. WHALE SIGNAL ===
         if whale_sig in ['PUMP_IMMINENT', 'DUMP_IMMINENT']:
-             if whale_conf > 80: score += 0.15
-             elif whale_conf > 60: score += 0.08
+            if whale_conf > 80: 
+                score += 0.12
+            elif whale_conf > 60: 
+                score += 0.06
+        elif whale_sig in ['SQUEEZE_LONGS', 'SQUEEZE_SHORTS']:
+            if whale_conf > 70:
+                score += 0.08  # Squeeze = high probability move
         
-        # 5. Penalties
-        # Market Structure penalty
-        if metrics.get('structure') == 'CHOPPY' and not metrics.get('is_squeeze'):
-            score -= 0.1
-            
-        # Funding rate trap?
-        funding_bias = metrics.get('funding_bias', 'NEUTRAL')
-        if funding_bias != 'NEUTRAL':
-             # Slight penalty for fighting funding, though logic handles direction
-             pass 
-
-        return max(0.1, min(0.95, score))
+        # === 7. FUNDING RATE TRAP (New!) ===
+        # Crowded trades are risky
+        if abs(funding_rate) > 0.05:  # 0.05% = very crowded
+            if (funding_rate > 0 and momentum_dir == 'PUMP'):
+                # Long crowded + trying to go more long = risky
+                score -= 0.08
+            elif (funding_rate < 0 and momentum_dir == 'DUMP'):
+                # Short crowded + trying to go more short = risky
+                score -= 0.08
+        elif abs(funding_rate) > 0.03:
+            if (funding_rate > 0 and momentum_dir == 'PUMP'):
+                score -= 0.04
+            elif (funding_rate < 0 and momentum_dir == 'DUMP'):
+                score -= 0.04
+        
+        # === 8. STRUCTURE PENALTY ===
+        if structure == 'CHOPPY' and not is_squeeze:
+            score -= 0.08
+        elif structure == 'CLEAN':
+            score += 0.05
+        
+        # === 9. SQUEEZE BONUS ===
+        if is_squeeze:
+            score += 0.08
+            if vol_z > 1.5:
+                score += 0.05  # Squeeze breaking out
+        
+        # === 10. LOGIC vs VISION AGREEMENT (New!) ===
+        # If both AIs agree, higher confidence
+        logic_bullish = logic_signal in ['LONG']
+        logic_bearish = logic_signal in ['SHORT']
+        vision_bullish = vision_signal in ['BULLISH', 'LONG']
+        vision_bearish = vision_signal in ['BEARISH', 'SHORT']
+        
+        if (logic_bullish and vision_bullish) or (logic_bearish and vision_bearish):
+            score += 0.12  # Strong agreement bonus
+        elif (logic_bullish and vision_bearish) or (logic_bearish and vision_bullish):
+            score -= 0.10  # Contradiction penalty
+        
+        # Final bounds
+        return max(0.15, min(0.92, score))
 
     def get_market_regime(self) -> MarketRegime:
         """Detect current market regime based on recent trades."""

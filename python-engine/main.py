@@ -653,22 +653,38 @@ async def analyze_market(request: MarketAnalysisRequest):
         end_time = datetime.utcnow()
         execution_time = (end_time - start_time).total_seconds()
 
-        # Sanitize btc_context to remove NaN values
+        # --- DATA SANITIZATION (CRITCAL FIX) ---
         import math
-        def sanitize_float(val):
-            if isinstance(val, float):
-                if math.isnan(val) or math.isinf(val):
+        
+        def recursive_sanitize(obj):
+            """Recursively convert NaN/Inf to None/0.0 to prevent JSON errors in Go"""
+            if isinstance(obj, float):
+                if math.isnan(obj) or math.isinf(obj):
                     return 0.0
-                return val
-            return val
+                return obj
+            elif isinstance(obj, dict):
+                return {k: recursive_sanitize(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [recursive_sanitize(v) for v in obj]
+            elif hasattr(obj, 'dict'):  # Pydantic models
+                return recursive_sanitize(obj.dict())
+            return obj
 
-        btc_context = {k: sanitize_float(v) for k, v in btc_context.items()}
+        # Sanitize everything before sending to Go
+        # Go's json decoder fails on NaN, so this is mandatory
+        btc_context_safe = recursive_sanitize(btc_context)
+        
+        # We need to serialize Pydantic models to dict first, then sanitize
+        valid_signals_safe = []
+        for s in valid_signals:
+            s_dict = s.dict()
+            valid_signals_safe.append(recursive_sanitize(s_dict))
 
         return MarketAnalysisResponse(
             timestamp=end_time,
-            btc_context=btc_context,
+            btc_context=btc_context_safe,
             opportunities_screened=len(top_candidates),
-            valid_signals=valid_signals,
+            valid_signals=valid_signals_safe, # Use sanitized version
             execution_time_seconds=round(execution_time, 2)
         )
 
