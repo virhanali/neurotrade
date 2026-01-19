@@ -514,11 +514,12 @@ async def analyze_market(request: MarketAnalysisRequest):
                     all_symbols = [c['symbol'] for c in top_candidates]
                     
                     # Generate profile (cached for 5 min)
+                    # Multi-timeframe analysis - safe now after volatility percentile optimization
                     profile = await asyncio.to_thread(
                         risk_profiler.get_profile,
                         symbol,
                         all_symbols,
-                        ["5m", "15m", "1h"]  # Multi-timeframe analysis
+                        ["15m", "1h"]  # Dual timeframe (was 3, reduced to 2 for rate limit safety)
                     )
                     
                     # Add profile to candidate metrics for AI
