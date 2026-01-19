@@ -112,4 +112,8 @@ type SignalRepository interface {
 
 	// GetPendingSignals retrieves signals that are pending review (older than specified minutes)
 	GetPendingSignals(ctx context.Context, olderThanMinutes int) ([]*Signal, error)
+
+	// UpsertPending updates an existing PENDING signal or creates a new one
+	// Returns true if created (INSERT), false if updated
+	UpsertPending(ctx context.Context, signal *Signal) (bool, error)
 }

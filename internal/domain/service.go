@@ -78,4 +78,5 @@ type TradingService interface {
 	ClosePosition(ctx context.Context, positionID uuid.UUID, userID uuid.UUID, isAdmin bool) error
 	ApprovePosition(ctx context.Context, positionID uuid.UUID, userID uuid.UUID) error
 	DeclinePosition(ctx context.Context, positionID uuid.UUID, userID uuid.UUID) error
+	SyncPositions(ctx context.Context, userID uuid.UUID) error
 }

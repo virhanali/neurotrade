@@ -158,6 +158,16 @@ func (h *UserHandler) GetPositions(c echo.Context) error {
 	// Fetch ALL active positions from DB
 	// Currently the DB does not distinguish between REAL/PAPER in the positions table (legacy schema).
 	// So we return all positions stored.
+
+	// --- SYNC WITH BINANCE (For REAL mode) ---
+	if user.Mode == "REAL" && user.BinanceAPIKey != "" {
+		// Trigger sync to clear ghost positions
+		if err := h.tradingService.SyncPositions(ctx, userID); err != nil {
+			log.Printf("[WARN] Failed to sync positions with Binance: %v", err)
+			// Continue anyway to show what we have
+		}
+	}
+
 	positions, err := h.positionRepo.GetByUserID(ctx, userID)
 	if err != nil {
 		return InternalServerErrorResponse(c, "Failed to get positions", err)

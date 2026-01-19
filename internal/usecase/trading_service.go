@@ -80,9 +80,6 @@ func (ts *TradingService) ProcessMarketScan(ctx context.Context, balance float64
 	}
 
 	log.Printf("[SCAN] %d signals from AI (%s)", len(aiSignals), mode)
-	if err != nil {
-		return fmt.Errorf("failed to analyze market: %w", err)
-	}
 
 	// Get all eligible users for auto-trading
 	users, err := ts.userRepo.GetAll(ctx)
@@ -137,10 +134,19 @@ func (ts *TradingService) ProcessMarketScan(ctx context.Context, balance float64
 		// Create domain signal
 		signal := ts.convertAISignalToDomain(aiSignal)
 
-		// Save signal to database
-		if err := ts.signalRepo.Save(ctx, signal); err != nil {
-			log.Printf("[ERROR] Failed to save signal for %s: %v", aiSignal.Symbol, err)
+		// Save/Update signal to database
+		isNew, err := ts.signalRepo.UpsertPending(ctx, signal)
+		if err != nil {
+			log.Printf("[ERROR] Failed to save/upsert signal for %s: %v", aiSignal.Symbol, err)
 			continue
+		}
+
+		// Only notify and execute if it's a NEW signal
+		if isNew {
+			log.Printf("[SIGNAL-NEW] %s %s @ %.4f (Conf: %d%%)", signal.Symbol, signal.Type, signal.EntryPrice, signal.Confidence)
+		} else {
+			log.Printf("[SIGNAL-UPDATE] %s Updated pending entry (Conf: %d%%)", signal.Symbol, signal.Confidence)
+			continue // Skip execution and notification for updates
 		}
 
 		// Log success
@@ -824,6 +830,71 @@ func (ts *TradingService) DeclinePosition(ctx context.Context, positionID uuid.U
 	if position.SignalID != nil {
 		if err := ts.signalRepo.UpdateStatus(ctx, *position.SignalID, domain.StatusRejected); err != nil {
 			log.Printf("WARNING: Failed to update signal status on decline: %v", err)
+		}
+	}
+
+	return nil
+}
+
+// SyncPositions reconciles local DB positions with Real Binance positions
+func (ts *TradingService) SyncPositions(ctx context.Context, userID uuid.UUID) error {
+	// 1. Get User
+	user, err := ts.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("failed to get user: %w", err)
+	}
+
+	// Only sync for REAL mode
+	if user.Mode != "REAL" || user.BinanceAPIKey == "" {
+		return nil
+	}
+
+	// 2. Get Local OPEN Positions
+	positions, err := ts.positionRepo.GetByUserID(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("failed to get positions: %w", err)
+	}
+
+	var openSymbols []string
+	var openPositions []*domain.Position
+	for _, pos := range positions {
+		if pos.Status == domain.StatusOpen {
+			openSymbols = append(openSymbols, pos.Symbol)
+			openPositions = append(openPositions, pos)
+		}
+	}
+
+	if len(openSymbols) == 0 {
+		return nil
+	}
+
+	// 3. Batch Check Binance Status
+	binanceStatus, err := ts.aiService.BatchHasOpenPositions(ctx, openSymbols, user.BinanceAPIKey, user.BinanceAPISecret)
+	if err != nil {
+		return fmt.Errorf("failed to check binance positions: %w", err)
+	}
+
+	// 4. Reconcile
+	for _, pos := range openPositions {
+		hasPosition, exists := binanceStatus[pos.Symbol]
+		// If Binance says NO position, but we have OPEN -> Close it (Ghost Position)
+		if exists && !hasPosition {
+			log.Printf("[SYNC] Closing ghost position %s: Not found on Binance", pos.Symbol)
+			// Close locally
+			reason := "SYNC_CLOSED"
+			zero := 0.0
+			now := time.Now()
+
+			// Force update status to CLOSED_MANUAL (or SYNC)
+			pos.Status = "CLOSED_MANUAL"
+			pos.ClosedBy = &reason
+			pos.PnL = &zero
+			pos.ExitPrice = &zero
+			pos.ClosedAt = &now
+
+			if err := ts.positionRepo.Update(ctx, pos); err != nil {
+				log.Printf("[ERROR] Failed to close ghost position %s: %v", pos.Symbol, err)
+			}
 		}
 	}
 

@@ -51,6 +51,35 @@ func (r *SignalRepositoryImpl) Save(ctx context.Context, signal *domain.Signal) 
 	return nil
 }
 
+// UpsertPending updates an existing PENDING signal or creates a new one
+// Returns true if created (INSERT), false if updated
+func (r *SignalRepositoryImpl) UpsertPending(ctx context.Context, signal *domain.Signal) (bool, error) {
+	// 1. Try to UPDATE existing PENDING signal for this symbol
+	updateQuery := `
+		UPDATE signals
+		SET type = $1, entry_price = $2, sl_price = $3, tp_price = $4,
+		    confidence = $5, reasoning = $6, created_at = $7
+		WHERE symbol = $8 AND status = 'PENDING'
+		RETURNING id
+	`
+
+	var existingID uuid.UUID
+	err := r.db.QueryRow(ctx, updateQuery,
+		signal.Type, signal.EntryPrice, signal.SLPrice, signal.TPPrice,
+		signal.Confidence, signal.Reasoning, signal.CreatedAt,
+		signal.Symbol,
+	).Scan(&existingID)
+
+	if err == nil {
+		// Found and updated!
+		signal.ID = existingID // Update ID in struct to match DB
+		return false, nil      // False = Not New (Updated)
+	}
+
+	// 2. If Update failed (no rows), Insert new
+	return true, r.Save(ctx, signal)
+}
+
 // GetRecent retrieves the most recent signals
 func (r *SignalRepositoryImpl) GetRecent(ctx context.Context, limit int) ([]*domain.Signal, error) {
 	query := `
