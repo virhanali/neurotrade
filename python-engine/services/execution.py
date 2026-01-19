@@ -278,18 +278,18 @@ class BinanceExecutor:
                         sl_price_str = client.price_to_precision(symbol, sl_price)
                         logger.info(f"[EXEC] Placing SL: {symbol} {close_side} @ {sl_price_str}")
                         
+                        # NOTE: When closePosition=True, quantity MUST be None
                         sl_order = await asyncio.to_thread(
                             client.create_order,
                             symbol,
                             'STOP_MARKET',
                             close_side,
-                            quantity,
-                            None,
+                            None, # Quantity MUST be None for closePosition=True
+                            None, # Price is None for MARKET
                             {
                                 'stopPrice': float(sl_price_str),
                                 'workingType': 'MARK_PRICE',
-                                'closePosition': True,
-                                'timeInForce': 'GTC'
+                                'closePosition': True
                             }
                         )
                         sl_order_id = str(sl_order.get('id'))
@@ -299,11 +299,10 @@ class BinanceExecutor:
                         # Retry once after shorter delay
                         await asyncio.sleep(1.0)
                         try:
-                            sl_order = await asyncio.to_thread(client.create_order, symbol, 'STOP_MARKET', close_side, quantity, None, {
+                            sl_order = await asyncio.to_thread(client.create_order, symbol, 'STOP_MARKET', close_side, None, None, {
                                 'stopPrice': float(sl_price_str), 
                                 'workingType': 'MARK_PRICE',
-                                'closePosition': True,
-                                'timeInForce': 'GTC'
+                                'closePosition': True
                             })
                             sl_order_id = str(sl_order.get('id'))
                             logger.info(f"[EXEC] SL Placed (Retry): ID {sl_order_id}")
@@ -321,13 +320,12 @@ class BinanceExecutor:
                             symbol,
                             'TAKE_PROFIT_MARKET',
                             close_side,
-                            quantity,
+                            None, # Quantity MUST be None for closePosition=True
                             None,
                             {
                                 'stopPrice': float(tp_price_str),
                                 'workingType': 'MARK_PRICE',
-                                'closePosition': True,
-                                'timeInForce': 'GTC'
+                                'closePosition': True
                             }
                         )
                         tp_order_id = str(tp_order.get('id'))
